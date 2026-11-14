@@ -1,0 +1,11 @@
+# Archive downloads and generated tiles (never committed)
+raw/
+data/
+
+# Deploy and secrets
+.vercel/
+.env*
+
+# Dependencies and test output
+node_modules/
+test-results/
