@@ -27,14 +27,48 @@
   },
   "partial_months": {
     "modis": [
+      "2023-01",
+      "2023-02",
+      "2023-03",
+      "2023-04",
+      "2023-05",
       "2023-06"
     ],
     "viirs": [
+      "2023-03",
+      "2023-04",
+      "2023-05",
       "2023-06"
     ],
     "noaa20": [
+      "2023-05",
       "2023-06"
     ]
+  },
+  "acquisition_days": {
+    "Terra": {
+      "2023-01": 6,
+      "2023-02": 6,
+      "2023-03": 6,
+      "2023-05": 6,
+      "2023-06": 6
+    },
+    "Aqua": {
+      "2023-01": 4,
+      "2023-02": 4,
+      "2023-03": 4,
+      "2023-05": 4,
+      "2023-06": 4
+    },
+    "SNPP": {
+      "2023-03": 15,
+      "2023-05": 10,
+      "2023-06": 10
+    },
+    "NOAA20": {
+      "2023-05": 6,
+      "2023-06": 8
+    }
   },
   "satellites": {
     "modis": [
@@ -60,6 +94,6 @@
     "file": "domain.json",
     "res": 0.1
   },
-  "citation": "We acknowledge the use of data and/or imagery from NASA's Fire Information for Resource Management System (FIRMS), part of NASA's Land, Atmosphere Near real-time Capability for Earth observations (LANCE) and NASA's Earth Science Data and Information System (ESDIS). Products: MODIS Collection 6.1 active fire (Giglio et al. 2016, doi:10.1016/j.rse.2016.02.054); VIIRS 375 m active fire, S-NPP and NOAA-20 (Schroeder et al. 2014, doi:10.1016/j.rse.2013.12.008). Product DOIs: unverified, to be added.",
+  "citation": "We acknowledge the use of data and/or imagery from NASA's Fire Information for Resource Management System (FIRMS), part of NASA's Land, Atmosphere Near real-time Capability for Earth observations (LANCE) and NASA's Earth Science Data and Information System (ESDIS). Products: MODIS Collection 6.1 active fire (Giglio et al. 2016, doi:10.1016/j.rse.2016.02.054); VIIRS 375 m active fire, S-NPP and NOAA-20 (Schroeder et al. 2014, doi:10.1016/j.rse.2013.12.008). Standard (archive) products MCD14ML and VNP14IMGT/VJ114IMGT; no product DOI found for them.",
   "caveats": []
 }

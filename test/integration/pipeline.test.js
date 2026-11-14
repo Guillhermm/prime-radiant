@@ -83,3 +83,28 @@ test('a build without NOAA-20 warns, nulls its coverage and still passes the sch
   assert.deepEqual(validateTile(fine, { manifest }), []);
   assert.ok(fine.noaa20.every((v) => v === null));
 });
+test('a day gap in one satellite marks the month partial; excluded-type records still count as acquired', async () => {
+  const dir = tmp();
+  const f = path.join(dir, 'gap_2023.csv');
+  const hdr = 'latitude,longitude,acq_date,acq_time,satellite,type\n';
+  const days = Array.from({ length: 31 }, (_, i) => `2023-05-${String(i + 1).padStart(2, '0')}`).filter((d) => d !== '2023-05-10' && d !== '2023-05-11');
+  const rows = days.map((d) => `40.05,-9.95,${d},0212,N20,0`);
+  rows.push('40.05,-9.95,2023-05-10,0212,N20,2'); // type 2 on the gap day: acquired, not counted
+  fs.writeFileSync(f, hdr + rows.join('\n') + '\n');
+  const { manifest, stats } = await build({ ...opts, inputs: [f, path.join(root, 'firms-viirs-50.csv')], outDir: tmp() });
+  assert.deepEqual(manifest.partial_months.noaa20, ['2023-05']);
+  assert.equal(manifest.acquisition_days.NOAA20['2023-05'], 30);
+  assert.equal(stats.fire_cell_days.noaa20, 29);
+});
+
+test('NRT records never count as acquisition days', async () => {
+  const dir = tmp();
+  const f = path.join(dir, 'gap_2023.csv');
+  const days = Array.from({ length: 31 }, (_, i) => `2023-05-${String(i + 1).padStart(2, '0')}`).filter((d) => d !== '2023-05-10');
+  fs.writeFileSync(f, 'latitude,longitude,acq_date,acq_time,satellite,type\n' + days.map((d) => `40.05,-9.95,${d},0212,N20,0`).join('\n') + '\n');
+  const nrt = path.join(dir, 'nrt_2023.csv');
+  fs.writeFileSync(nrt, 'latitude,longitude,acq_date,acq_time,satellite\n40.05,-9.95,2023-05-10,0212,N20\n');
+  const { manifest } = await build({ ...opts, inputs: [f, nrt, path.join(root, 'firms-viirs-50.csv')], outDir: tmp() });
+  assert.equal(manifest.acquisition_days.NOAA20['2023-05'], 30);
+  assert.deepEqual(manifest.partial_months.noaa20, ['2023-05']);
+});

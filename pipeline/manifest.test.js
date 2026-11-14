@@ -59,3 +59,24 @@ test('a domain passes through to the manifest', () => {
   const m = buildManifest({ month0: '2000-01', days: days(base), tiles: [], dataVersion: 'v', generatedAt: 'x', domain });
   assert.deepEqual(m.domain, domain);
 });
+
+test('acquisition days: a month with a gap inside a satellite span is partial for its sensor only', () => {
+  const full = (sat, sensor, ym, n) => Array.from({ length: n }, (_, i) => rec(sensor, sat, `${ym}-${String(i + 1).padStart(2, '0')}`));
+  const c = createCoverage();
+  [...full('SNPP', 'viirs', '2022-06', 30), ...full('SNPP', 'viirs', '2022-07', 26), ...full('SNPP', 'viirs', '2022-08', 31),
+    ...full('NOAA20', 'viirs', '2022-07', 31), ...full('Terra', 'modis', '2022-07', 31), ...full('Aqua', 'modis', '2022-07', 30)].forEach((r) => c.add(r));
+  c.addDay('SNPP', '2022-07-27'); // an excluded-type record still proves the satellite acquired that day
+  c.addDay('Aqua', '2022-07-31');
+  const m = buildManifest({ month0: '2000-01', days: c.days(), acquisition: c.acquisition(), tiles: [], dataVersion: 'v', generatedAt: 'x' });
+  assert.deepEqual(m.partial_months.viirs, ['2022-07']);
+  assert.deepEqual(m.partial_months.modis, []);
+  assert.deepEqual(m.partial_months.noaa20, []);
+  assert.equal(m.acquisition_days.SNPP['2022-07'], 27);
+  assert.deepEqual(validateManifest(m), []);
+});
+test('a satellite month between its first and last month with no record is partial', () => {
+  const c = createCoverage();
+  [rec('viirs', 'SNPP', '2022-05-01'), rec('viirs', 'SNPP', '2022-07-31')].forEach((r) => c.add(r));
+  const m = buildManifest({ month0: '2000-01', days: c.days(), acquisition: c.acquisition(), tiles: [], dataVersion: 'v', generatedAt: 'x' });
+  assert.ok(m.partial_months.viirs.includes('2022-06'));
+});
