@@ -98,6 +98,9 @@ export const launch = async (chromePath) => {
     };
     return {
       problems, downloads, evaluate, until, click, press,
+      transparent: () => cmd('Emulation.setDefaultBackgroundColorOverride', { color: { r: 0, g: 0, b: 0, a: 0 } }),
+      // Headless Chrome enforces a minimum window size, so clip to the page size asked for.
+      screenshot: async () => Buffer.from((await cmd('Page.captureScreenshot', { format: 'png', fromSurface: true, clip: { x: 0, y: 0, width, height, scale: 1 } })).data, 'base64'),
       goto: (url) => cmd('Page.navigate', { url }),
       close: async () => { listeners.delete(onEvent); await send('Target.closeTarget', { targetId }); },
     };

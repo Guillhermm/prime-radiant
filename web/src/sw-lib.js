@@ -1,12 +1,13 @@
 // Pure parts of the service worker: what to precache, what to name the caches, how to route a request.
 // Paths are relative to the worker's scope (/web/), so the same list works on localhost and in production.
 // Bump CACHE_VERSION whenever a precached file changes so installed apps refetch the shell atomically.
-export const CACHE_VERSION = 'v1';
+export const CACHE_VERSION = 'v2';
 export const SHELL_CACHE = `pr-shell-${CACHE_VERSION}`;
 export const DATA_CACHE = `pr-data-${CACHE_VERSION}`;
 
 export const SHELL_FILES = [
-  './', 'index.html', 'manifest.webmanifest', 'favicon.svg', 'theme-init.js',
+  './', 'index.html', 'manifest.webmanifest', 'icons/mark.svg', 'icons/apple-touch-icon.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png',
+  'theme-init.js',
   'styles/tokens.css', 'styles/app.css', 'styles/components.css',
   'fonts/fira-code-latin-400-normal.woff2', 'fonts/fira-code-latin-500-normal.woff2',
   'fonts/fira-sans-latin-400-normal.woff2', 'fonts/fira-sans-latin-500-normal.woff2',
