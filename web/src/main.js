@@ -1,6 +1,6 @@
 import { VIEWS } from './views.js';
 import { createStore, parseHash, serializeHash } from './state.js';
-import { findPreset } from './presets.js';
+import { findPreset, presetsFor } from './presets.js';
 import * as appShell from './components/app-shell.js';
 import * as queryBar from './components/query-bar.js';
 import { spanFromManifest } from './components/date-range.js';
@@ -102,6 +102,7 @@ export const start = async (root = document.getElementById('app')) => {
   // ?preview=1 turns on the Anomalies and Live views, fed by placeholder numbers (preview-stubs.js).
   const preview = params.get('preview') === '1';
   const views = preview ? VIEWS.map((v) => (v.id === 'anomalies' || v.id === 'live' ? { ...v, enabled: true } : v)) : VIEWS;
+  const presets = presetsFor({ fixtures });
   const source = createDataSource(dataSourceConfig({ fixtures }));
   const manifest = await source.manifest().catch(() => null);
   const span = manifest ? spanFromManifest(manifest) : null;
@@ -126,7 +127,7 @@ export const start = async (root = document.getElementById('app')) => {
   showErrors(errors);
   const map = {};
   const qb = queryBar.mount(slots.query, {
-    store, views, span, goTo,
+    store, views, span, goTo, presets,
     onAoiInput: (v) => { if (v.valid) map.ctl?.setBbox(v.bbox); },
     onDrawMap: () => map.ctl?.openFull(),
   });
@@ -140,7 +141,8 @@ export const start = async (root = document.getElementById('app')) => {
   // reuse it, so it is shown again here, and the result groups hidden while no result is valid.
   const resultGroups = shell.groups;
   const stateView = states.mount(slots.empty, {
-    onPick: (id) => goTo(queryBar.presetPatch(findPreset(id), store.get(), span)),
+    presets,
+    onPick: (id) => goTo(queryBar.presetPatch(findPreset(id, presets), store.get(), span)),
     onRetry: () => run(store.get()),
   });
   let shownState = null;

@@ -43,7 +43,7 @@ export const layerChoices = (views) => (isEnabledView('anomalies', views)
   : []);
 
 export const mount = (container, {
-  store, views, span = null, maxAreaDeg2 = Infinity, now,
+  store, views, span = null, maxAreaDeg2 = Infinity, now, presets,
   goTo = (patch) => store.set(patch), onAoiInput = () => {}, onDrawMap = null,
 } = {}) => {
   let aoi = { valid: false };
@@ -54,7 +54,7 @@ export const mount = (container, {
   const aoiBox = h('div');
   const dateBox = h('div');
   const s = store.get();
-  const aoiCtl = aoiForm.mount(aoiBox, { bbox: s.bbox, maxAreaDeg2, onChange: (v) => { aoi = v; sync(); onAoiInput(v); },
+  const aoiCtl = aoiForm.mount(aoiBox, { bbox: s.bbox, maxAreaDeg2, presets, onChange: (v) => { aoi = v; sync(); onAoiInput(v); },
     onPreset: (p) => goTo(presetPatch(p, store.get(), span)) });
   const dateCtl = dateRange.mount(dateBox, { span, from: s.from ?? '', to: s.to ?? '', now, onChange: (v) => { dates = v; sync(); } });
 

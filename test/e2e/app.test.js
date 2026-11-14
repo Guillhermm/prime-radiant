@@ -125,6 +125,14 @@ test('phone width (400px): sheet traps focus, apply works, no horizontal scroll'
     await applyFrom2005(page);
     assert.equal(await page.evaluate(`!document.querySelector('.query-bar').classList.contains('sheet-open') && document.activeElement.classList.contains('area-chip')`), true, 'sheet closed, focus back on the chip');
     assert.equal(await page.evaluate(`document.documentElement.scrollWidth <= window.innerWidth`), true, 'no horizontal page scroll');
+
+    // The bottom sheet must not cover the tapped cell (WCAG 2.4.11).
+    await page.evaluate(`(() => { const c = [...document.querySelectorAll('.cal-cell:not(.is-empty)')].pop(); c.scrollIntoView({ block: 'end' }); c.focus(); })()`);
+    await page.press('Enter');
+    await page.until(`document.querySelector('.detail-panel')`, 'detail sheet opens on phone');
+    await wait(150);
+    assert.equal(await page.evaluate(`(() => { const c = [...document.querySelectorAll('.cal-cell:not(.is-empty)')].pop().getBoundingClientRect(); return c.bottom <= document.querySelector('.detail').getBoundingClientRect().top; })()`), true, 'cell is above the sheet');
+    assert.ok(await page.evaluate(`parseFloat(document.documentElement.style.getPropertyValue('--sheet-height')) > 100`), 'page padded by the sheet height');
     assert.deepEqual(page.problems, []);
   } finally { await page.close(); }
 });

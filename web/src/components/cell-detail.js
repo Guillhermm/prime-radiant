@@ -39,6 +39,18 @@ export const detailModel = (cell, { aoiCells, layer = 'counts' }) => {
   return { title, rows, caveats };
 };
 
+const SHEET_GAP = 16;
+
+/**
+ * Pixels to scroll the page so the tapped cell ends above a bottom sheet (WCAG 2.4.11, focus not
+ * obscured). Positive scrolls down. A cell taller than the free space keeps its top on screen.
+ */
+export const scrollForSheet = ({ cellTop, cellBottom, sheetTop }, gap = SHEET_GAP) => {
+  const over = cellBottom - (sheetTop - gap);
+  if (over <= 0) return 0;
+  return Math.min(over, Math.max(0, cellTop - gap));
+};
+
 /**
  * mount(container, {aoiCells, onClose}). `open(cell, {layer})` shows the panel and remembers the
  * focused element (the calendar cell) to give focus back to on close. Escape closes.
@@ -49,10 +61,23 @@ export const mount = (container, deps) => {
   let opener = null;
   let isOpen = false;
 
+  const root = document.documentElement;
+  // On phone the panel is a fixed bottom sheet: pad the page by its height so everything can
+  // scroll above it, then bring the tapped cell clear of it.
+  const clearSheet = (cell) => {
+    if (getComputedStyle(container).position !== 'fixed') { root.style.removeProperty('--sheet-height'); return; }
+    root.style.setProperty('--sheet-height', `${container.offsetHeight}px`);
+    if (!cell?.isConnected) return;
+    const r = cell.getBoundingClientRect();
+    const by = scrollForSheet({ cellTop: r.top, cellBottom: r.bottom, sheetTop: container.getBoundingClientRect().top });
+    if (by) window.scrollBy(0, by);
+  };
+
   const close = ({ restore = true } = {}) => {
     if (!isOpen) return;
     isOpen = false;
     container.replaceChildren();
+    root.style.removeProperty('--sheet-height');
     document.removeEventListener('keydown', onKey);
     if (restore && opener?.isConnected) opener.focus();
     opener = null;
@@ -74,7 +99,8 @@ export const mount = (container, deps) => {
     heading.id = 'detail-title';
     isOpen = true;
     document.addEventListener('keydown', onKey);
-    heading.focus();
+    heading.focus({ preventScroll: true });
+    clearSheet(opener);
   };
 
   return {

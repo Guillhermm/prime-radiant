@@ -44,7 +44,7 @@ export const mountPresets = (container, { presets = PRESETS, onPick }) => {
   return group;
 };
 
-export const mount = (container, { bbox = null, maxAreaDeg2 = Infinity, onChange = () => {}, onPreset = () => {} } = {}) => {
+export const mount = (container, { bbox = null, maxAreaDeg2 = Infinity, presets = PRESETS, onChange = () => {}, onPreset = () => {} } = {}) => {
   const initial = bboxToInputs(bbox);
   const inputs = {};
   const msgs = {};
@@ -73,6 +73,7 @@ export const mount = (container, { bbox = null, maxAreaDeg2 = Infinity, onChange
 
   const presetBox = h('div', { class: 'presets' }, h('span', { class: 'label' }, 'Example areas'));
   mountPresets(presetBox, {
+    presets,
     onPick: (p) => {
       const v = bboxToInputs(p.bbox);
       for (const { key } of FIELDS) inputs[key].value = v[key];

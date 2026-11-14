@@ -109,3 +109,23 @@ test('table alternative: one row per period, null live is no data, 0 stays 0, pr
   assert.equal(liveTableModel({ ...input(), provisional: false }).rows[3].header, 'November 2026');
   assert.throws(() => liveTableModel(input({ band: { p25: [], median: [], p75: [] } })), RangeError);
 });
+
+test('niceTicks keeps whole numbers only, no repeated labels on flat data', async () => {
+  const { niceTicks } = await import('./live-view.js');
+  assert.deepEqual(niceTicks(1), [0, 1]);
+  assert.deepEqual(niceTicks(2), [0, 1, 2]);
+  assert.deepEqual(niceTicks(300), [0, 150, 300]);
+});
+
+test('chartWidth uses the real width below 640 so text is not scaled, and moves labels to a key', async () => {
+  const { chartWidth, liveModel } = await import('./live-view.js');
+  assert.equal(chartWidth(360), 360);
+  assert.equal(chartWidth(0), 640);
+  assert.equal(chartWidth(1000), 640);
+  const input = { fetched_at: '2026-11-14T00:00:00Z', now: new Date('2026-11-14T01:00:00Z'), live: { id: 'live', comparable: false, start: '2026-01', values: [1, 2, 3] }, band: { p25: [0, 1, 1], median: [1, 1, 2], p75: [2, 2, 3] } };
+  const narrow = liveModel({ ...input, width: 360 });
+  assert.equal(narrow.width, 360);
+  assert.equal(narrow.labels.length, 0);
+  assert.equal(narrow.key.length, 3);
+  assert.equal(liveModel(input).key.length, 0);
+});

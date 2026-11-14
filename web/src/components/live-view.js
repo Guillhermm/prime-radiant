@@ -23,6 +23,12 @@ import { liveStatus, mount as mountStates } from './states.js';
  */
 
 export const VIEW = { width: 640, height: 320, left: 56, right: 152, top: 16, bottom: 40 };
+// Below this width the series labels leave the plot for a key under it, and the viewBox is the
+// real pixel width, so the 0.75rem text is not scaled down.
+export const COMPACT_BELOW = 640;
+const MIN_WIDTH = 280;
+
+export const chartWidth = (px) => (px > 0 && px < COMPACT_BELOW ? Math.max(MIN_WIDTH, Math.round(px)) : VIEW.width);
 const GAP = 14;
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -43,6 +49,9 @@ const niceMax = (v) => {
   const p = 10 ** Math.floor(Math.log10(v));
   return Math.ceil(v / p) * p;
 };
+
+/** Integer-only y ticks from 0 to the nice maximum: 0, half and max, dropping halves that are not whole. */
+export const niceTicks = (max) => [0, max / 2, max].filter((v, i, a) => Number.isInteger(v) && a.indexOf(v) === i);
 
 /** Runs of consecutive indices where every listed array has a number. */
 const runs = (n, ...arrays) => {
@@ -75,13 +84,15 @@ const validate = ({ live, band }) => {
  * View model. When the data is missing or stale, returns {available: false, state} for
  * states.mount; otherwise geometry in SVG user units plus labels, points and texts.
  */
-export const liveModel = ({ fetched_at: fetchedAt = null, live, band, provisional = true, now = new Date() } = {}) => {
+export const liveModel = ({ fetched_at: fetchedAt = null, live, band, provisional = true, now = new Date(), width = VIEW.width } = {}) => {
   const status = liveStatus(fetchedAt, now);
   if (!status.available) return { available: false, status, state: { kind: 'live-unavailable', fetchedAt, now } };
   validate({ live, band });
   const step = live.step ?? 'month';
   const n = live.values.length;
-  const { width, height, left, right, top, bottom } = VIEW;
+  const { height, left, top, bottom } = VIEW;
+  const compact = width < COMPACT_BELOW;
+  const right = compact ? 16 : VIEW.right;
   const innerW = width - left - right;
   const innerH = height - top - bottom;
   const all = [...live.values, ...band.p75, ...band.p25, ...band.median].filter((v) => typeof v === 'number');
@@ -115,9 +126,9 @@ export const liveModel = ({ fetched_at: fetchedAt = null, live, band, provisiona
     points.push({ i, x: x(i), y: y(v), value: v, label: when, provisional: isProv, aria: bits.join(', ') });
   });
 
-  const ticks = [0, yMax / 2, yMax].map((v) => ({ y: y(v), text: formatCount(v) }));
-  const every = Math.max(1, Math.ceil(n / 6));
-  const xticks = Array.from({ length: n }, (_, i) => i).filter((i) => i % every === 0 || i === last)
+  const ticks = niceTicks(yMax).map((v) => ({ y: y(v), text: formatCount(v) }));
+  const every = Math.max(1, Math.ceil(n / (compact ? 3 : 6)));
+  const xticks = Array.from({ length: n }, (_, i) => i).filter((i) => i === last || (i % every === 0 && last - i > every + 1))
     .map((i) => ({ x: x(i), text: periodLabel(live.start, step, i), anchor: i === last && last % every !== 0 ? 'end' : 'middle' }));
 
   const labelX = width - right + 8;
@@ -127,7 +138,8 @@ export const liveModel = ({ fetched_at: fetchedAt = null, live, band, provisiona
   if (typeof lv === 'number') raw.push({ text: 'Current season', cls: 'live', y: y(lv) + 4 });
   if (typeof tail(band.median) === 'number') raw.push({ text: 'Historical median', cls: 'median', y: y(tail(band.median)) + 4 });
   if (typeof tail(band.p75) === 'number') raw.push({ text: 'Middle half of past years', cls: 'band', y: y(tail(band.p75)) + 4 });
-  const labels = spreadLabels(raw).map((l) => ({ ...l, x: labelX }));
+  const labels = compact ? [] : spreadLabels(raw).map((l) => ({ ...l, x: labelX }));
+  const key = compact ? raw.map(({ text, cls }) => ({ text, cls })) : [];
 
   const current = typeof lv === 'number'
     ? { label: periodLabel(live.start, step, last), value: lv, provisional, text: `${periodLabel(live.start, step, last)}: ${formatCount(lv)} fire-cell-days so far${provisional ? ', provisional' : ''}` }
@@ -138,7 +150,7 @@ export const liveModel = ({ fetched_at: fetchedAt = null, live, band, provisiona
     badge: provisional ? 'Provisional' : null,
     note: 'Live detections are shown on their own. They are never added to the harmonized totals.',
     width, height, left, innerW, bottom: top + innerH,
-    linePath, tailPath, medianPath, bandPath, points, ticks, xticks, labels,
+    linePath, tailPath, medianPath, bandPath, points, ticks, xticks, labels, key,
   };
 };
 
@@ -186,8 +198,9 @@ const text = (t, attrs, tag = 'text') => { const el = s(tag, attrs); el.textCont
  */
 export const mount = (container, deps = {}) => {
   let tableOn = false;
+  let width = chartWidth(container.clientWidth);
   const paint = ({ input, now }) => {
-    const m = liveModel({ ...input, now });
+    const m = liveModel({ ...input, now, width });
     if (!m.available) {
       const box = h('div', { class: 'live-view' });
       container.replaceChildren(box);
@@ -244,12 +257,22 @@ export const mount = (container, deps = {}) => {
     });
     container.replaceChildren(h('div', { class: 'live-view' },
       h('div', { class: 'live-head' }, m.badge && h('span', { class: 'badge', text: m.badge }), h('span', { class: 'live-fetched', text: m.fetchedText }), toggle),
-      chartBox, tableHost, h('p', { class: 'hint', text: m.note })));
+      chartBox,
+      m.key.length ? h('ul', { class: 'live-key' }, m.key.map((k) => h('li', { class: `live-key-${k.cls}`, text: k.text }))) : null,
+      tableHost, h('p', { class: 'hint', text: m.note })));
   };
   let current = { input: deps.input, now: deps.now ?? new Date() };
   paint(current);
+  // The view is hidden at mount time (zero width) and the window can resize: repaint when the chart width changes.
+  const watcher = globalThis.ResizeObserver ? new ResizeObserver(() => {
+    const next = chartWidth(container.clientWidth);
+    if (next === width || !container.clientWidth) return;
+    width = next;
+    paint(current);
+  }) : null;
+  watcher?.observe(container);
   return {
     update: (next) => { current = { input: next.input ?? current.input, now: next.now ?? new Date() }; paint(current); },
-    destroy: () => container.replaceChildren(),
+    destroy: () => { watcher?.disconnect(); container.replaceChildren(); },
   };
 };

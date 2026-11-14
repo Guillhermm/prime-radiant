@@ -64,7 +64,7 @@ button, input, select { font: inherit; color: inherit; }
 .caveat:empty { display: none; }
 .caveat { padding: var(--space-2) var(--space-4); background: var(--color-caveat-bg); color: var(--color-caveat-text); border-bottom: 1px solid var(--color-caveat-border); }
 
-.content { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-4); padding: var(--space-4); align-items: start; }
+.content { display: grid; grid-template-columns: minmax(0, 1fr) minmax(18rem, 26rem); gap: var(--space-4); padding: var(--space-4); align-items: start; }
 .content:has(.detail:empty) { grid-template-columns: minmax(0, 1fr); }
 .detail:empty { display: none; }
 .empty { padding: var(--space-8) 0; }
@@ -96,6 +96,10 @@ button, input, select { font: inherit; color: inherit; }
   .tabs { display: none; }
   .view-select { display: flex; }
   .topbar { gap: var(--space-2) var(--space-3); }
+  .topbar h1 { order: 0; }
+  .topbar-actions { order: 1; margin-left: auto; }
+  .view-select { order: 2; flex: 1 0 100%; }
+  .view-select select { flex: 1; }
   .content { grid-template-columns: minmax(0, 1fr); padding: var(--space-3); }
   .field { flex: 1 1 8rem; }
   .field input { width: 100%; }
@@ -122,3 +126,6 @@ button, input, select { font: inherit; color: inherit; }
   .map-panel.is-full .map-full-bar button { flex: 1; }
   body.map-open { overflow: hidden; }
 }
+
+.layer label { display: inline-flex; align-items: center; gap: var(--space-2); min-height: var(--target-min); padding-inline-end: var(--space-3); cursor: pointer; }
+.layer input[type="radio"] { inline-size: 1.25rem; block-size: 1.25rem; margin: 0; accent-color: var(--color-accent); }

@@ -67,3 +67,10 @@ test('anomaly layer: a zero month keeps its rank, a missing rank is not invented
   const off = detailModel({ ...obs, value: null, status: 'no-data', rank: null }, { aoiCells: 1000, layer: 'anomaly' });
   assert.equal(row(off, 'Percentile rank'), undefined);
 });
+
+test('scrollForSheet moves a covered cell above the sheet and leaves a clear one', async () => {
+  const { scrollForSheet } = await import('./cell-detail.js');
+  assert.equal(scrollForSheet({ cellTop: 700, cellBottom: 730, sheetTop: 500 }), 246);
+  assert.equal(scrollForSheet({ cellTop: 300, cellBottom: 330, sheetTop: 500 }), 0);
+  assert.equal(scrollForSheet({ cellTop: 20, cellBottom: 600, sheetTop: 500 }), 4);
+});

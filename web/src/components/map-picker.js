@@ -60,7 +60,8 @@ export const mount = (container, { bbox = null, onChange = () => {}, skipTo = '#
   let saved = null;
 
   const status = h('p', { class: 'map-status', role: 'status' });
-  const toggle = h('button', { type: 'button', class: 'map-toggle', 'aria-expanded': 'true', 'aria-controls': 'map-body' }, 'Map');
+  const phone = Boolean(globalThis.matchMedia?.('(max-width: 40rem)').matches);
+  const toggle = h('button', { type: 'button', class: 'map-toggle', 'aria-expanded': String(phone), 'aria-controls': 'map-body' }, 'Map');
   const draw = h('button', { type: 'button', class: 'map-draw', 'aria-pressed': 'false' }, 'Draw rectangle');
   const clear = h('button', { type: 'button', class: 'map-clear' }, 'Clear');
   const done = h('button', { type: 'button', class: 'map-done btn-primary' }, 'Done');
@@ -179,8 +180,9 @@ export const mount = (container, { bbox = null, onChange = () => {}, skipTo = '#
   done.addEventListener('click', () => closeFull(false));
   cancel.addEventListener('click', () => closeFull(true));
 
-  // Phone keeps the map closed until asked, so Leaflet and the tiles are not fetched for nothing.
-  if (!globalThis.matchMedia?.('(max-width: 40rem)').matches) init();
+  // Closed until asked on both widths: the calendar, not the map, is what the first screen is for, and
+  // Leaflet and the tiles are not fetched for nothing.
+  body.hidden = !phone;
 
   return {
     setBbox(b) {
