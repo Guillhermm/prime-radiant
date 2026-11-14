@@ -47,5 +47,27 @@ vegetation fires; they are not mixed into the archive series (method note, cavea
 
 ## Size spike (M0-K4)
 
-Planned: measured on the global 2026 standard data once the reader (M1-K1) and binning
-(M1-K2) exist.
+Measured 2026-11-14 on the global 2026 standard (archive) files: MODIS 849178, S-NPP
+849181, NOAA-20 849179 (NOAA-21 and NRT not used). Command:
+`/usr/bin/time -v node pipeline/build.js --in raw/spike-2026 --out data/spike-2026`
+(`raw/spike-2026` holds links to the three `fire_archive_*.dbf` files). WSL2, Node 24.9.
+
+| Measure | Value |
+|---|---|
+| Archive coverage found | MODIS 2026-01 to 2026-08; S-NPP and NOAA-20 2026-01 to 2026-07 |
+| Detections in / kept (`type = 0`) | 20,722,094 / 19,002,112 (1,719,982 other types) |
+| Fire-cell-days out | MODIS 1,055,380; S-NPP 2,566,122; NOAA-20 2,829,819 |
+| Tiles (0.1 deg and 1 deg) | 301 each |
+| Size 0.1 deg, raw / brotli | 16.9 MB / 2.15 MB |
+| Size 1 deg, raw / brotli | 1.0 MB / 0.22 MB |
+| Largest 0.1 deg tile | `x20y8` (Central Africa), 634 KB raw, 77 KB brotli |
+| Wall time / peak RSS | 95 s / 909 MB |
+
+Extrapolation (not measured): the full span is about 39 times these 8 months by
+month count (2000-11 to 2026-08), so global history would be about 660 MB raw and
+85 MB brotli at 0.1 deg, with the largest tiles near 25 MB raw. Fire-cell-days per
+month vary by season and by the sensors operating, so this is an order of magnitude only.
+
+Decision (H3, recorded): Brazil full history plus global 2026, as decided by the humans.
+Node is fast enough for the pipeline; the Python fallback is not needed. Hosting (H5)
+is the web owner's spike (M0-G3) and uses these numbers.
