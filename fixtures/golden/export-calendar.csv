@@ -1,0 +1,19 @@
+# unit: fire-cell-days
+# aoi: fixture, whole world
+# aoi bbox (w s e n): -180 -90 180 90
+# sensors: modis viirs noaa20 harmonized
+# method: ratio-of-sums 1
+# R: value=1.867; ci=1.867..1.867; level=aoi; usable=false; rounded to 3 decimals
+# K: 
+# data version: fixture-1
+# domain: whole world (fixture)
+# generated: 2026-11-14
+# citation: We acknowledge the use of data and/or imagery from NASA's Fire Information for Resource Management System (FIRMS), part of NASA's Land, Atmosphere Near real-time Capability for Earth observations (LANCE) and NASA's Earth Science Data and Information System (ESDIS). Products: MODIS Collection 6.1 active fire (Giglio et al. 2016, doi:10.1016/j.rse.2016.02.054); VIIRS 375 m active fire, S-NPP and NOAA-20 (Schroeder et al. 2014, doi:10.1016/j.rse.2013.12.008). Product DOIs: unverified, to be added.
+# caveats: unit-fire-cell-days estimated-before-viirs no-confidence-filter detection-limits archive-lag not-validated brazil-only estimated low-confidence
+year,month,value,status,estimated,flags
+2023,1,16.8,harmonized,true,low-confidence estimated
+2023,2,13.066666666666666,harmonized,true,low-confidence estimated
+2023,3,18,observed,false,
+2023,4,0,observed,false,
+2023,5,10,observed,false,
+2023,6,11,partial,false,
