@@ -33,9 +33,10 @@ export function familyOf(rec) {
 
 /**
  * @typedef {Object} BinResult
- * @property {Object<string, Object<string, Object<string, Object<string, number>>>>} counts
- *   counts[family][tileId][cellId][monthIdx] = fire-cell-days. monthIdx is months since
- *   the manifest `month0`. Plain JSON-able objects; keys are strings of integers.
+ * @property {Object<string, Object<string, Object<string, Map<number, number>>>>} counts
+ *   counts[family][tileId][cellId] is a Map monthIdx -> fire-cell-days (a Map, not an object:
+ *   an object keyed by month index ~300 allocates a ~4 KB array per cell). monthIdx is months since
+ *   the manifest `month0`. Family, tile and cell keys are strings.
  * @property {{read: number, counted: number, duplicates: number,
  *   skipped: Object<string, number>, rejected: number}} stats
  * @property {ReturnType<typeof createDedupe>} dedupe fire-cell-days seen, per UTC year; kept
@@ -90,8 +91,8 @@ export async function binRecords(records, { month0, into = createBinResult(), al
       continue;
     }
     const cells = ((counts[family] ??= {})[loc.tile] ??= {});
-    const months = (cells[loc.cell] ??= {});
-    months[m] = (months[m] ?? 0) + 1;
+    const months = (cells[loc.cell] ??= new Map());
+    months.set(m, (months.get(m) ?? 0) + 1);
     stats.counted++;
   }
   return into;

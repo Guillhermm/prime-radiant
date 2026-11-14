@@ -8,7 +8,8 @@ const month0 = '2000-11';
 const midx = 232; // 2020-03 minus 2000-11
 const at = (r, fam, lon, lat) => {
   const l = locate(lon, lat);
-  return r.counts[fam]?.[l.tile]?.[l.cell];
+  const m = r.counts[fam]?.[l.tile]?.[l.cell];
+  return m && Object.fromEntries(m);
 };
 
 test('Terra and Aqua same cell/day count once', async () => {

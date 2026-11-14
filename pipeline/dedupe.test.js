@@ -26,3 +26,14 @@ test('dropYear frees only that year', () => {
   assert.equal(d.add('modis', 'x1y1', 5, '2019-12-31'), true);
   assert.equal(d.add('modis', 'x1y1', 5, '2020-01-01'), false);
 });
+
+test('packed keys stay distinct at the extremes (last tile, last cell, Dec 31 of a leap year)', () => {
+  const d = createDedupe();
+  assert.equal(d.add('noaa20', 'x35y17', 9999, '2024-12-31'), true);
+  assert.equal(d.add('noaa20', 'x35y17', 9999, '2024-12-30'), true);
+  assert.equal(d.add('noaa20', 'x35y16', 9999, '2024-12-31'), true);
+  assert.equal(d.add('noaa20', 'x0y0', 0, '2024-01-01'), true);
+  assert.equal(d.add('modis', 'x0y0', 0, '2024-01-01'), true);
+  assert.equal(d.add('noaa20', 'x35y17', 9999, '2024-12-31'), false);
+  assert.throws(() => d.add('modis', 'x0y0', 10000, '2024-01-01'), RangeError);
+});

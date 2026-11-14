@@ -5,7 +5,7 @@ import { validateManifest, validateTile, validateSeries, validateCalendarCell } 
 
 const manifest = JSON.parse(readFileSync(new URL('../fixtures/manifest.json', import.meta.url), 'utf8'));
 const codes = (errs) => errs.map((e) => e.code);
-const tile = () => ({ cell: [0, 1], month: [0, 2], modis: [1, 0], viirs: [null, 3] });
+const tile = () => ({ cell: [0, 1], month: [0, 2], modis: [1, 0], viirs: [null, 3], noaa20: [null, null] });
 const series = (o = {}) => ({ id: 'modis', unit: 'fire-cell-days', start: '2023-01', values: [1, 0, 2],
   method: { id: 'raw', version: 1 }, comparable: true, ...o });
 const cell = (o = {}) => ({ year: 2023, month: 2, value: 3, status: 'observed', estimated: false, ...o });
@@ -32,6 +32,22 @@ test('tile: null vs 0 follows sensor coverage (null = not operating, 0 = none de
   assert.deepEqual(codes(validateTile({ ...tile(), modis: [null, 0] }, { manifest })), ['NULL_INSIDE_COVERAGE']);
   assert.deepEqual(validateTile({ ...tile(), viirs: [0, 3] }), []); // no manifest, no coverage check
 });
+test('tile: noaa20 follows its own coverage (index 4..5 in the fixture)', () => {
+  const t = { ...tile(), month: [4, 5], viirs: [2, 3], noaa20: [0, 1] };
+  assert.deepEqual(validateTile(t, { manifest }), []);
+  assert.deepEqual(codes(validateTile({ ...t, noaa20: [null, 1] }, { manifest })), ['NULL_INSIDE_COVERAGE']);
+  assert.deepEqual(codes(validateTile({ ...tile(), noaa20: [0, null] }, { manifest })), ['COUNT_OUTSIDE_COVERAGE']);
+  const { noaa20, ...old } = tile();
+  assert.deepEqual(codes(validateTile(old)), ['NOT_ARRAY']);
+});
+test('manifest: coverage.noaa20 and partial_months are required and checked', () => {
+  const { noaa20, ...cov } = manifest.coverage;
+  assert.ok(codes(validateManifest({ ...manifest, coverage: cov })).includes('BAD_COVERAGE'));
+  const { partial_months, ...rest } = manifest;
+  assert.deepEqual(codes(validateManifest(rest)), ['BAD_PARTIAL_MONTHS']);
+  const bad = { ...manifest, partial_months: { modis: ['2023-6'], viirs: [], noaa20: 'x' } };
+  assert.deepEqual(validateManifest(bad).map((e) => e.path), ['partial_months.modis', 'partial_months.noaa20']);
+});
 test('tile: column length mismatch', () => {
   const t = tile(); t.viirs.pop();
   assert.deepEqual(codes(validateTile(t)), ['COLUMN_LENGTH_MISMATCH']);
@@ -54,7 +70,7 @@ test('tile: cell range depends on resolution, duplicates rejected, error has pat
   t.cell = [10000, 1];
   assert.deepEqual(codes(validateTile(t)), ['CELL_OUT_OF_RANGE']);
   assert.deepEqual(codes(validateTile({ ...tile(), cell: [1, 1], month: [0, 0] })), ['DUPLICATE_ROW']);
-  assert.deepEqual(codes(validateTile({ cell: [] })), ['NOT_ARRAY', 'NOT_ARRAY', 'NOT_ARRAY']);
+  assert.deepEqual(codes(validateTile({ cell: [] })), ['NOT_ARRAY', 'NOT_ARRAY', 'NOT_ARRAY', 'NOT_ARRAY']);
 });
 
 test('series: valid', () => assert.deepEqual(validateSeries(series(), { manifest }), []));
