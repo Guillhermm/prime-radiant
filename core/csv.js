@@ -24,6 +24,10 @@ function quote(text) {
   return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
+/** Estimated values are exported to 1 decimal (display precision); core sums stay exact. */
+const EST_DECIMALS = 1;
+const est = (v) => (typeof v === 'number' && Number.isFinite(v) ? Number(v.toFixed(EST_DECIMALS)) : v);
+
 /** A cell: null/undefined/non-finite number empty, finite number as is, anything else guarded text. */
 function cell(v) {
   if (v === null || v === undefined) return '';
@@ -48,8 +52,10 @@ const round = (x) => (typeof x === 'number' && Number.isFinite(x) ? String(Numbe
 
 function ratioText(r) {
   if (!r) return '';
+  const pm = r.perMonth ? `; per-month (Jan..Dec)=${r.perMonth.map((x) => round(x?.value ?? x)).join('|')}` : '';
+  const win = r.window ? `; window=${r.window.from}..${r.window.to}` : '';
   const ci = r.ci ? `${round(r.ci[0])}..${round(r.ci[1])}` : '';
-  return `value=${round(r.value)}; ci=${ci}; level=${r.level ?? ''}; usable=${r.usable ?? ''}; rounded to ${RATIO_DECIMALS} decimals`;
+  return `value=${round(r.value)}; ci=${ci}; level=${r.level ?? ''}; usable=${r.usable ?? ''}${win}${pm}; rounded to ${RATIO_DECIMALS} decimals`;
 }
 
 function bboxText(b) {
@@ -90,14 +96,15 @@ export function toCsv(kind, data, meta = {}) {
     for (const c of data) {
       const ym = `${String(c.year).padStart(4, '0')}-${String(c.month).padStart(2, '0')}`;
       const flags = [...new Set([...(c.flags ?? []), ...(byMonth.get(ym) ?? [])])].join(' ');
-      rows.push(row([c.year, c.month, c.value, c.status, c.estimated ? 'true' : 'false', flags]));
+      rows.push(row([c.year, c.month, c.estimated ? est(c.value) : c.value, c.status, c.estimated ? 'true' : 'false', flags]));
     }
   } else {
     rows = [row(['year', 'month', 'sensor', 'value'])];
     for (const id of ids) {
+      const estimated = new Set((data[id].flags ?? []).filter((f) => f.flag === 'estimated').map((f) => f.month));
       data[id].values.forEach((x, i) => {
         const ym = addMonths(data[id].start, i);
-        rows.push(row([Number(ym.slice(0, 4)), Number(ym.slice(5)), id, x]));
+        rows.push(row([Number(ym.slice(0, 4)), Number(ym.slice(5)), id, estimated.has(ym) ? est(x) : x]));
       });
     }
   }

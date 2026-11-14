@@ -10,6 +10,8 @@ const FIRST_OVERLAP_MONTH = '2002-08';
 const FIRST_SCALED_MONTH = '2002-07';
 /** Last full month of S-NPP operation (ended 2026-11-02, method.md section 3). */
 const SNPP_LAST_FULL_MONTH = '2026-10';
+/** Default end of the R overlap window: before MODIS orbit drift (gate V1, decided by the humans). */
+const DEFAULT_R_TO = '2021-12';
 const MAX_HALF_WIDTH = 0.25;
 const MIN_YEARS = 5;
 
@@ -127,10 +129,11 @@ const flagKey = (f) => `${f.month}|${f.flag}`;
  *
  * @param {{level: import('./index.js').FallbackLevel, modis: object, viirs: object, noaa20?: object}[]} levels
  * @param {object} manifest validated manifest (coverage, partial_months)
- * @param {{seed?: number, draws?: number}} [opts] CI resampling seed and number of draws (default 1000)
+ * @param {{seed?: number, draws?: number, rWindow?: {from?: string, to?: string}}} [opts] CI resampling seed and number of draws (default 1000); R overlap window, default 2002-08..2021-12 (K is unchanged). `R.window` records the window used.
  * @returns {{series: object, R: object, K: object|null, reasons: string[]}}
  */
-export function harmonize(levels, manifest, { seed = 20260, draws = 1000 } = {}) {
+export function harmonize(levels, manifest, { seed = 20260, draws = 1000, rWindow = {} } = {}) {
+  const window = { from: rWindow.from ?? FIRST_OVERLAP_MONTH, to: rWindow.to ?? DEFAULT_R_TO };
   const base = levels[0];
   const start = base.modis.start;
   const len = base.modis.values.length;
@@ -146,14 +149,15 @@ export function harmonize(levels, manifest, { seed = 20260, draws = 1000 } = {})
   for (const s of [base.modis, base.viirs, base.noaa20]) {
     for (const f of s?.flags ?? []) if (!seen.has(flagKey(f))) { seen.add(flagKey(f)); inputFlags.push(f); }
   }
-  const empty = { value: null, ci: null, level: base.level, nYears: 0, failedDraws: 0, usable: false };
+  const empty = { window, value: null, ci: null, level: base.level, nYears: 0, failedDraws: 0, usable: false };
   if ([base.modis, base.viirs, base.noaa20].every((s) => !s || s.values.every((v) => v === null))) {
     const why = inputFlags.find((f) => f.flag === 'outside-domain') ? 'outside-domain' : 'no-data';
     return { series: mk(Array(len).fill(null), inputFlags), R: empty, K: null, reasons: [`all inputs are null (${why})`] };
   }
 
   const R = chooseRatio(levels, 'viirs', 'modis',
-    (ym) => ym >= FIRST_OVERLAP_MONTH && !pm.has(ym) && !pv.has(ym), seed, draws);
+    (ym) => ym >= window.from && ym <= window.to && !pm.has(ym) && !pv.has(ym), seed, draws);
+  R.window = window;
   const hasNoaa = levels.every((l) => l.noaa20);
   const K = hasNoaa ? chooseRatio(levels, 'viirs', 'noaa20', (ym) => !pv.has(ym) && !pn.has(ym), seed, draws) : null;
   if (!R.usable) reasons.push(`R not usable at any level, using ${R.level}: low confidence`);

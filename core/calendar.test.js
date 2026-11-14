@@ -122,3 +122,12 @@ test('kpis: total equals the sum of the calendar cells', () => {
   const cells = toCalendar(A, null, manifest);
   assert.equal(kpis(A, null, manifest).total, cells.reduce((s, c) => s + (c.value ?? 0), 0));
 });
+
+test('kpis: R exposes window and perMonth values when the harmonizer supplies them', () => {
+  const window = { from: '2002-08', to: '2021-12' };
+  const perMonth = Array.from({ length: 12 }, (_, i) => ({ value: 1 + i }));
+  const k = kpis({ ...B, R: { ...R, window, perMonth } }, baseB, manifest);
+  assert.deepEqual(k.R.window, window);
+  assert.deepEqual(k.R.perMonth, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+  assert.equal('window' in kpis(B, baseB, manifest).R, false);
+});

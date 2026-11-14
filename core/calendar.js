@@ -73,7 +73,11 @@ export function toCalendar(harmonized, base, manifest) {
   });
 }
 
-const pickRatio = (r) => (r ? { value: r.value, ci: r.ci, level: r.level, usable: r.usable, nYears: r.nYears } : null);
+const pickRatio = (r) => (r ? {
+  value: r.value, ci: r.ci, level: r.level, usable: r.usable, nYears: r.nYears,
+  ...(r.window ? { window: r.window } : {}),
+  ...(r.perMonth ? { perMonth: r.perMonth.map((m) => m.value) } : {}),
+} : null);
 
 /**
  * KPI strip model for the months `from`..`to` (inclusive "YYYY-MM", clipped to the series).
@@ -81,7 +85,7 @@ const pickRatio = (r) => (r ? { value: r.value, ci: r.ci, level: r.level, usable
  * none), `latest` is the last month in range already in the archive (month <= manifest
  * last_month) with its value, status and flags, `median`/`yearsUsed` are the baseline of that
  * month (null and `medianReason` "not enough history" when it has none). `R` and `K` carry the
- * point value, CI, fallback level, usability and years used. `era` lists, oldest first, the
+ * point value (pooled), the twelve per-month values when per-month applies, the window, CI, fallback level, usability and years used. `era` lists, oldest first, the
  * sources of the months with a value: 'MODIS x R', 'S-NPP', 'NOAA-20 x K'. `flags` counts the
  * months in range carrying each reason flag.
  *
