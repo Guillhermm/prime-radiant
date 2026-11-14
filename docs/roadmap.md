@@ -4,8 +4,8 @@ Status: accepted by the team on 2026-11-14 (planning ritual). Open decisions in 
 
 ## 0. How to read this
 
-- Two humans, two tracks, one contract. **Guilherme owns data and science** (pipeline, `core/` science, data hosting, live ingestion). **Kaue owns the web app** (shell, inputs, views, the Vercel function). The axis can be swapped wholesale (decision H1); nothing else depends on who is who.
-- Task ID: `M{milestone}-{G|K}{n}`. G = Guilherme, K = Kaue. Every deliverable task has exactly one owner.
+- Two humans, two tracks, one contract. **Kaue owns data and science** (pipeline, `core/` science, data hosting, live ingestion). **Guilherme owns the web app** (shell, inputs, views, the Vercel function). The axis can be swapped wholesale (decision H1); nothing else depends on who is who.
+- Task ID: `M{milestone}-{K|G}{n}`. K = Kaue, G = Guilherme. Every deliverable task has exactly one owner.
 - "Done" for any task: code + tests in the same commit, `node --test` green, docs that describe it true, reviewed by the other human (or the dev master) before merge.
 - Size points used for balancing: S = 1, M = 2, L = 3.
 - Gates are not tasks of one person; they are checkpoints a milestone cannot pass without. Each gate names who triggers it.
@@ -18,7 +18,7 @@ Status: accepted by the team on 2026-11-14 (planning ritual). Open decisions in 
 
 ```
 prime-radiant/
-  core/            pure functions, shared by web, pipeline tests and api      (owner G)
+  core/            pure functions, shared by web, pipeline tests and api      (owner K)
     schema.js        validators: manifest, tile, Series, CalendarCell
     grid.js          lon/lat -> cell id, cell center, tile id, edge rules
     tiles.js         columnar tile reader, coverage lookup
@@ -30,30 +30,30 @@ prime-radiant/
     csv.js           aggregate CSV with metadata header, injection guard
     caveats.js       caveat ids, texts, "preliminary" flags
     index.js         public surface (stubs in M0, real by M1)
-  pipeline/        FIRMS archive CSV -> tiles + manifest                     (owner G)
+  pipeline/        FIRMS archive CSV -> tiles + manifest                     (owner K)
     read.js, bin.js, dedupe.js, write-tiles.js, manifest.js, build.js, publish.js
     live.js          NRT CSV -> data/live tiles                               (M3)
-  api/live.js      Vercel function, keyed FIRMS proxy                          (owner K, M3, cuttable)
-  web/                                                                        (owner K, except sensor-chart.js)
+  api/live.js      Vercel function, keyed FIRMS proxy                          (owner G, M3, cuttable)
+  web/                                                                        (owner G, except sensor-chart.js)
     index.html, styles/tokens.css, styles/app.css
     src/state.js     QueryState <-> URL hash
     src/views.js     VIEWS config (enabled tabs)
     src/data-source.js  manifest + tile loading, cache, fixture swap
     src/components/  app-shell, query-bar, aoi-form, map-picker, date-range, calendar-grid,
                      legend, cell-detail, kpi-strip, data-table, caveat-strip, method-drawer,
-                     states, export-menu, sensor-chart (G), anomaly-layer, flag-list (G), live-view
-  fixtures/        tiny manifest, 3 tiles, 50-row FIRMS CSV per sensor, NRT CSV, live response (owner G)
+                     states, export-menu, sensor-chart (K), anomaly-layer, flag-list (K), live-view
+  fixtures/        tiny manifest, 3 tiles, 50-row FIRMS CSV per sensor, NRT CSV, live response (owner K)
   test/            unit tests sit next to the module (*.test.js); test/integration, test/e2e
-  docs/            method.md (G), ux.md (K), data.md (G), deploy.md (G), README links
-  .github/workflows/ci.yml (K), live.yml (G, M3)
-  vercel.json      headers, CSP (G in M0, K edits from M1)
+  docs/            method.md (K), ux.md (G), data.md (K), deploy.md (K), README links
+  .github/workflows/ci.yml (G), live.yml (K, M3)
+  vercel.json      headers, CSP (K in M0, G edits from M1)
 ```
 
 Ignored from the first commit: `raw/` (archive downloads), `data/` (generated tiles), `.vercel/`, `.env*`, `node_modules/`, `test-results/`.
 
 ## 2. The contract (frozen at sync point S0, end of M0)
 
-Owned by Guilherme in `core/schema.js` + `fixtures/`, reviewed by Kaue. A change after S0 is one commit touching schema, fixtures and the contract test together, reviewed by the other human.
+Owned by Kaue in `core/schema.js` + `fixtures/`, reviewed by Guilherme. A change after S0 is one commit touching schema, fixtures and the contract test together, reviewed by the other human.
 
 | Item | Shape (summary) | Producer | Consumer |
 |---|---|---|---|
@@ -77,14 +77,14 @@ Contract test (`test/integration/contract.test.js`): fixtures validate against s
 | M3 | D live | SF gate V3 (live labeling, comparability, provisional wording); secret scan + `npm audit` equivalent; D3; Q3 |
 
 Gate rules:
-- **SF gates (V1-V3)**: run `second-foundation:validate` on the method note and the known-answer tests. Triggered by Guilherme. Until a number's gate passes, the UI shows it labeled "preliminary" and it does not ship to the public URL as final. If V1 rejects harmonization, M1 ships with the raw-only toggle (MODIS-only and VIIRS-only, no harmonized line) and A uses MODIS-only units 2002-07 onward (mathematician's simpler route), so A+B stay complete.
-- **Designer gates (D0-D3)**: `foundation:designer` reviews wireframes (D0) and the running app at desktop and ~400px phone width (D1-D3). Triggered by Kaue.
-- **QA gates (Q1-Q3)**: `foundation:qa` checks every acceptance criterion of the milestone and the pyramid shape. Triggered by whoever integrates (Kaue for M1, M2; Guilherme for M3).
+- **SF gates (V1-V3)**: run `second-foundation:validate` on the method note and the known-answer tests. Triggered by Kaue. Until a number's gate passes, the UI shows it labeled "preliminary" and it does not ship to the public URL as final. If V1 rejects harmonization, M1 ships with the raw-only toggle (MODIS-only and VIIRS-only, no harmonized line) and A uses MODIS-only units 2002-07 onward (mathematician's simpler route), so A+B stay complete.
+- **Designer gates (D0-D3)**: `foundation:designer` reviews wireframes (D0) and the running app at desktop and ~400px phone width (D1-D3). Triggered by Guilherme.
+- **QA gates (Q1-Q3)**: `foundation:qa` checks every acceptance criterion of the milestone and the pyramid shape. Triggered by whoever integrates (Guilherme for M1, M2; Kaue for M3).
 - **Review**: every diff reviewed by the dev master before QA.
 
 ## 4. M0: bootstrap, contract, spikes
 
-### Guilherme
+### Kaue
 
 **M0-G1 Request FIRMS archive data (day 1, first thing)** · S · depends: none
 - Deliverable: requests submitted in the FIRMS Archive Download Tool (Earthdata login, delivered by email): (a) global, one full year (2023 default), MODIS C6.1 standard + VIIRS S-NPP standard, for the spike; (b) demo region (H3 default) full span, MODIS from 2000-11-01, VIIRS S-NPP 2012-01-20 to 2026-11-02; (c) global full span per sensor (requested now because of email lag; used only if the spike passes). NOAA-20 standard from 2018-04-01 requested for the demo region only, for the later factor question.
@@ -100,7 +100,7 @@ Gate rules:
 
 **M0-G3 Core API stubs** · S · depends: M0-G2
 - Deliverable: `core/index.js` exporting the M1 API with real signatures. `seriesForAoi` already real on fixtures if cheap, else stub; `harmonize`, `baseline`, `toCalendar`, `kpis`, `toCsv` return fixture-shaped values tagged `method.id:"stub"`. JSDoc on every export is the interface doc.
-- Acceptance: every stub output passes `core/schema.js`; Kaue can render every M1 view from `core/index.js` + fixtures without waiting for real science.
+- Acceptance: every stub output passes `core/schema.js`; Guilherme can render every M1 view from `core/index.js` + fixtures without waiting for real science.
 - Tests: unit `core/index.test.js` (shape of each export).
 - Files: `core/index.js`, `core/*.js` (stubs).
 
@@ -116,12 +116,12 @@ Gate rules:
 - Tests: none. Files: `docs/method.md`.
 
 **M0-G6 Vercel project, domain and headers** · S · depends: M0-K1
-- Deliverable: repository under Guilherme's personal GitHub (H6: Vercel Hobby cannot connect an org-owned repo), Kaue as collaborator; Vercel Hobby project serving `web/` with a placeholder page; `vercel.json` with CSP (`default-src 'self'`, `connect-src` including the tile host and map tile host once chosen), HSTS, `X-Content-Type-Options`, `Referrer-Policy`, `frame-ancestors 'none'`; domain bought only after M1 deploys on `*.vercel.app` (H7).
+- Deliverable: repository under Kaue's personal GitHub (H6: Vercel Hobby cannot connect an org-owned repo), Guilherme as collaborator; Vercel Hobby project serving `web/` with a placeholder page; `vercel.json` with CSP (`default-src 'self'`, `connect-src` including the tile host and map tile host once chosen), HSTS, `X-Content-Type-Options`, `Referrer-Policy`, `frame-ancestors 'none'`; domain bought only after M1 deploys on `*.vercel.app` (H7).
 - Acceptance: placeholder reachable on the preview URL; headers verified with `curl -I` and recorded in `docs/deploy.md`.
 - Tests: `test/integration/headers.test.js` asserts `vercel.json` contains each required header.
 - Files: `vercel.json`, `docs/deploy.md`.
 
-### Kaue
+### Guilherme
 
 **M0-K1 Repository bootstrap and CI** · S · depends: none
 - Deliverable: `package.json` (`"type":"module"`, `test` = `node --test`, no dependencies), `.gitignore` (see section 1), repo `CLAUDE.md` pointing to the team contract and naming the layout, `README.md` skeleton (what it is, how to run, data citation placeholder), `.github/workflows/ci.yml` running `node --test` on push and PR, a trivial passing test.
@@ -154,7 +154,7 @@ Gate rules:
 
 ### M0 parallel tracks
 
-| Guilherme | Kaue |
+| Kaue | Guilherme |
 |---|---|
 | M0-G1 archive request (day 1, first) | M0-K1 bootstrap + CI (day 1, first) |
 | M0-G5 method note + science questions | M0-K5 UX spec, D0 |
@@ -163,13 +163,13 @@ Gate rules:
 | M0-G3 core stubs | M0-K3 tile hosting spike (finalized with G4 numbers) |
 | M0-G4 size spike (when data arrives) | (free: start M1-K1 shell) |
 
-Load: G 1+2+1+2+1+1 = 8, K 1+2+1+1+1 = 6, plus K starts M1 early.
+Load: K 1+2+1+2+1+1 = 8, G 1+2+1+1+1 = 6, plus G starts M1 early.
 
 Sync point **S0 (contract freeze)**: both review schema, fixtures, stubs, QueryState together; spike decisions H3, H5, H8 recorded. If M0-G4 is still waiting on email delivery, S0 freezes the contract anyway; the spike result only changes extent and hosting, not shapes.
 
 ## 5. M1: A + B on real data, deployed
 
-### Guilherme (data, science, B view)
+### Kaue (data, science, B view)
 
 **M1-G1 Pipeline reader and filter** · M · depends: S0, M0-G4
 - Deliverable: `pipeline/read.js` streams `.csv` and `.csv.gz` with `node:readline` + `zlib`, header-driven columns (MODIS and VIIRS headers differ), row validation (lat/lon range, date, time HHMM, satellite, type), keeps `type=0` only, emits `{sensor, satellite, lat, lon, utcDay}`; counts of rejected rows by reason.
@@ -191,7 +191,7 @@ Sync point **S0 (contract freeze)**: both review schema, fixtures, stubs, QueryS
 
 **M1-G4 Full build, publish, data sanity** · M · depends: M1-G3, M0-G1 (b or c) delivered, H5
 - Deliverable: full run on the chosen extent; `pipeline/publish.js` uploads to the host chosen in H5 (credentials from env only, never logged); sanity report in `docs/data.md`: per-year detections in vs fire-cell-days out per sensor, rejected-row counts, sizes, a hand-checked cell compared against FIRMS map for one day.
-- Acceptance: real manifest + sample tiles pass the contract test; Kaue's app loads real tiles from `base_url`; numbers in the report reproducible from the command recorded.
+- Acceptance: real manifest + sample tiles pass the contract test; Guilherme's app loads real tiles from `base_url`; numbers in the report reproducible from the command recorded.
 - Tests: contract test extended to a real-tile sample (path from env, skipped with a message when absent so CI stays offline).
 - Files: `pipeline/publish.js`, `docs/data.md`, `test/integration/contract.test.js`.
 
@@ -227,7 +227,7 @@ Sync point **S0 (contract freeze)**: both review schema, fixtures, stubs, QueryS
 - Files: `core/csv.js`, `core/caveats.js`.
 
 **M1-G10 Sensors view (B)** · L · depends: M1-G6, M1-K1, M1-K10 (DataTable)
-- Deliverable: `web/src/components/sensor-chart.js`: hand-built SVG, three series (MODIS #0072B2, VIIRS #E69F00, harmonized black thick), dash patterns + direct labels, era line at 2012-01-20 and at 2026-11-02, toggles per series, keyboard focus on points with readable value, R + level + CI shown with plain method note, sparse-overlap warning chip, `DataTable` alternative, export buttons wired to `core/csv` through Kaue's export menu.
+- Deliverable: `web/src/components/sensor-chart.js`: hand-built SVG, three series (MODIS #0072B2, VIIRS #E69F00, harmonized black thick), dash patterns + direct labels, era line at 2012-01-20 and at 2026-11-02, toggles per series, keyboard focus on points with readable value, R + level + CI shown with plain method note, sparse-overlap warning chip, `DataTable` alternative, export buttons wired to `core/csv` through Guilherme's export menu.
 - Acceptance: each series toggles independently; screen reader reads month, sensor, value; low-confidence chip appears when fallback was used; renders at 400px without horizontal page scroll.
 - Tests: unit on the scale/path builder (`sensor-chart.test.js`, pure functions); integration view-model on fixtures.
 - Files: `web/src/components/sensor-chart.js`.
@@ -237,7 +237,7 @@ Sync point **S0 (contract freeze)**: both review schema, fixtures, stubs, QueryS
 - Acceptance: written verdict per item (unit, binning, R, fallback, CI, median, caveat wording); anything not passed stays labeled or is cut per the gate rule.
 - Files: `docs/method.md`, `core/caveats.js`.
 
-### Kaue (web app, deploy)
+### Guilherme (web app, deploy)
 
 **M1-K1 App shell, tabs, layout, themes** · M · depends: M0-K2, M0-K5
 - Deliverable: `web/index.html`, `app-shell.js` (top bar: name, tabs from VIEWS, Method, Export), Query bar slot, caveat strip slot, main view slot; desktop and phone layouts (view select on phone); light + dark from tokens; `rem` everywhere; reduced motion respected. DOM built with `textContent`, no `innerHTML`.
@@ -314,11 +314,11 @@ Sync point **S0 (contract freeze)**: both review schema, fixtures, stubs, QueryS
 
 ### M1 load balance
 
-G: 2+2+2+2+2+3+1+1+1+3+1 = 20. K: 2+2+2+1+2+3+2+1+2+1+2+2 = 22. Balanced within one M.
+K: 2+2+2+2+2+3+1+1+1+3+1 = 20. G: 2+2+2+1+2+3+2+1+2+1+2+2 = 22. Balanced within one M.
 
 ### M1 parallel tracks
 
-| Guilherme | Kaue |
+| Kaue | Guilherme |
 |---|---|
 | M1-G1 reader (if spike data arrived) or M1-G5 aggregation (if not) | M1-K1 shell (on stubs) |
 | M1-G2 binning + dedupe | M1-K6 calendar grid (on stubs) |
@@ -332,13 +332,13 @@ G: 2+2+2+2+2+3+1+1+1+3+1 = 20. K: 2+2+2+1+2+3+2+1+2+1+2+2 = 22. Balanced within 
 | M1-G11 gate V1 | M1-K12 deploy, security, demo |
 
 Sync points:
-- **S1 real data**: M1-G4 publishes; Kaue points `data-source` at `base_url`; both run the app on the demo AOIs. Contract test on real tiles green.
-- **S2 real science**: stubs in `core/index.js` replaced by M1-G5..G9; Kaue's views unchanged by construction (same shapes). Any visual surprise (bins vs real ranges) fixed by the owner of the view.
-- **S3 M1 release**: V1 verdict in, D1 designer review on the running preview at 400px and desktop, Q1 QA sign-off, then M1-K12 deploys. Integration owner: Kaue.
+- **S1 real data**: M1-G4 publishes; Guilherme points `data-source` at `base_url`; both run the app on the demo AOIs. Contract test on real tiles green.
+- **S2 real science**: stubs in `core/index.js` replaced by M1-G5..G9; Guilherme's views unchanged by construction (same shapes). Any visual surprise (bins vs real ranges) fixed by the owner of the view.
+- **S3 M1 release**: V1 verdict in, D1 designer review on the running preview at 400px and desktop, Q1 QA sign-off, then M1-K12 deploys. Integration owner: Guilherme.
 
 ## 6. M2: C anomalies
 
-### Guilherme
+### Kaue
 
 **M2-G1 Anomaly core** · M · depends: M1-G7, V1
 - Deliverable: `core/anomaly.js`: percentile rank of a month against its baseline with ties split evenly, year rank by total, flag when rank >= 90th percentile (threshold from V2, default 0.9) and n >= 9 baseline years; Series `id:"anomaly"`; KPI additions: count, rank of year, current-month anomaly.
@@ -357,7 +357,7 @@ Sync points:
 - Acceptance: written verdict; unvalidated items stay "preliminary".
 - Files: `docs/method.md`, `core/caveats.js`.
 
-### Kaue
+### Guilherme
 
 **M2-K1 Anomaly layer in the grid** · M · depends: M2-G1 (stub first), M1-K6
 - Deliverable: `anomaly-layer.js`: layer toggle "Counts | vs median" (QueryState `layer`), PuOr 11 diverging centered on median, flag marker independent of color, legend for the diverging ramp, cell labels include percentile rank.
@@ -371,9 +371,9 @@ Sync points:
 - Tests: `test/e2e/anomalies.test.js`.
 - Files: `web/src/views.js`, `test/e2e/`, `docs/demo.md`, `README.md`.
 
-Load: G 2+2+1 = 5, K 2+1 = 3. Kaue absorbs M1 polish from D1/Q1 findings here; if none, Kaue starts M3-K1.
+Load: K 2+2+1 = 5, G 2+1 = 3. Guilherme absorbs M1 polish from D1/Q1 findings here; if none, Guilherme starts M3-K1.
 
-| Guilherme | Kaue |
+| Kaue | Guilherme |
 |---|---|
 | M2-G1 anomaly core | M2-K1 anomaly layer (on stub) |
 | M2-G2 flag list | M1 polish backlog / M3-K1 early |
@@ -383,7 +383,7 @@ Sync **S4**: anomaly stub replaced by real core; V2, D2, Q2; deploy.
 
 ## 7. M3: D live
 
-### Guilherme
+### Kaue
 
 **M3-G1 NRT gridding** · M · depends: M1-G3
 - Deliverable: `pipeline/live.js`: reads FIRMS global NRT CSVs (keyless, NOAA-20 VIIRS 7-day and MODIS 7-day default), same grid and cell rules, no type filter possible (NRT has no `type`), daily tiles in `data/live/` with `day[]`, live manifest with fetch time and source files.
@@ -403,7 +403,7 @@ Sync **S4**: anomaly stub replaced by real core; V2, D2, Q2; deploy.
 - Tests: unit on band computation.
 - Files: `core/live.js`, `core/caveats.js`, `docs/method.md`.
 
-### Kaue
+### Guilherme
 
 **M3-K1 Live view** · M · depends: M3-G3 (stub first), M1-K5
 - Deliverable: `live-view.js`: current season line vs historical band, current month overlay in the calendar with a "provisional" badge, `fetched_at` shown, "Live unavailable" state when live data is missing or stale (default: older than 48 hours).
@@ -412,7 +412,7 @@ Sync **S4**: anomaly stub replaced by real core; V2, D2, Q2; deploy.
 - Files: `web/src/components/live-view.js`, `data-source.js`.
 
 **M3-K2 Keyed proxy api/live (cuttable)** · M · depends: M3-K1, H10
-- Deliverable: `api/live.js` Vercel function: `MAP_KEY` from env (set in the Vercel dashboard by the account owner, Guilherme), bbox validated and snapped to 0.5 deg, days 1-2, whitelisted sources, `Cache-Control: s-maxage=900, stale-while-revalidate`, `fetch` injected for tests, errors never echo the upstream URL (it contains the key); WAF rate-limit rule if Hobby allows it (unverified).
+- Deliverable: `api/live.js` Vercel function: `MAP_KEY` from env (set in the Vercel dashboard by the account owner, Kaue), bbox validated and snapped to 0.5 deg, days 1-2, whitelisted sources, `Cache-Control: s-maxage=900, stale-while-revalidate`, `fetch` injected for tests, errors never echo the upstream URL (it contains the key); WAF rate-limit rule if Hobby allows it (unverified).
 - Acceptance: key never in response, logs or client bundle (grep of built site and a response capture); invalid bbox 400.
 - Tests: unit with stubbed fetch, including an upstream error containing the key.
 - Files: `api/live.js`, `vercel.json`.
@@ -422,24 +422,24 @@ Sync **S4**: anomaly stub replaced by real core; V2, D2, Q2; deploy.
 - Tests: `test/e2e/live.test.js`.
 - Files: `web/src/views.js`, `test/e2e/`, `README.md`, `docs/demo.md`.
 
-Load: G 2+2+1 = 5, K 2+2+1 = 5.
+Load: K 2+2+1 = 5, G 2+2+1 = 5.
 
-| Guilherme | Kaue |
+| Kaue | Guilherme |
 |---|---|
 | M3-G1 NRT gridding | M3-K1 live view (on fixtures) |
 | M3-G2 daily Action | M3-K2 keyed proxy (if not cut) |
 | M3-G3 comparison model, V3 | M3-K3 release |
 
-Sync **S5**: first real Action run feeds the preview; V3, D3, Q3; integration owner Guilherme (he owns the Action and Vercel account).
+Sync **S5**: first real Action run feeds the preview; V3, D3, Q3; integration owner Kaue (owner of the Action and the Vercel account).
 
 ## 8. Whole-project load
 
 | | M0 | M1 | M2 | M3 | Total |
 |---|---|---|---|---|---|
-| Guilherme | 8 | 20 | 5 | 5 | 38 |
-| Kaue | 6 | 22 | 3 | 5 | 36 |
+| Kaue | 8 | 20 | 5 | 5 | 38 |
+| Guilherme | 6 | 22 | 3 | 5 | 36 |
 
-Kaue's slack in M0 and M2 is the buffer for D1/Q1 findings, which land mostly on the web side.
+Guilherme's slack in M0 and M2 is the buffer for D1/Q1 findings, which land mostly on the web side.
 
 ## 9. Critical path
 
@@ -483,12 +483,12 @@ Never cut: AOI by form and map, calendar with accessible ramp and no-data distin
 
 | ID | Decision | Default |
 |---|---|---|
-| H1 | Who owns which track | Guilherme data/science, Kaue web; swap is free |
+| H1 | Who owns which track | Kaue data/science, Guilherme web; swap is free |
 | H2 | Granularity | Monthly; current partial month labeled partial |
 | H3 | Grid extent and demo region | Global if the spike fits H5 limits, else South America (Brazil: Pantanal 2020 and 2024, Amazon arc) first |
 | H4 | Max AOI size | 0.1 deg for AOI up to 20,000 cells, coarse 1 deg above, hard cap at continent scale (exact number after spike) |
 | H5 | Where tiles live | Cloudflare R2 public bucket if tiles exceed Vercel limits or if the live cron must publish without a redeploy; else deployed with the site via `vercel deploy` (tiles stay out of git) |
-| H6 | Repository owner | Guilherme's personal GitHub (Vercel Hobby cannot connect org repos), Kaue collaborator |
+| H6 | Repository owner | Kaue's personal GitHub (Vercel Hobby cannot connect org repos), Guilherme collaborator |
 | H7 | Domain | Bought after M1 is live on `*.vercel.app`; name to choose |
 | H8 | Map base | Vendored Leaflet + OSM if policy and advisory checks pass, else SVG Natural Earth outline |
 | H9 | e2e tool | Playwright as a dev-only dependency after audit; fallback: integration tests only |
@@ -501,5 +501,5 @@ Never cut: AOI by form and map, calendar with accessible ramp and no-data distin
 
 - The first plan had the live cron writing `data/live` tiles and redeploying. Tiles are generated files and cannot be committed, so a git-triggered redeploy cannot see them. H5 resolves this: R2 (Action uploads, no redeploy) or a CLI deploy from the Action that rebuilds history tiles too, which needs the raw archive in CI. R2 is the simpler of the two for D.
 - "Parent region" for the fallback was undefined during planning. Default in M0-G5: enclosing 10 x 10 deg tile, then a continent box; the Second Foundation decides.
-- Vercel Hobby is single-user: account-dashboard actions (env vars, domain) sit with the account owner (Guilherme under H6), which is why M0-G6 and the M3 `MAP_KEY` setup are his.
+- Vercel Hobby is single-user: account-dashboard actions (env vars, domain) sit with the account owner (Kaue under H6), which is why M0-G6 and the M3 `MAP_KEY` setup are his.
 - Each human drives their own Foundation sessions on their track; the dev master reviews both, and the senior-dev seats are briefed per slice from this document.
