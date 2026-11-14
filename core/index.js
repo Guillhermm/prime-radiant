@@ -13,40 +13,20 @@
  *   status: 'observed'|'harmonized'|'no-data'|'partial', estimated: boolean,
  *   median?: number|null, rank?: number|null}} CalendarCell
  * @typedef {'aoi'|'tiles'|'ring'|'global'} FallbackLevel method.md 4.3
- * @typedef {{series: Series, R: number|null, ci: [number, number]|null, level: FallbackLevel,
- *   yearsUsed: number[], perMonth: boolean, method: Method}} Harmonized
+ * @typedef {{value: number|null, perMonth?: object[], ci: [number, number]|null, level: FallbackLevel,
+ *   nYears: number, failedDraws: number, usable: boolean}} Ratio R or K, see harmonize.js
+ * @typedef {{series: Series, R: Ratio, K: Ratio|null, reasons: string[]}} Harmonized
  * @typedef {{series: Series, yearsUsed: number[][], reasons: (string|null)[], method: Method}} Baseline
  */
 import { addMonths } from './months.js';
-export { seriesForAoi, cellCount, MAX_FINE_CELLS } from './aggregate.js';
+export { seriesForAoi, cellCount, MAX_FINE_CELLS, fallbackLevels, seriesForLevels } from './aggregate.js';
+export { annualTotals } from './series.js';
 export { decodeTile, coverageLookup, tilesForBbox } from './tiles.js';
 export { baseline } from './baseline.js';
+export { harmonize } from './harmonize.js';
 
 const STUB = { id: 'stub', version: 0 };
 const UNIT = 'fire-cell-days';
-
-/**
- * Harmonize MODIS and VIIRS into one series (method.md section 4).
- * Real (M1-K6): R = sum(VIIRS)/sum(MODIS) over full overlap months; harmonized = VIIRS where
- * VIIRS operates, MODIS x R elsewhere (flagged "estimated"); fallback level when R is not
- * usable; CI by resampling whole years with `seed`.
- * Stub: R = 1, level "aoi", CI null, yearsUsed [].
- * @param {{modis: Series, viirs: Series}} sensors raw series, same start and length
- * @param {{seed?: number, perMonth?: boolean}} [opts] seed for the CI resampling; perMonth asks for per-calendar-month R
- * @returns {Harmonized}
- */
-export function harmonize(sensors, { perMonth = false } = {}) {
-  const { modis, viirs } = sensors;
-  const flags = [];
-  const values = modis.values.map((m, i) => {
-    const v = viirs.values[i];
-    if (v !== null) return v;
-    if (m !== null) flags.push({ month: addMonths(modis.start, i), flag: 'estimated' });
-    return m;
-  });
-  const series = { id: 'harmonized', unit: UNIT, start: modis.start, values, flags, method: STUB, comparable: true };
-  return { series, R: 1, ci: null, level: 'aoi', yearsUsed: [], perMonth, method: STUB };
-}
 
 /**
  * Calendar view-model: one CalendarCell per month of the series.
@@ -87,7 +67,7 @@ export function kpis(cells, harmonized, base) {
     current,
     median: last >= 0 ? base.series.values[last] : null,
     yearsUsed: last >= 0 ? base.yearsUsed[last] : [],
-    R: harmonized.R, ci: harmonized.ci, level: harmonized.level, era: 'S-NPP', method: STUB,
+    R: harmonized.R?.value ?? null, ci: harmonized.R?.ci ?? null, level: harmonized.R?.level, era: 'S-NPP', method: STUB,
   };
 }
 
