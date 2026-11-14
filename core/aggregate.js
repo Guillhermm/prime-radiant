@@ -1,7 +1,7 @@
 import { cellCenter } from './grid.js';
 import { monthIndex } from './months.js';
 import { createDomain } from './domain.js';
-import { decodeTile, coverageLookup, checkBbox } from './tiles.js';
+import { coverageLookup, checkBbox } from './tiles.js';
 
 /** Above this many fine (0.1 deg) cells in the AOI, seriesForAoi switches to the coarse level. */
 export const MAX_FINE_CELLS = 20000;
@@ -30,7 +30,7 @@ export function cellCount(bbox, res = 0.1) {
 
 /**
  * Sum the fire-cell-days of every cell whose center lies inside a bounding box (edges
- * inclusive) and return one raw Series per sensor, aligned to the manifest span.
+ * inclusive) and return one raw Series per sensor (modis, viirs, noaa20), aligned to the manifest span.
  * Months outside a sensor's coverage are null (not operating); months inside it with no
  * rows are 0 (none detected). A bbox with west > east crosses the antimeridian.
  * Throws RangeError on a bad bbox (see checkBbox).
@@ -51,7 +51,7 @@ export function cellCount(bbox, res = 0.1) {
  * @param {Record<string, object> | {fine?: Record<string, object>, coarse?: Record<string, object>}} tiles tile objects keyed by tile id
  * @param {object} manifest validated manifest
  * @param {{res?: number, domain?: {rows: object}}} [opts] force a tile resolution, 0.1 or 1; a decoded domain.json to apply
- * @returns {{modis: import('./index.js').Series, viirs: import('./index.js').Series, res: number, domain: {cells: number, inside: number, partial: boolean}}} raw series (method {id:"raw", version:1}, comparable false), the resolution used and the domain count
+ * @returns {{modis: import('./index.js').Series, viirs: import('./index.js').Series, noaa20: import('./index.js').Series, res: number, domain: {cells: number, inside: number, partial: boolean}}} raw series (method {id:"raw", version:1}, comparable false), the resolution used and the domain count
  */
 export function seriesForAoi(bbox, tiles, manifest, { res, domain } = {}) {
   checkBbox(bbox);
@@ -65,7 +65,6 @@ export function seriesForAoi(bbox, tiles, manifest, { res, domain } = {}) {
   const m0 = monthIndex(manifest.month0);
   const span = monthIndex(manifest.last_month) - m0 + 1;
   const covered = coverageLookup(manifest);
-  const decoded = Object.entries(set).map(([id, t]) => [id, decodeTile(t, use)]);
   const cells = cellCount(bbox, use);
   let inside = cells;
   if (domain) {
@@ -75,25 +74,93 @@ export function seriesForAoi(bbox, tiles, manifest, { res, domain } = {}) {
     inside = xs.reduce((a, [x0, x1]) => a + lookup.count(x0, x1, ys[0], ys[1], use), 0);
   }
   const flag = inside === 0 ? 'outside-domain' : inside < cells ? 'partial-domain' : null;
-  const out = {};
-  for (const sensor of ['modis', 'viirs']) {
-    const values = Array.from({ length: span }, (_, i) => (inside > 0 && covered(sensor, i) ? 0 : null));
-    for (const [id, d] of inside > 0 ? decoded : []) {
-      for (const [month, rows] of d.byMonth) {
-        if (month >= span) continue;
-        for (const row of rows) {
-          const v = row[sensor];
-          if (v === null) continue;
-          const { lon, lat } = cellCenter(id, row.cell, use);
-          const inLon = w <= e ? lon >= w && lon <= e : lon >= w || lon <= e;
-          if (inLon && lat >= s && lat <= n) values[month] += v;
-        }
+  const SENSORS = ['modis', 'viirs', 'noaa20'];
+  const values = Object.fromEntries(SENSORS.map((sensor) =>
+    [sensor, Array.from({ length: span }, (_, i) => (inside > 0 && covered(sensor, i) ? 0 : null))]));
+  const inLon = (lon) => (w <= e ? lon >= w && lon <= e : lon >= w || lon <= e);
+  const per = use === 1 ? 10 : 100;
+  for (const [id, t] of inside > 0 ? Object.entries(set) : []) {
+    // Skip tiles wholly outside the bbox, then test each cell center once (not once per row).
+    const sw = cellCenter(id, 0, use);
+    const ne = cellCenter(id, per * per - 1, use);
+    if (ne.lat < s || sw.lat > n || (w <= e ? ne.lon < w || sw.lon > e : ne.lon < w && sw.lon > e)) continue;
+    const inc = new Uint8Array(per * per);
+    for (let c = 0; c < per * per; c++) {
+      const { lon, lat } = cellCenter(id, c, use);
+      inc[c] = inLon(lon) && lat >= s && lat <= n ? 1 : 0;
+    }
+    for (let i = 0; i < t.cell.length; i++) {
+      const month = t.month[i];
+      if (!inc[t.cell[i]] || month >= span) continue;
+      for (const sensor of SENSORS) {
+        const v = t[sensor][i];
+        if (v !== null) values[sensor][month] += v;
       }
     }
+  }
+  const out = {};
+  for (const sensor of SENSORS) {
     out[sensor] = {
-      id: sensor, unit: 'fire-cell-days', start: manifest.month0, values,
+      id: sensor, unit: 'fire-cell-days', start: manifest.month0, values: values[sensor],
       method: { id: 'raw', version: 1 }, comparable: false, ...(flag ? { flags: [{ month: null, flag }] } : {}),
     };
   }
   return { ...out, res: use, domain: { cells, inside, partial: inside > 0 && inside < cells } };
+}
+
+const wrapLon = (x) => ((((x + 180) % 360) + 360) % 360) - 180;
+const WORLD = [-180, -90, 180, 90];
+
+// Whole 10 deg tiles [a, b] (columns on the unwrapped axis) that cover the AOI, plus rows [r0, r1].
+function tileSpan(bbox) {
+  const [w, s, e, n] = bbox;
+  const eu = w <= e ? e : e + 360;
+  const a = Math.floor((w + 180) / 10);
+  const b = Math.max(a, Math.ceil((eu + 180) / 10) - 1);
+  const r0 = Math.min(17, Math.max(0, Math.floor((s + 90) / 10)));
+  const r1 = Math.min(17, Math.max(r0, Math.ceil((n + 90) / 10) - 1));
+  return { a, b, r0, r1 };
+}
+
+function spanBbox({ a, b, r0, r1 }, grow) {
+  if ((b - a + 1 + 2 * grow) * 10 >= 360) return [-180, Math.max(0, r0 - grow) * 10 - 90, 180, Math.min(18, r1 + 1 + grow) * 10 - 90];
+  const east = wrapLon((b + 1 + grow) * 10 - 180);
+  return [wrapLon((a - grow) * 10 - 180), Math.max(0, r0 - grow) * 10 - 90, east === -180 ? 180 : east, Math.min(18, r1 + 1 + grow) * 10 - 90];
+}
+
+/**
+ * Fallback levels for a sparse AOI (docs/method.md 4.3), narrowest first: the AOI itself, the
+ * union of the 10 deg tiles it touches, that union plus the surrounding ring of tiles, and
+ * the whole world. Latitudes are clamped to [-90, 90]; a box that reaches around the globe
+ * becomes [-180, ., 180, .]; a box across the antimeridian keeps west > east. `manifest` is
+ * accepted for a future domain bbox and is not read yet.
+ * @param {[number, number, number, number]} bbox [west, south, east, north] degrees
+ * @param {object} [manifest] validated manifest
+ * @returns {{level: import('./index.js').FallbackLevel, bbox: [number, number, number, number]}[]}
+ */
+export function fallbackLevels(bbox, manifest) { // eslint-disable-line no-unused-vars
+  checkBbox(bbox);
+  const span = tileSpan(bbox);
+  return [
+    { level: 'aoi', bbox: [...bbox] },
+    { level: 'tiles', bbox: spanBbox(span, 0) },
+    { level: 'ring', bbox: spanBbox(span, 1) },
+    { level: 'global', bbox: [...WORLD] },
+  ];
+}
+
+/**
+ * Raw series for every fallback level, ready for harmonize. `tiles` must already hold the
+ * tiles of the widest level wanted (the caller loads them); each level reuses seriesForAoi.
+ * @param {[number, number, number, number]} bbox the AOI
+ * @param {Record<string, object> | {fine?: object, coarse?: object}} tiles as for seriesForAoi
+ * @param {object} manifest validated manifest
+ * @param {{res?: number, domain?: {rows: object}}} [opts] passed to seriesForAoi
+ * @returns {{level: import('./index.js').FallbackLevel, modis: import('./index.js').Series, viirs: import('./index.js').Series, noaa20: import('./index.js').Series}[]}
+ */
+export function seriesForLevels(bbox, tiles, manifest, opts) {
+  return fallbackLevels(bbox, manifest).map(({ level, bbox: b }) => {
+    const { modis, viirs, noaa20 } = seriesForAoi(b, tiles, manifest, opts);
+    return { level, modis, viirs, noaa20 };
+  });
 }

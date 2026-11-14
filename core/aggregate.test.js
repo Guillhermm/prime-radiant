@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { seriesForAoi, cellCount, MAX_FINE_CELLS } from './aggregate.js';
+import { seriesForAoi, cellCount, MAX_FINE_CELLS, fallbackLevels, seriesForLevels } from './aggregate.js';
 import { validateSeries } from './schema.js';
 
 const fx = (p) => JSON.parse(readFileSync(new URL(`../fixtures/${p}`, import.meta.url), 'utf8'));
@@ -101,4 +101,55 @@ test('domain: antimeridian AOI and coarse level count domain cells', () => {
 
 test('no domain given: inside equals cells', () => {
   assert.deepEqual(seriesForAoi(tile, fine, manifest).domain, { cells: 10000, inside: 10000, partial: false });
+});
+
+test('seriesForAoi returns noaa20: null outside coverage, values inside, null when coverage is null', () => {
+  const r = seriesForAoi(tile, fine, manifest);
+  assert.deepEqual(r.noaa20.values.slice(0, 4), [null, null, null, null]);
+  assert.equal(sum(r.noaa20.values), 14);
+  const none = seriesForAoi(tile, {}, { ...manifest, coverage: { ...manifest.coverage, noaa20: null } });
+  assert.ok(none.noaa20.values.every((v) => v === null));
+  const out = seriesForAoi([-10, 40, 0, 50], fine, manifest, { domain: { rows: {} } });
+  assert.ok(out.noaa20.values.every((v) => v === null));
+});
+
+test('fallbackLevels: aoi, tiles, ring, global', () => {
+  const l = fallbackLevels([-7.5, 42, -3, 47], manifest);
+  assert.deepEqual(l.map((x) => x.level), ['aoi', 'tiles', 'ring', 'global']);
+  assert.deepEqual(l[0].bbox, [-7.5, 42, -3, 47]);
+  assert.deepEqual(l[1].bbox, [-10, 40, 0, 50]);
+  assert.deepEqual(l[2].bbox, [-20, 30, 10, 60]);
+  assert.deepEqual(l[3].bbox, world);
+});
+
+test('fallbackLevels: tile-aligned AOI stays one tile; poles clamp', () => {
+  assert.deepEqual(fallbackLevels(tile, manifest)[1].bbox, tile);
+  const p = fallbackLevels([0, 85, 5, 90], manifest);
+  assert.deepEqual(p[1].bbox, [0, 80, 10, 90]);
+  assert.deepEqual(p[2].bbox, [-10, 70, 20, 90]);
+  const s = fallbackLevels([0, -90, 5, -85], manifest);
+  assert.deepEqual(s[2].bbox, [-10, -90, 20, -70]);
+});
+
+test('fallbackLevels: antimeridian and world edges wrap', () => {
+  const a = fallbackLevels([175, 0, -175, 5], manifest);
+  assert.deepEqual(a[1].bbox, [170, 0, -170, 10]);
+  assert.deepEqual(a[2].bbox, [160, -10, -160, 20]);
+  const same = fallbackLevels([5, 0, 3, 5], manifest); // crosses, wraps the globe
+  assert.deepEqual(same[1].bbox, [-180, 0, 180, 10]);
+  const edge = fallbackLevels([-180, 0, -175, 5], manifest);
+  assert.deepEqual(edge[2].bbox, [170, -10, -160, 20]);
+  const east = fallbackLevels([175, 0, 180, 5], manifest);
+  assert.deepEqual(east[1].bbox, [170, 0, 180, 10]);
+  assert.deepEqual(east[2].bbox, [160, -10, -170, 20]);
+  assert.throws(() => fallbackLevels([0, 10, 5, 0], manifest), RangeError);
+});
+
+test('seriesForLevels: one entry per level, widening sums are monotone', () => {
+  const r = seriesForLevels([-7.5, 42, -3, 47], fine, manifest, { res: 0.1 });
+  assert.deepEqual(r.map((x) => x.level), ['aoi', 'tiles', 'ring', 'global']);
+  for (const x of r) assert.deepEqual(Object.keys(x).sort(), ['level', 'modis', 'noaa20', 'viirs']);
+  assert.equal(sum(r[1].modis.values), 35);
+  assert.equal(sum(r[3].modis.values), 38);
+  assert.ok(sum(r[0].modis.values) <= sum(r[1].modis.values));
 });
