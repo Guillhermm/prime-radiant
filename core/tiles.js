@@ -2,16 +2,16 @@ import { TILE_DEG, TILES_X, TILES_Y, tileId } from './grid.js';
 import { monthIndex } from './months.js';
 
 /**
- * @typedef {{cell: number, modis: number|null, viirs: number|null}} TileRow
+ * @typedef {{cell: number, modis: number|null, viirs: number|null, noaa20: number|null}} TileRow
  * @typedef {{res: number, byCell: Map<number, Map<number, TileRow>>, byMonth: Map<number, TileRow[]>}} DecodedTile
  */
 
 /**
- * Decode a columnar tile ({cell, month, modis, viirs} parallel arrays) into lookups.
+ * Decode a columnar tile ({cell, month, modis, viirs, noaa20} parallel arrays) into lookups.
  * `byCell.get(cell).get(month)` and `byMonth.get(month)` give the same row objects.
  * A (cell, month) pair absent from the tile has no row: the caller decides 0 vs null
  * from coverage (see `covered`).
- * @param {{cell: number[], month: number[], modis: (number|null)[], viirs: (number|null)[]}} tile
+ * @param {{cell: number[], month: number[], modis: (number|null)[], viirs: (number|null)[], noaa20: (number|null)[]}} tile
  * @param {number} [res] tile resolution, 0.1 or 1
  * @returns {DecodedTile}
  */
@@ -20,7 +20,7 @@ export function decodeTile(tile, res = 0.1) {
   const byMonth = new Map();
   tile.cell.forEach((cell, i) => {
     const month = tile.month[i];
-    const row = { cell, modis: tile.modis[i], viirs: tile.viirs[i] };
+    const row = { cell, modis: tile.modis[i], viirs: tile.viirs[i], noaa20: tile.noaa20[i] };
     if (!byCell.has(cell)) byCell.set(cell, new Map());
     byCell.get(cell).set(month, row);
     if (!byMonth.has(month)) byMonth.set(month, []);
@@ -33,12 +33,12 @@ export function decodeTile(tile, res = 0.1) {
  * Coverage lookup for a manifest: `covered(sensor, monthIdx)` is true when the sensor
  * operated in that month (index counted from manifest.month0), false means null, not 0.
  * @param {object} manifest validated manifest
- * @returns {(sensor: 'modis'|'viirs', monthIdx: number) => boolean}
+ * @returns {(sensor: 'modis'|'viirs'|'noaa20', monthIdx: number) => boolean}
  */
 export function coverageLookup(manifest) {
   const m0 = monthIndex(manifest.month0);
   const range = {};
-  for (const s of ['modis', 'viirs']) range[s] = manifest.coverage[s].map((c) => monthIndex(c) - m0);
+  for (const s of ['modis', 'viirs', 'noaa20']) range[s] = manifest.coverage[s].map((c) => monthIndex(c) - m0);
   return (sensor, i) => i >= range[sensor][0] && i <= range[sensor][1];
 }
 

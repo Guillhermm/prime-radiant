@@ -57,8 +57,8 @@ Owned by Kaue in `core/schema.js` + `fixtures/`, reviewed by Guilherme. A change
 
 | Item | Shape (summary) | Producer | Consumer |
 |---|---|---|---|
-| Manifest `data/manifest.json` | `{schema:1, dataVersion, generated_at, base_url, grid:{res:0.1, tile_deg:10, coarse_res:1}, month0:"2000-01", last_month, granularity:"month", coverage:{modis:[from,to], viirs:[from,to]}, satellites:{era...}, tiles:[ids], citation, caveats:[ids]}` | pipeline | data-source, core |
-| Tile `data/tiles/{res}/x{tx}y{ty}.json` | columnar `{cell[], month[], modis[], viirs[]}`; `cell = row*100+col` from integer lon*10/lat*10 within the tile; month = index from `month0`; sparse: absent = 0 inside coverage, outside coverage = null | pipeline | core/tiles |
+| Manifest `data/manifest.json` | `{schema:1, dataVersion, generated_at, base_url, grid:{res:0.1, tile_deg:10, coarse_res:1}, month0:"2000-01", last_month, granularity:"month", coverage:{modis:[from,to], viirs:[from,to], noaa20:[from,to]}, partial_months:{modis:[YYYY-MM], viirs:[], noaa20:[]}, satellites:{era...}, tiles:[ids], citation, caveats:[ids]}` | pipeline | data-source, core |
+| Tile `data/tiles/{res}/x{tx}y{ty}.json` | columnar `{cell[], month[], modis[], viirs[], noaa20[]}` (Terra-only counts sit in `modis`); `cell = row*100+col` from integer lon*10/lat*10 within the tile; month = index from `month0`; sparse: absent = 0 inside coverage, outside coverage = null | pipeline | core/tiles |
 | Series | `{id: modis|viirs|harmonized|baseline|anomaly|live, unit:"fire-cell-days", start:"YYYY-MM", values:(number|null)[], flags?, method:{id,version}, comparable:boolean}`; null = sensor not operating, 0 = none detected (hard rule) | core | web |
 | CalendarCell | `{year, month, value, status: observed|harmonized|no-data|partial, estimated:boolean, median?, rank?}` | core/calendar | calendar-grid, cell-detail, kpi-strip |
 | QueryState | `{bbox:[w,s,e,n], from:"YYYY-MM", to:"YYYY-MM", view: calendar|sensors|anomalies|live, layer: counts|anomaly}` in URL hash `#aoi=bbox:w,s,e,n&from=..&to=..&view=..&layer=..` | web/state | web |

@@ -21,6 +21,11 @@ test('every fixture tile validates against the manifest', () => {
 test('manifest lists the 0.1 tiles', () => {
   assert.deepEqual(tiles.filter((x) => x.dir === '0.1').map((x) => x.id).sort(), [...manifest.tiles].sort());
 });
+test('fixture manifest carries noaa20 coverage and partial months', () => {
+  assert.deepEqual(manifest.coverage.noaa20, ['2023-05', '2023-06']);
+  assert.deepEqual(manifest.partial_months, { modis: ['2023-06'], viirs: ['2023-06'], noaa20: ['2023-06'] });
+  assert.equal(manifest.satellites.eras.modis_aqua_from, '2002-07-04');
+});
 test('invalid tiles fail with a named error', () => {
   const base = tiles.find((x) => x.id === 'x0y15' && x.dir === '0.1').t;
   const bad = (patch) => validateTile({ ...structuredClone(base), ...patch }, { manifest }).map((e) => e.code);
@@ -66,8 +71,8 @@ test('CSV fixtures have 50 rows, FIRMS headers and agree with tile x17y13', () =
   }
 });
 test('hand-written tile totals match fixtures/README.md', () => {
-  const sums = Object.fromEntries(tiles.map(({ dir, id, t }) => [`${dir}/${id}`, [t.cell.length, sum(t.modis), sum(t.viirs)]]));
-  assert.deepEqual(sums, { '0.1/x0y15': [3, 3, 4], '0.1/x17y13': [23, 35, 35], '1/x17y13': [18, 35, 35] });
+  const sums = Object.fromEntries(tiles.map(({ dir, id, t }) => [`${dir}/${id}`, [t.cell.length, sum(t.modis), sum(t.viirs), sum(t.noaa20)]]));
+  assert.deepEqual(sums, { '0.1/x0y15': [3, 3, 4, 0], '0.1/x17y13': [23, 35, 35, 14], '1/x17y13': [18, 35, 35, 14] });
 });
 test('grid known answers on fixtures: antimeridian, edge, pole', () => {
   assert.equal(tileOf(180, 65), 'x0y15');
@@ -83,13 +88,13 @@ test('coarse tile is the per-month sum of the fine tile per 1 deg cell, nulls ke
   const acc = new Map();
   fine.cell.forEach((c, i) => {
     const key = `${fine.month[i]}:${Math.floor(c / 1000) * 10 + Math.floor((c % 100) / 10)}`;
-    const o = acc.get(key) ?? acc.set(key, { modis: null, viirs: null }).get(key);
-    for (const s of ['modis', 'viirs']) if (fine[s][i] !== null) o[s] = (o[s] ?? 0) + fine[s][i];
+    const o = acc.get(key) ?? acc.set(key, { modis: null, viirs: null, noaa20: null }).get(key);
+    for (const s of ['modis', 'viirs', 'noaa20']) if (fine[s][i] !== null) o[s] = (o[s] ?? 0) + fine[s][i];
   });
   assert.equal(coarse.cell.length, acc.size);
   coarse.cell.forEach((c, i) => {
     const o = acc.get(`${coarse.month[i]}:${c}`);
     assert.ok(o, `coarse row ${i} has a fine source`);
-    assert.deepEqual([coarse.modis[i], coarse.viirs[i]], [o.modis, o.viirs]);
+    assert.deepEqual([coarse.modis[i], coarse.viirs[i], coarse.noaa20[i]], [o.modis, o.viirs, o.noaa20]);
   });
 });

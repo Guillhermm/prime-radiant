@@ -6,6 +6,7 @@
 import { cellsPerSide, parseTileId } from './grid.js';
 
 const MONTH_RE = /^(\d{4})-(0[1-9]|1[0-2])$/;
+const SENSORS = ['modis', 'viirs', 'noaa20'];
 const SERIES_IDS = ['modis', 'viirs', 'harmonized', 'baseline', 'anomaly', 'live'];
 const STATUSES = ['observed', 'harmonized', 'no-data', 'partial'];
 
@@ -54,7 +55,7 @@ export function validateManifest(m) {
   if (!isObj(m.coverage)) {
     e.push(err('BAD_COVERAGE', 'coverage', 'coverage must be an object'));
   } else {
-    for (const s of ['modis', 'viirs']) {
+    for (const s of SENSORS) {
       const c = m.coverage[s];
       if (!Array.isArray(c) || c.length !== 2 || Number.isNaN(monthNum(c[0])) || Number.isNaN(monthNum(c[1])) ||
           monthNum(c[1]) < monthNum(c[0])) {
@@ -63,6 +64,16 @@ export function validateManifest(m) {
     }
   }
   if (!isObj(m.satellites)) e.push(err('BAD_SATELLITES', 'satellites', 'satellites must be an object'));
+  if (!isObj(m.partial_months)) {
+    e.push(err('BAD_PARTIAL_MONTHS', 'partial_months', 'partial_months must be {modis:[], viirs:[], noaa20:[]} of YYYY-MM'));
+  } else {
+    for (const s of SENSORS) {
+      const p = m.partial_months[s];
+      if (!Array.isArray(p) || p.some((x) => Number.isNaN(monthNum(x)))) {
+        e.push(err('BAD_PARTIAL_MONTHS', `partial_months.${s}`, `partial_months.${s} must be an array of YYYY-MM`));
+      }
+    }
+  }
   if (!Array.isArray(m.tiles) || m.tiles.some((t) => !isTileId(t))) {
     e.push(err('BAD_TILES', 'tiles', 'tiles must be an array of x{tx}y{ty} ids'));
   } else if (new Set(m.tiles).size !== m.tiles.length) {
@@ -75,20 +86,20 @@ export function validateManifest(m) {
 }
 
 /**
- * @param {unknown} t tile {cell[], month[], modis[], viirs[]}
+ * @param {unknown} t tile {cell[], month[], modis[], viirs[], noaa20[]}
  * @param {{manifest?: object, res?: number}} [opts] res 0.1 (default) or 1
  */
 export function validateTile(t, { manifest, res = 0.1 } = {}) {
   const e = [];
   if (!isObj(t)) return [err('NOT_OBJECT', '', 'tile must be an object')];
-  const cols = ['cell', 'month', 'modis', 'viirs'];
+  const cols = ['cell', 'month', 'modis', 'viirs', 'noaa20'];
   let ok = true;
   for (const k of cols) {
     if (!Array.isArray(t[k])) { e.push(err('NOT_ARRAY', k, `${k} must be an array`)); ok = false; }
   }
   if (!ok) return e;
   if (new Set(cols.map((k) => t[k].length)).size > 1) {
-    e.push(err('COLUMN_LENGTH_MISMATCH', '', 'cell, month, modis and viirs must have the same length'));
+    e.push(err('COLUMN_LENGTH_MISMATCH', '', 'cell, month, modis, viirs and noaa20 must have the same length'));
   }
   const per = cellsPerSide(res);
   const span = spanLength(manifest);
@@ -108,7 +119,7 @@ export function validateTile(t, { manifest, res = 0.1 } = {}) {
     seen.add(key);
   });
   const m0 = Number.isNaN(span) ? NaN : monthNum(manifest.month0);
-  for (const k of ['modis', 'viirs']) {
+  for (const k of SENSORS) {
     const cov = Number.isNaN(m0) || !isObj(manifest.coverage) || !Array.isArray(manifest.coverage[k]) ? null
       : manifest.coverage[k].map((c) => monthNum(c) - m0);
     t[k].forEach((v, i) => {

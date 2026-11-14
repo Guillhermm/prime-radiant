@@ -7,8 +7,9 @@
   "month0": "2023-01",
   "last_month": "2023-06",
   "granularity": "month",
-  "coverage": { "modis": ["2023-01", "2023-06"], "viirs": ["2023-03", "2023-06"] },
-  "satellites": { "modis": ["Terra", "Aqua"], "viirs": ["S-NPP"] },
+  "coverage": { "modis": ["2023-01", "2023-06"], "viirs": ["2023-03", "2023-06"], "noaa20": ["2023-05", "2023-06"] },
+  "partial_months": { "modis": ["2023-06"], "viirs": ["2023-06"], "noaa20": ["2023-06"] },
+  "satellites": { "modis": ["Terra", "Aqua"], "viirs": ["S-NPP"], "noaa20": ["NOAA-20"], "eras": { "modis_aqua_from": "2002-07-04" } },
   "tiles": ["x0y15", "x17y13"],
   "citation": "Fixture data, hand-built for tests. Not real detections.",
   "caveats": ["fixture-data"]

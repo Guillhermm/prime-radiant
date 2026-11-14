@@ -14,12 +14,14 @@ test('decodeTile: lookups by cell and by month agree', () => {
   assert.equal(d.byCell.get(0).get(1), undefined);
   assert.equal(d.byMonth.get(3), undefined);
   assert.equal(d.byCell.get(99).get(2), d.byMonth.get(2)[0]);
+  assert.ok('noaa20' in d.byCell.get(99).get(2));
 });
 
 test('coverageLookup: viirs starts at index 2', () => {
   const c = coverageLookup(manifest);
   assert.deepEqual([0, 1, 2, 5].map((i) => c('viirs', i)), [false, false, true, true]);
   assert.deepEqual([0, 5, 6].map((i) => c('modis', i)), [true, true, false]);
+  assert.deepEqual([3, 4].map((i) => c('noaa20', i)), [false, true]);
 });
 
 test('tilesForBbox: only ids listed in the manifest', () => {
