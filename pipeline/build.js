@@ -71,6 +71,7 @@ export async function build({ inputs, outDir, bbox, month0 = '2000-01', dataVers
   for (const y of order) {
     for (const f of groups.get(y)) {
       const rs = newStats();
+      rs.seen = (sat, day, hasType) => { if (hasType && day.slice(0, 7) >= month0) coverage.addDay(sat, day); };
       const tap = async function* () {
         for await (const rec of readFirms(f, rs)) {
           if (rec.hasType && rec.utcDay.slice(0, 7) >= month0) coverage.add(rec);
@@ -89,7 +90,7 @@ export async function build({ inputs, outDir, bbox, month0 = '2000-01', dataVers
 
   const tileIds = [...new Set(Object.values(into.counts).flatMap((f) => Object.keys(f)))].sort(compareTileIds);
   const manifest = buildManifest({
-    month0, days: coverage.days(), tiles: tileIds, generatedAt, baseUrl, domain: domainInfo,
+    month0, days: coverage.days(), acquisition: coverage.acquisition(), tiles: tileIds, generatedAt, baseUrl, domain: domainInfo,
     dataVersion: dataVersion ?? generatedAt.slice(0, 10).replaceAll('-', ''),
   });
   const written = writeTiles(into.counts, coverageIndexes(manifest), outDir);

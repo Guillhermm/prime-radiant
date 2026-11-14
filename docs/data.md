@@ -89,3 +89,22 @@ Sanity check: Brazil January-August monthly MODIS and S-NPP fire-cell-days for 2
 (global Shapefile source) sit in the same range as 2023-2025 (country CSV source), so
 the source switch at 2026-01 shows no visible step. Not yet compared against the FIRMS
 map for a hand-picked cell and day (planned in M1-K4).
+
+## Partial months and acquisition days (gate V1, F1)
+
+The pipeline derives `manifest.partial_months` per sensor family (`modis` = Terra and
+Aqua, `viirs` = S-NPP, `noaa20` = NOAA-20) from acquisition days. An acquisition day is a
+distinct UTC day with at least one archive record of that satellite in the whole input:
+any `type` value, before the bbox and domain clip. NRT files never count. A month is
+partial for a family when any of its satellites, between its first and last archive month,
+has fewer acquisition days than days in that month. The start and end rules (coverage
+begins after day 1, ends before the last day) still apply. Aqua's first month (2002-07)
+is partial because it starts on the 4th.
+`manifest.acquisition_days` (`{Terra: {"YYYY-MM": n}, Aqua, SNPP, NOAA20}`) lists the
+counts; it is optional and the schema does not require it.
+
+Assumption: the input is the full archive of the satellite over the whole region the
+files cover (country or global), so a day with zero records in the whole input means the
+satellite did not acquire. A real acquisition day with no detection anywhere in the input
+would read as an outage; at country scale and above this does not happen outside outages.
+A build from a small bbox file or a few-day extract marks nearly every month partial.

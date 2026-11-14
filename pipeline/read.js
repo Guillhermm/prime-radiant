@@ -67,6 +67,7 @@ export function normalize(f, stats) {
   const sat = SATELLITES.get(f.satellite);
   if (!sat) return reject(stats, 'satellite');
   const hasType = f.type !== undefined;
+  stats.seen?.(sat[1], f.date, hasType); // acquisition days: any type, before the type filter
   if (hasType) {
     if (!/^\d+$/.test(f.type)) return reject(stats, 'type_invalid');
     if (Number(f.type) !== 0) return reject(stats, 'type_excluded');
