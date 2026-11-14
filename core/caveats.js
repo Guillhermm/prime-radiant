@@ -10,7 +10,7 @@ const DEFS = [
   ['unit-fire-cell-days', 'caveat', 'Counts are fire-cell-days.',
     'Counts are fire-cell-days (a 0.1 degree cell with at least one detection on a day), not fires, fire size or burned area.'],
   ['estimated-before-viirs', 'caveat', 'Values before VIIRS are estimates.',
-    'Harmonized values before the VIIRS era (and after S-NPP ends) are estimates: MODIS x R or NOAA-20 x K, not observations.'],
+    'Values before the VIIRS era (and after S-NPP ends) are estimates scaled to VIIRS-equivalent: MODIS x R or NOAA-20 x K, not observations. R is fit on 2012-2021; applied to the larger fire years of 2002-2007 it likely overestimates them.'],
   ['no-confidence-filter', 'caveat', 'No confidence filter applied.',
     'Detections of every confidence level are counted, so some may be false alarms. Only presumed vegetation fires (FIRMS type 0) are kept.'],
   ['detection-limits', 'caveat', 'Zero means none detected.',
@@ -43,8 +43,15 @@ const DEFS = [
 /** Catalog ids in order. */
 export const CAVEAT_IDS = DEFS.map((d) => d[0]);
 
-/** Default gate status: nothing validated until V1. Values: 'preliminary' | 'passed'. */
-export const DEFAULT_GATES = Object.freeze(Object.fromEntries(CAVEAT_IDS.map((id) => [id, 'preliminary'])));
+/** Gate status values: 'preliminary' | 'passed'. Nothing passed: the state before any gate. */
+export const NO_GATES = Object.freeze(Object.fromEntries(CAVEAT_IDS.map((id) => [id, 'preliminary'])));
+
+/**
+ * Status after gate V1 (docs/gates/V1.md, passed with caveats on 2026-11-14): every item
+ * passed except near-real-time data, which waits for gate V3.
+ */
+export const DEFAULT_GATES = Object.freeze(Object.fromEntries(
+  CAVEAT_IDS.map((id) => [id, id === 'nrt-unfiltered' ? 'preliminary' : 'passed'])));
 
 /**
  * One catalog item with `preliminary` resolved against a gate map (missing entry = preliminary).
@@ -64,7 +71,8 @@ export function catalog(gates = DEFAULT_GATES) {
 }
 
 /**
- * Caveats that apply to a harmonize() result, in catalog order. Always: 1, 3, 4, 5, 8, 9.
+ * Caveats that apply to a harmonize() result, in catalog order. Always: 1, 3, 4, 5, 9; 8
+ * (not validated) while its gate entry is not 'passed'.
  * 2 when any month is estimated; 6 when R or K came from a wider level (low confidence at the
  * AOI itself is the `low-confidence` flag item);
  * 7 only when opts.live. Flag items appear for each flag on the series, plus opts.flags.
@@ -76,7 +84,8 @@ export function caveatsFor(result, { gates = DEFAULT_GATES, live = false, flags 
   const have = new Set([...(result?.series?.flags ?? []).map((f) => f.flag), ...flags]);
   const wide = [result?.R, result?.K].some((r) => r && r.level && r.level !== 'aoi');
   const on = new Set(['unit-fire-cell-days', 'no-confidence-filter', 'detection-limits', 'archive-lag',
-    'not-validated', 'brazil-only']);
+    'brazil-only']);
+  if (gates['not-validated'] !== 'passed') on.add('not-validated');
   if (have.has('estimated')) on.add('estimated-before-viirs');
   if (wide) on.add('regional-ratio');
   if (live) on.add('nrt-unfiltered');
