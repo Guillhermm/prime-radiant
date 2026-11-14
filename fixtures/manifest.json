@@ -11,6 +11,7 @@
   "partial_months": { "modis": ["2023-06"], "viirs": ["2023-06"], "noaa20": ["2023-06"] },
   "satellites": { "modis": ["Terra", "Aqua"], "viirs": ["S-NPP"], "noaa20": ["NOAA-20"], "eras": { "modis_aqua_from": "2002-07-04" } },
   "tiles": ["x0y15", "x17y13"],
+  "domain": { "id": "fixture-box", "version": "1", "file": "domain.json", "res": 0.1 },
   "citation": "Fixture data, hand-built for tests. Not real detections.",
   "caveats": ["fixture-data"]
 }

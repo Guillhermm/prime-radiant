@@ -42,6 +42,14 @@ not checked end to end), **assumption** (a choice the team made) or **unverified
 - VIIRS family = S-NPP only. NOAA-20 is binned as its own family, used only for K
   and after S-NPP (section 4.4).
 
+## 2b. Spatial domain
+
+- Every input, history and 2026 alike, is clipped by point-in-polygon to one Brazil
+  outline (Natural Earth admin-0 10m, v5.1.2, public domain; `pipeline/domain/`). A
+  0.1 degree cell is in the domain when it intersects the outline; outside, every value
+  is null (no data), never 0. **Assumption**: the FIRMS country files use a border close
+  to Natural Earth's; detections between the two lines are dropped and counted.
+
 ## 3. Eras
 
 **Verified** against the FIRMS FAQ and the NASA outage alert of 2026-11-02.
@@ -114,6 +122,8 @@ excluded from R and from the baseline.
 6. Sparse areas use a regional ratio (low confidence).
 7. Near-real-time data cannot be filtered by type (planned, M3).
 8. Method not yet validated (preliminary) until gate V1.
+9. Data cover Brazil only (Natural Earth 10m outline, v5.1.2). Areas outside read as
+   no data; border cells hold only detections inside the outline, so they undercount.
 
 ## 7. Open questions
 

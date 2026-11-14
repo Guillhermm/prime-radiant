@@ -13,6 +13,7 @@ coverage, an integer count inside it (`validateTile` checks this when given the 
 | File | What |
 |---|---|
 | `manifest.json` | Span, coverage, tile list (0.1 tile ids). Coarse tiles reuse the same ids under `tiles/1/`; the fixtures ship only `1/x17y13`. |
+| `domain.json`, `domain/box.geojson` | Fixture domain: a box lon -9.99..-0.01, lat 40.01..49.99, i.e. all of tile x17y13 (rows 1300..1399, columns 1700..1799), named `fixture-box` in the manifest. `golden/domain.json` equals it. Tile x0y15 lies outside it. |
 | `tiles/0.1/x0y15.json` | Antimeridian tile (lon -180..-170, lat 60..70). Cell 0 holds lon -180 and lon 180. |
 | `tiles/0.1/x17y13.json` | Empty month tile (lon -10..0, lat 40..50), built from the two CSVs. |
 | `tiles/1/x17y13.json` | Coarse (1 deg) tile: the sum of the 0.1 deg fire-cell-days of `0.1/x17y13` per 1 deg cell and month (coarse cell = `floor(row/10)*10 + floor(col/10)`). A coarse count is a sum of fine fire-cell-days, not a distinct (coarse cell, day) count. |

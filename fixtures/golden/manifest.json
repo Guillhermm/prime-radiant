@@ -54,6 +54,12 @@
   "tiles": [
     "x17y13"
   ],
+  "domain": {
+    "id": "fixture-box",
+    "version": "1",
+    "file": "domain.json",
+    "res": 0.1
+  },
   "citation": "We acknowledge the use of data and/or imagery from NASA's Fire Information for Resource Management System (FIRMS), part of NASA's Land, Atmosphere Near real-time Capability for Earth observations (LANCE) and NASA's Earth Science Data and Information System (ESDIS). Products: MODIS Collection 6.1 active fire (Giglio et al. 2016, doi:10.1016/j.rse.2016.02.054); VIIRS 375 m active fire, S-NPP and NOAA-20 (Schroeder et al. 2014, doi:10.1016/j.rse.2013.12.008). Product DOIs: unverified, to be added.",
   "caveats": []
 }

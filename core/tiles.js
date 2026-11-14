@@ -38,8 +38,8 @@ export function decodeTile(tile, res = 0.1) {
 export function coverageLookup(manifest) {
   const m0 = monthIndex(manifest.month0);
   const range = {};
-  for (const s of ['modis', 'viirs', 'noaa20']) range[s] = manifest.coverage[s].map((c) => monthIndex(c) - m0);
-  return (sensor, i) => i >= range[sensor][0] && i <= range[sensor][1];
+  for (const s of ['modis', 'viirs', 'noaa20']) range[s] = manifest.coverage[s]?.map((c) => monthIndex(c) - m0) ?? null;
+  return (sensor, i) => range[sensor] !== null && i >= range[sensor][0] && i <= range[sensor][1];
 }
 
 /**
