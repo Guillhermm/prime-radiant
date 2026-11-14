@@ -485,7 +485,7 @@ Never cut: AOI by form and map, calendar with accessible ramp and no-data distin
 |---|---|---|
 | H1 | Who owns which track | Kaue data/science, Guilherme web; swap is free |
 | H2 | Granularity | Monthly; current partial month labeled partial |
-| H3 | Grid extent and demo region | Global if the spike fits H5 limits, else South America (Brazil: Pantanal 2020 and 2024, Amazon arc) first |
+| H3 | Grid extent and demo region | Decided 2026-11-14: Brazil full history (FIRMS yearly country CSVs, 2000-2025) + global 2026 from archive Shapefiles (`docs/data.md`); the pipeline reads CSV and DBF. Global history only if added later |
 | H4 | Max AOI size | 0.1 deg for AOI up to 20,000 cells, coarse 1 deg above, hard cap at continent scale (exact number after spike) |
 | H5 | Where tiles live | Cloudflare R2 public bucket if tiles exceed Vercel limits or if the live cron must publish without a redeploy; else deployed with the site via `vercel deploy` (tiles stay out of git) |
 | H6 | Repository owner | Decided 2026-11-14: Guilherme's personal GitHub (`Guillhermm/prime-radiant`), Vercel project on Guilherme's Hobby account, Kaue collaborator |
