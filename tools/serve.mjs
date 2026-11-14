@@ -14,7 +14,8 @@ export const loadSite = async (root, { extra = [] } = {}) => {
   const config = JSON.parse(await readFile(join(root, 'vercel.json'), 'utf8'));
   const ignore = await readFile(join(root, '.vercelignore'), 'utf8');
   // api/ deploys as functions, not files: serving its source here would differ from Vercel.
-  const allowed = [...ignore.matchAll(/^!\/([^/\s]+)\s*$/gm)].map((m) => m[1]).filter((d) => d !== 'api').concat(extra);
+  // tools/ is re-included only for the build's mock generator, not as part of the site.
+  const allowed = [...ignore.matchAll(/^!\/([^/\s]+)\s*$/gm)].map((m) => m[1]).filter((d) => d !== 'api' && d !== 'tools').concat(extra);
   const headers = Object.fromEntries(config.headers.find((h) => h.source === '/(.*)').headers.map((h) => [h.key, h.value]));
   return { root: resolve(root), allowed, headers, redirects: config.redirects ?? [] };
 };

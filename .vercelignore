@@ -1,8 +1,12 @@
 # Allowlist: only web/, core/, api/ and the generated data/ are deployed.
+# tools/mock-data.mjs is uploaded so the build can generate the synthetic data/.
 /*
 !/web
 !/core
 !/api
 !/data
 !/vercel.json
+!/tools
+/tools/*
+!/tools/mock-data.mjs
 *.test.js

@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "buildCommand": null,
+  "buildCommand": "node tools/mock-data.mjs",
   "installCommand": null,
   "outputDirectory": ".",
   "redirects": [{ "source": "/", "destination": "/web/", "permanent": false }],
