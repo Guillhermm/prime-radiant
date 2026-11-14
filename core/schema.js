@@ -57,9 +57,10 @@ export function validateManifest(m) {
   } else {
     for (const s of SENSORS) {
       const c = m.coverage[s];
+      if (c === null) continue; // sensor had no records in the build: null coverage, every value null
       if (!Array.isArray(c) || c.length !== 2 || Number.isNaN(monthNum(c[0])) || Number.isNaN(monthNum(c[1])) ||
           monthNum(c[1]) < monthNum(c[0])) {
-        e.push(err('BAD_COVERAGE', `coverage.${s}`, `coverage.${s} must be [from, to] as YYYY-MM, from <= to`));
+        e.push(err('BAD_COVERAGE', `coverage.${s}`, `coverage.${s} must be null or [from, to] as YYYY-MM, from <= to`));
       }
     }
   }
@@ -78,6 +79,13 @@ export function validateManifest(m) {
     e.push(err('BAD_TILES', 'tiles', 'tiles must be an array of x{tx}y{ty} ids'));
   } else if (new Set(m.tiles).size !== m.tiles.length) {
     e.push(err('DUPLICATE_TILE', 'tiles', 'tiles has duplicate ids'));
+  }
+  if (m.domain !== undefined) {
+    const d = m.domain;
+    if (!isObj(d) || typeof d.id !== 'string' || d.id === '' || typeof d.version !== 'string' || d.version === '' ||
+        typeof d.file !== 'string' || d.file === '' || d.res !== 0.1) {
+      e.push(err('BAD_DOMAIN', 'domain', 'domain must be {id, version, file, res:0.1} with non-empty strings'));
+    }
   }
   if (!Array.isArray(m.caveats) || m.caveats.some((c) => typeof c !== 'string')) {
     e.push(err('BAD_CAVEATS', 'caveats', 'caveats must be an array of ids'));
@@ -120,8 +128,10 @@ export function validateTile(t, { manifest, res = 0.1 } = {}) {
   });
   const m0 = Number.isNaN(span) ? NaN : monthNum(manifest.month0);
   for (const k of SENSORS) {
-    const cov = Number.isNaN(m0) || !isObj(manifest.coverage) || !Array.isArray(manifest.coverage[k]) ? null
-      : manifest.coverage[k].map((c) => monthNum(c) - m0);
+    const none = !Number.isNaN(m0) && isObj(manifest.coverage) && manifest.coverage[k] === null;
+    const cov = none ? [1, 0] // null coverage: no month is inside, every value must be null
+      : Number.isNaN(m0) || !isObj(manifest.coverage) || !Array.isArray(manifest.coverage[k]) ? null
+        : manifest.coverage[k].map((c) => monthNum(c) - m0);
     t[k].forEach((v, i) => {
       if (v !== null && !isCount(v)) {
         e.push(err('BAD_COUNT', `${k}[${i}]`, `${k} must be an integer >= 0 or null, got ${v}`));
@@ -141,6 +151,7 @@ export function validateTile(t, { manifest, res = 0.1 } = {}) {
 }
 
 /**
+ * A raw series flagged `outside-domain` is all null whatever the coverage (domain rule).
  * @param {unknown} s Series {id, unit, start, values, method, comparable, flags?}
  * @param {{manifest?: object}} [opts]
  */
@@ -169,14 +180,21 @@ export function validateSeries(s, { manifest } = {}) {
         : `values must be finite numbers or null, got ${v}`));
     }
   });
+  if (Array.isArray(s.flags) && s.flags.some((f) => f?.flag === 'outside-domain')) {
+    s.values.forEach((v, i) => {
+      if (v !== null) e.push(err('VALUE_OUTSIDE_DOMAIN', `values[${i}]`, `a series flagged outside-domain must be all null, got ${v}`));
+    });
+  }
   const span = spanLength(manifest);
   if (!Number.isNaN(span) && !Number.isNaN(start) && s.id !== 'live') {
     const first = start - monthNum(manifest.month0);
     if (first < 0 || first + s.values.length > span) {
       e.push(err('MONTH_OUT_OF_RANGE', 'start', `series months ${first}..${first + s.values.length - 1} fall outside the manifest span 0..${span - 1}`));
     }
-    const cov = rawCount && isObj(manifest.coverage) && Array.isArray(manifest.coverage[s.id])
-      ? manifest.coverage[s.id].map((c) => monthNum(c) - monthNum(manifest.month0)) : null;
+    const outside = Array.isArray(s.flags) && s.flags.some((f) => f?.flag === 'outside-domain'); // all null by the domain rule
+    const cov = outside ? null : rawCount && isObj(manifest.coverage) && manifest.coverage[s.id] === null ? [1, 0]
+      : rawCount && isObj(manifest.coverage) && Array.isArray(manifest.coverage[s.id])
+        ? manifest.coverage[s.id].map((c) => monthNum(c) - monthNum(manifest.month0)) : null;
     if (cov && !cov.some(Number.isNaN)) {
       s.values.forEach((v, i) => {
         const mo = first + i;
@@ -224,6 +242,33 @@ export function validateCalendarCell(c, { manifest } = {}) {
     if (idx < 0 || idx >= span) {
       e.push(err('MONTH_OUT_OF_RANGE', 'month', `${c.year}-${String(c.month).padStart(2, '0')} is outside the manifest span`));
     }
+  }
+  return e;
+}
+
+/**
+ * Validate domain.json: `{rows: {latIdx: [[c0, c1], ...]}}`, latIdx 0..1799 (0 = lat -90),
+ * runs of 0.1 deg columns 0..3599 (0 = lon -180), inclusive, sorted, non-overlapping and not
+ * touching (canonical), no empty rows.
+ * @param {unknown} d
+ */
+export function validateDomain(d) {
+  if (!isObj(d) || !isObj(d.rows)) return [err('NOT_OBJECT', '', 'domain must be {rows: {latIdx: runs}}')];
+  const e = [];
+  for (const [k, runs] of Object.entries(d.rows)) {
+    const j = Number(k);
+    if (!/^(0|[1-9]\d*)$/.test(k) || j > 1799) e.push(err('BAD_ROW', `rows.${k}`, 'row key must be an integer 0..1799'));
+    if (!Array.isArray(runs) || runs.length === 0) {
+      e.push(err('BAD_RUNS', `rows.${k}`, 'a row must be a non-empty array of [c0, c1]'));
+      continue;
+    }
+    let prev = -2;
+    runs.forEach((r, i) => {
+      const ok = Array.isArray(r) && r.length === 2 && r.every((c) => Number.isInteger(c) && c >= 0 && c <= 3599) && r[0] <= r[1];
+      if (!ok) e.push(err('BAD_RUNS', `rows.${k}[${i}]`, 'a run must be [c0, c1] with 0 <= c0 <= c1 <= 3599'));
+      else if (r[0] <= prev + 1) e.push(err('RUNS_NOT_CANONICAL', `rows.${k}[${i}]`, 'runs must be sorted, non-overlapping and not touching'));
+      if (ok) prev = r[1];
+    });
   }
   return e;
 }

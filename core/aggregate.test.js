@@ -2,12 +2,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { seriesForAoi, cellCount, MAX_FINE_CELLS } from './aggregate.js';
+import { validateSeries } from './schema.js';
 
 const fx = (p) => JSON.parse(readFileSync(new URL(`../fixtures/${p}`, import.meta.url), 'utf8'));
 const manifest = fx('manifest.json');
 const fine = { x0y15: fx('tiles/0.1/x0y15.json'), x17y13: fx('tiles/0.1/x17y13.json') };
 const coarse = { x17y13: fx('tiles/1/x17y13.json') };
 const sum = (a) => a.reduce((s, v) => s + (v ?? 0), 0);
+const domain = fx('domain.json'); // fixture domain: all of tile x17y13, lon -10..0, lat 40..50
 const world = [-180, -90, 180, 90];
 const tile = [-10, 40, 0, 50]; // whole-degree AOI = tile x17y13
 
@@ -57,4 +59,46 @@ test('antimeridian bbox wraps; flat tile map still reads as fine', () => {
 
 test('bad bbox throws instead of returning zeros', () => {
   assert.throws(() => seriesForAoi([0, 0, NaN, 1], fine, manifest), RangeError);
+});
+
+test('domain: AOI fully inside keeps the data and is not partial', () => {
+  const r = seriesForAoi(tile, fine, manifest, { domain });
+  assert.deepEqual(r.domain, { cells: 10000, inside: 10000, partial: false });
+  assert.deepEqual(r.modis.values, [7, 7, 7, 0, 7, 7]);
+  assert.deepEqual(r.viirs.values, [null, null, 15, 0, 10, 10]);
+  assert.equal(r.modis.flags, undefined);
+});
+
+test('domain: AOI fully outside gives all-null series, never zeros', () => {
+  const r = seriesForAoi([0, 0, 1, 1], fine, manifest, { domain });
+  assert.deepEqual(r.domain, { cells: 100, inside: 0, partial: false });
+  assert.deepEqual(r.modis.values, [null, null, null, null, null, null]);
+  assert.deepEqual(r.viirs.values, [null, null, null, null, null, null]);
+  assert.deepEqual(r.modis.flags, [{ month: null, flag: 'outside-domain' }]);
+  assert.deepEqual(validateSeries(r.modis, { manifest }), []);
+});
+
+test('domain: partial AOI sums the in-domain part and is flagged', () => {
+  const r = seriesForAoi([-10, 40, 10, 50], fine, manifest, { domain });
+  assert.deepEqual(r.domain, { cells: 20000, inside: 10000, partial: true });
+  assert.equal(sum(r.modis.values), 35);
+  assert.deepEqual(r.viirs.flags, [{ month: null, flag: 'partial-domain' }]);
+  // west edge of the domain: AOI lon -11..-9.95 holds fine cell centers -10.95..-9.95, 10 of them in domain
+  const e = seriesForAoi([-11, 40, -9.95, 40.1], fine, manifest, { domain });
+  assert.deepEqual(e.domain, { cells: 11, inside: 1, partial: true });
+  assert.deepEqual(e.modis.values, [3, 3, 3, 0, 3, 3]);
+});
+
+test('domain: antimeridian AOI and coarse level count domain cells', () => {
+  const w = seriesForAoi([179, 60, -179, 70], fine, manifest, { domain });
+  assert.equal(w.domain.inside, 0);
+  assert.equal(w.domain.cells, 2000);
+  const c = seriesForAoi(tile, { fine, coarse }, manifest, { res: 1, domain });
+  assert.deepEqual(c.domain, { cells: 100, inside: 100, partial: false });
+  const half = seriesForAoi([-10, 40, 10, 50], { fine, coarse }, manifest, { res: 1, domain });
+  assert.deepEqual(half.domain, { cells: 200, inside: 100, partial: true });
+});
+
+test('no domain given: inside equals cells', () => {
+  assert.deepEqual(seriesForAoi(tile, fine, manifest).domain, { cells: 10000, inside: 10000, partial: false });
 });

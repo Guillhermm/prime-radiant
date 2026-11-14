@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { validateManifest, validateTile } from '../../core/schema.js';
+import { validateManifest, validateTile, validateDomain } from '../../core/schema.js';
 import { locate, cellId, tileOf } from '../../core/grid.js';
 
 const fx = (p) => new URL(`../../fixtures/${p}`, import.meta.url);
@@ -14,6 +14,13 @@ for (const [dir, res] of [['0.1', 0.1], ['1', 1]]) {
 }
 
 test('fixture manifest validates', () => assert.deepEqual(validateManifest(manifest), []));
+test('fixture manifest names its domain and domain.json validates and covers tile x17y13', () => {
+  assert.deepEqual(manifest.domain, { id: 'fixture-box', version: '1', file: 'domain.json', res: 0.1 });
+  const d = json(manifest.domain.file);
+  assert.deepEqual(validateDomain(d), []);
+  assert.deepEqual(Object.keys(d.rows).map(Number), Array.from({ length: 100 }, (_, i) => 1300 + i));
+  assert.ok(Object.values(d.rows).every((r) => r.length === 1 && r[0][0] === 1700 && r[0][1] === 1799));
+});
 test('there are three tiles: antimeridian, empty month, coarse', () => assert.equal(tiles.length, 3));
 test('every fixture tile validates against the manifest', () => {
   for (const { dir, res, id, t } of tiles) assert.deepEqual(validateTile(t, { manifest, res }), [], `${dir}/${id}`);

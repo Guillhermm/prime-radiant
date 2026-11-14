@@ -56,7 +56,7 @@ function columns(rows, cov) {
     t.cell.push(r.cell);
     t.month.push(r.month);
     for (const s of SENSORS) {
-      const inside = r.month >= cov[s][0] && r.month <= cov[s][1];
+      const inside = cov[s] && r.month >= cov[s][0] && r.month <= cov[s][1];
       t[s].push(inside ? (r[s] ?? 0) : null);
     }
   }

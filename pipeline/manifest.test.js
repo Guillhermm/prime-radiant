@@ -40,6 +40,22 @@ test('manifest passes the schema; coverage indexes count from month0', () => {
   assert.equal(m.satellites.eras.modis_aqua_from, '2002-07-04');
   assert.match(m.citation, /Fire Information for Resource Management System/);
 });
-test('a sensor with no records is an error, not a guess', () => {
-  assert.throws(() => make(days(base.slice(0, 3))), /no archive records for viirs/);
+test('a sensor with no records warns and gets null coverage; the build still validates', (t) => {
+  const warn = t.mock.method(console, 'warn', () => {});
+  const m = make(days(base.slice(0, 5)));
+  assert.equal(warn.mock.callCount(), 1);
+  assert.match(warn.mock.calls[0].arguments[0], /no archive records for noaa20/);
+  assert.equal(m.coverage.noaa20, null);
+  assert.deepEqual(m.partial_months.noaa20, []);
+  assert.equal(coverageIndexes(m).noaa20, null);
+  assert.equal(m.last_month, '2012-03');
+  assert.deepEqual(validateManifest(m), []);
+});
+test('no records for any sensor is still an error', () => {
+  assert.throws(() => make({}), /no archive records for any sensor/);
+});
+test('a domain passes through to the manifest', () => {
+  const domain = { id: 'd', version: '1', file: 'domain.json', res: 0.1 };
+  const m = buildManifest({ month0: '2000-01', days: days(base), tiles: [], dataVersion: 'v', generatedAt: 'x', domain });
+  assert.deepEqual(m.domain, domain);
 });

@@ -1,0 +1,1 @@
+{"type":"FeatureCollection","domain":{"id":"fixture-box","version":"1"},"features":[{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[-9.99,40.01],[-0.01,40.01],[-0.01,49.99],[-9.99,49.99],[-9.99,40.01]]]}}]}

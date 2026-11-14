@@ -115,3 +115,25 @@ test('calendar cell: field errors and span', () => {
   assert.deepEqual(codes(validateCalendarCell(cell({ year: 2022, month: 12 }), { manifest })), ['MONTH_OUT_OF_RANGE']);
   assert.deepEqual(codes(validateCalendarCell('x')), ['NOT_OBJECT']);
 });
+
+test('manifest: null coverage for a sensor with no records; its tile and series values must be null', () => {
+  const m = { ...manifest, coverage: { ...manifest.coverage, noaa20: null }, partial_months: { ...manifest.partial_months, noaa20: [] } };
+  assert.deepEqual(validateManifest(m), []);
+  assert.deepEqual(validateTile(tile(), { manifest: m }), []);
+  assert.deepEqual(codes(validateTile({ ...tile(), noaa20: [0, null] }, { manifest: m })), ['COUNT_OUTSIDE_COVERAGE']);
+  assert.ok(codes(validateManifest({ ...m, coverage: { ...m.coverage, modis: undefined } })).includes('BAD_COVERAGE'));
+});
+test('manifest: domain is optional; when present it must be {id, version, file, res:0.1}', () => {
+  const { domain, ...without } = manifest;
+  assert.deepEqual(validateManifest(without), []);
+  assert.deepEqual(validateManifest({ ...manifest, domain }), []);
+  for (const bad of [{ ...domain, res: 1 }, { ...domain, file: '' }, { ...domain, id: 3 }, 'x']) {
+    assert.deepEqual(codes(validateManifest({ ...manifest, domain: bad })), ['BAD_DOMAIN']);
+  }
+});
+
+test('series: outside-domain skips coverage but must be all null', () => {
+  const flags = [{ month: null, flag: 'outside-domain' }];
+  assert.deepEqual(validateSeries(series({ values: [null, null, null], flags }), { manifest }), []);
+  assert.deepEqual(codes(validateSeries(series({ values: [null, 0, null], flags }))), ['VALUE_OUTSIDE_DOMAIN']);
+});

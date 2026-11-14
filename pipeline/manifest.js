@@ -52,22 +52,29 @@ function daysInMonth(ym) {
 }
 
 /**
+ * A sensor with no records gets coverage null (and a console warning); with none at all it throws.
  * @param {{month0: string, days: Object<string,{first:string,last:string}>, tiles: string[],
  *   dataVersion: string, generatedAt: string, baseUrl?: string, caveats?: string[]}} o
  */
-export function buildManifest({ month0, days, tiles, dataVersion, generatedAt, baseUrl = 'data/', caveats = [] }) {
+export function buildManifest({ month0, days, tiles, dataVersion, generatedAt, baseUrl = 'data/', caveats = [], domain }) {
   const coverage = {};
   const partial = {};
   for (const s of ['modis', 'viirs', 'noaa20']) {
     const d = days[s];
-    if (!d) throw new Error(`no archive records for ${s}: coverage cannot be derived`);
+    if (!d) {
+      console.warn(`warning: no archive records for ${s}; its coverage is null`);
+      coverage[s] = null;
+      partial[s] = [];
+      continue;
+    }
     const [from, to] = [d.first.slice(0, 7), d.last.slice(0, 7)];
     coverage[s] = [from, to];
     partial[s] = [];
     if (d.first.slice(8) !== '01') partial[s].push(from);
     if (Number(d.last.slice(8)) < daysInMonth(to) && !partial[s].includes(to)) partial[s].push(to);
   }
-  const last = Object.values(coverage).map((c) => c[1]).sort().at(-1);
+  const last = Object.values(coverage).filter(Boolean).map((c) => c[1]).sort().at(-1);
+  if (!last) throw new Error('no archive records for any sensor: coverage cannot be derived');
   return {
     schema: 1,
     dataVersion,
@@ -81,6 +88,7 @@ export function buildManifest({ month0, days, tiles, dataVersion, generatedAt, b
     partial_months: partial,
     satellites: SATELLITES,
     tiles,
+    ...(domain ? { domain } : {}),
     citation: CITATION,
     caveats,
   };
@@ -89,5 +97,5 @@ export function buildManifest({ month0, days, tiles, dataVersion, generatedAt, b
 /** Coverage as month-index ranges counted from month0, for the tile writer. */
 export function coverageIndexes(manifest) {
   const m0 = monthIndex(manifest.month0);
-  return Object.fromEntries(Object.entries(manifest.coverage).map(([s, c]) => [s, c.map((x) => monthIndex(x) - m0)]));
+  return Object.fromEntries(Object.entries(manifest.coverage).map(([s, c]) => [s, c && c.map((x) => monthIndex(x) - m0)]));
 }
