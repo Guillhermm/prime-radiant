@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { GROUP_IDS, tabsModel, nextTabIndex, viewTitle } from './app-shell.js';
+import { GROUP_IDS, heroModel, tabsModel, nextTabIndex, viewTitle } from './app-shell.js';
 import { VIEWS } from '../views.js';
 
 test('disabled views are absent from the tabs', () => {
@@ -23,4 +23,17 @@ test('title names the view', () => {
 
 test('the shell has a result group for every view', () => {
   assert.deepEqual(GROUP_IDS, VIEWS.map((v) => v.id));
+});
+
+test('hero names the matching example area and the period', () => {
+  const presets = [{ id: 'p', label: 'Pantanal', bbox: [-58, -20, -55, -17] }];
+  const h = heroModel({ view: 'calendar', bbox: [-58, -20, -55, -17], from: '2012-01', to: null }, { presets, span: { from: '2000-11', to: '2025-12' } });
+  assert.deepEqual(h, { eyebrow: 'Burning activity calendar', title: 'Pantanal', subtitle: 'Fire-cell-days per month, 2012-01 to 2025-12.' });
+});
+
+test('hero falls back to a custom area and to a prompt without an area', () => {
+  assert.equal(heroModel({ view: 'live', bbox: [1, 2, 3, 4] }, { presets: [] }).title, 'Custom area');
+  const none = heroModel({ view: 'calendar', bbox: null });
+  assert.equal(none.title, 'Choose an area');
+  assert.match(none.subtitle, /example area/);
 });

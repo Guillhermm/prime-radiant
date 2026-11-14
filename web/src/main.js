@@ -60,7 +60,7 @@ export const MOUNTS = {
   anomalies: (el, { data, preview, onSelect, onClose }) => {
     if (!preview) return;
     const grid = h('div');
-    const key = h('div');
+    const key = h('div', { class: 'anomaly-key' });
     el.replaceChildren(previewNote(), grid, key);
     mountResults(data, (r) => anomalyDeps(r, { onSelect, onClose }), anomalyLayer, grid);
     legend.mount(key, { layer: 'anomaly' });
@@ -113,6 +113,7 @@ export const start = async (root = document.getElementById('app')) => {
     views,
     activeView: state.view,
     onView: (view) => store.set({ view }),
+    previewIds: preview ? ['live'] : [],
   });
   const { slots } = shell;
   const data = createStore({ status: 'idle', result: null, error: null });
@@ -132,6 +133,8 @@ export const start = async (root = document.getElementById('app')) => {
     onDrawMap: () => map.ctl?.openFull(),
   });
   map.ctl = mapPicker.mount(slots.map, { bbox: state.bbox, onChange: (b) => qb.aoi.set(b) });
+  // The toggle sits next to Apply; the map body stays in its own panel under the query card.
+  qb.actions.append(slots.map.querySelector('.map-head'));
 
   const drawer = methodDrawer.mount(slots.drawer, { trigger: slots.method, manifest });
   caveatStrip.mount(slots.caveat, { onReadMore: (btn) => drawer.open(btn) });
@@ -185,7 +188,7 @@ export const start = async (root = document.getElementById('app')) => {
   };
 
   const render = (s) => {
-    shell.update({ view: s.view, hasArea: s.bbox !== null });
+    shell.update({ view: s.view, hasArea: s.bbox !== null, hero: appShell.heroModel(s, { presets, span }) });
     paintState();
   };
   data.subscribe(() => render(store.get()));

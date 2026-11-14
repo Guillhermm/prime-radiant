@@ -120,6 +120,12 @@ export const calendarTableModel = (cells) => {
 
 const NAV_KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'];
 
+/** True when at least `threshold` of the cells with data are estimated: per-cell marks then carry no information. */
+export const mostlyEstimated = (cells, threshold = 0.6) => {
+  const withData = cells.filter((c) => c.value !== null);
+  return withData.length > 0 && withData.filter((c) => c.estimated).length / withData.length >= threshold;
+};
+
 const cellClass = (m) => ['cal-cell', `bin-${m.bin}`, m.bin === NODATA && 'nodata', m.estimated && 'is-estimated', m.partial && 'is-partial'].filter(Boolean).join(' ');
 
 /**
@@ -137,7 +143,7 @@ export const mount = (container, deps) => {
   const readout = h('p', { class: 'cal-readout', 'aria-hidden': 'true' });
   const gridHost = h('div', { class: 'cal-scroll' });
   const tableHost = h('div', { class: 'cal-table', hidden: true });
-  const root = h('div', { class: 'calendar' }, h('div', { class: 'cal-bar' }, toggle), gridHost, readout, tableHost);
+  const root = h('div', { class: 'calendar' }, h('div', { class: 'cal-bar' }, h('h2', { class: 'cal-title', text: 'Fire-cell-days by month' }), toggle), gridHost, readout, tableHost);
   container.replaceChildren(root);
   let table = null;
 
@@ -177,6 +183,9 @@ export const mount = (container, deps) => {
       })));
     const grid = h('div', { role: 'grid', class: 'cal-grid', 'aria-label': 'Fire-cell-days by month and year', 'aria-rowcount': rows.length + 1, 'aria-colcount': 13 }, header, rows);
     gridHost.replaceChildren(grid);
+    const all = mostlyEstimated(cells);
+    grid.classList.toggle('all-estimated', all);
+    container.closest('.view-calendar')?.classList.toggle('all-estimated', all);
     grid.addEventListener('keydown', onKeydown);
     grid.addEventListener('click', onClick);
     grid.addEventListener('focusin', onFocusIn);

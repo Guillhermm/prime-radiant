@@ -4,6 +4,8 @@ import { h } from './h.js';
 
 export const UNIT_SENTENCE = 'Color: fire-cell-days per 1,000 grid cells (density). Number: raw fire-cell-days.';
 
+export const ESTIMATED_NOTE = 'All values in this range are estimated.';
+
 export const legendModel = () => ({
   bins: BINS.map((b) => ({ id: b.id, label: b.label, text: b.id === 0 ? 'No detections (0)' : `${b.label} per 1,000 cells` })),
   nodata: 'No data (sensor not operating)',
@@ -36,7 +38,7 @@ const countsLegend = () => {
     h('li', { class: 'legend-item' }, h('span', { class: 'swatch nodata', 'aria-hidden': 'true' }), h('span', { text: 'No data' })),
     ...m.marks.map((k) => h('li', { class: 'legend-item' }, h('span', { class: `swatch mark-${k.id}`, 'aria-hidden': 'true' }), h('span', { text: k.label }))),
   ];
-  return [h('ul', { class: 'legend-list' }, bins, extras), h('p', { class: 'legend-unit', text: m.unit })];
+  return [h('ul', { class: 'legend-list' }, bins, extras), h('p', { class: 'legend-unit legend-estimated-note', text: ESTIMATED_NOTE }), h('p', { class: 'legend-unit', text: m.unit })];
 };
 
 const anomalyLegend = () => {

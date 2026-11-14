@@ -77,9 +77,12 @@ test('preset, apply, calendar, cell detail, Method drawer and CSV export', { ski
     await page.press('Enter');
     await page.until(`document.querySelector('.detail-panel')`, 'cell detail opens on Enter');
     assert.equal(await page.evaluate(`document.activeElement.classList.contains('detail-title')`), true);
+    assert.equal(await page.evaluate(`getComputedStyle(document.activeElement).outlineStyle`), 'none', 'no ring on the programmatically focused heading');
     await page.press('Escape');
     await page.until(`!document.querySelector('.detail-panel')`, 'Esc closes the detail');
     assert.equal(await page.evaluate(`document.activeElement.getAttribute('aria-label')`), label);
+    await page.press('ArrowRight');
+    assert.notEqual(await page.evaluate(`getComputedStyle(document.activeElement).outlineStyle`), 'none', 'roving cell keeps its focus ring');
 
     await page.click('.method-button');
     await page.until(`document.querySelector('.drawer-panel[aria-modal="true"]')`, 'Method drawer opens');
@@ -125,6 +128,7 @@ test('phone width (400px): sheet traps focus, apply works, no horizontal scroll'
     await applyFrom2005(page);
     assert.equal(await page.evaluate(`!document.querySelector('.query-bar').classList.contains('sheet-open') && document.activeElement.classList.contains('area-chip')`), true, 'sheet closed, focus back on the chip');
     assert.equal(await page.evaluate(`document.documentElement.scrollWidth <= window.innerWidth`), true, 'no horizontal page scroll');
+    assert.equal(await page.evaluate(`(() => { const s = document.querySelector('.cal-scroll'); return s.scrollWidth <= s.clientWidth; })()`), true, 'all 12 months fit without scrolling');
 
     // The bottom sheet must not cover the tapped cell (WCAG 2.4.11).
     await page.evaluate(`(() => { const c = [...document.querySelectorAll('.cal-cell:not(.is-empty)')].pop(); c.scrollIntoView({ block: 'end' }); c.focus(); })()`);

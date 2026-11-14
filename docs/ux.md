@@ -101,7 +101,7 @@ Fields first (lat/lon, presets), the map in a "Draw on map" section that opens f
 | Tabs | `role="tablist"`, arrow keys move, Enter/Space activate, hash updates, Back works | Desktop only; select on phone |
 | Query bar | Plain form; inline validation message per field via `aria-describedby`; Apply disabled while invalid (phone shows an explicit Apply) | Area cap message states the limit and the nearest valid size |
 | KPI strip | Current month vs median with n years; "not enough history" instead of 0 when null | Swipe cards on phone, with prev/next buttons |
-| Calendar grid | `role="grid"`, roving tabindex, arrows/Home/End/PageUp/PageDown, Enter opens detail, Escape closes. Cell label: "September 2020, 12,450 fire-cell-days, density 38 per 1,000 cells, observed, MODIS" | Sticky year column. Number inside the cell only if it fits (it will not at 1.6rem on phone, and rarely at 2rem; abbreviate as 12k or enlarge the desktop cell, see open items). Color is always paired with the number on hover, focus and tap |
+| Calendar grid | `role="grid"`, roving tabindex, arrows/Home/End/PageUp/PageDown, Enter opens detail, Escape closes. Cell label: "September 2020, 12,450 fire-cell-days, density 38 per 1,000 cells, observed, MODIS" | Sticky year column on desktop. Number inside the cell only if it fits (it will not at 1.6rem on phone, and rarely at 2rem; abbreviate as 12k or enlarge the desktop cell, see open items). Color is always paired with the number on hover, focus and tap |
 | Cell marks | Estimated: triangle in the top-right corner. Partial month: dotted bottom edge. Flag (C): filled dot top-left plus a heavy inset frame. All use the cell's own text token, so contrast equals the text pair | Marks never rely on color |
 | Legend | Seven classes plus no-data hatch plus the density unit sentence (5.1); for C, the diverging ramp with the center labeled "median" | Always visible next to the grid |
 | Table view | Same data as an accessible table, toggled from the grid; this is the text alternative of the chart | Years as rows, months as columns, scoped headers |
@@ -120,15 +120,17 @@ Unit: fire-cell-days per 1,000 grid cells in the AOI (density). Absolute counts 
 
 Zero is its own lowest class, labeled "0", only when the raw count is 0, so a quiet area reads as quiet rather than as missing; a positive density below 1 goes to class 1. Positive densities use six log (base 4) classes. Viridis is perceptually ordered and survives the common color vision deficiencies; it is never mixed with a rainbow.
 
-| Class | Range | Token | Hex |
-|---|---|---|---|
-| 0 | 0 (raw count 0) | `--bin-0` | #440154 |
-| 1 | 1-3 | `--bin-1` | #443983 |
-| 2 | 4-15 | `--bin-2` | #31688e |
-| 3 | 16-63 | `--bin-3` | #21918c |
-| 4 | 64-255 | `--bin-4` | #35b779 |
-| 5 | 256-1023 | `--bin-5` | #90d743 |
-| 6 | 1024+ | `--bin-6` | #fde725 |
+| Class | Range | Token | Light hex | Dark hex |
+|---|---|---|---|---|
+| 0 | 0 (raw count 0) | `--bin-0` | #440154 | #46307e |
+| 1 | 1-3 | `--bin-1` | #443983 | #375b8d |
+| 2 | 4-15 | `--bin-2` | #31688e | #277f8e |
+| 3 | 16-63 | `--bin-3` | #21918c | #1fa188 |
+| 4 | 64-255 | `--bin-4` | #35b779 | #4ac16d |
+| 5 | 256-1023 | `--bin-5` | #90d743 | #a0da39 |
+| 6 | 1024+ | `--bin-6` | #fde725 | #fde725 |
+
+The dark column is viridis resampled from 0.14 to 1.0: the original class 0 (#440154) is 1.18:1 against the dark panel and disappears. Lightness stays strictly increasing in both themes (asserted in `tools/contrast.test.js`).
 
 The class edges and the density denominator (grid cells in the AOI, fine or coarse level) are a display proposal from the mathematician's review; the Second Foundation validates the unit and any threshold before they ship (`second-foundation:validate`). Viridis hex values are the standard 7-step samples; the stops are not hand-tuned.
 
@@ -138,6 +140,8 @@ Sensor not operating (`null`) is a gray diagonal hatch (`--nodata-hatch`), never
 
 ### 5.3 Anomaly vs median: PuOr 11 (slot C)
 
+Dark theme: the light-centered PuOr becomes a glare slab on a dark ground, so the dark ramp is lightness-reversed. The median is a dark neutral (`#2b3048`) and cells get lighter as they depart from it: orange above (`#7a3d12 #b35806 #e08214 #fdb863 #fee6a8`, steps 1 to 5), violet below (`#4b3f9e #6e63c0 #9a8fe0 #c4bdf0 #e6e2fa`). The legend says dark gray is the median. The light theme keeps ColorBrewer PuOr 11 untouched, described next.
+
 Diverging, centered on the historical median: the center class (#f7f7f7) means "equal to the median". Orange to brown is above the median (more fire), purple is below. Five steps each side. Legend text: "Center = historical median of the same month in earlier complete years. Darker orange: more than the median. Darker purple: less." Flags are a marker, not a color. Classing (percentile or ratio) is decided by the Second Foundation at gate V2, so the 11 classes are tokens only for now.
 
 ### 5.4 Sensor series: Okabe-Ito
@@ -146,9 +150,32 @@ MODIS `#0072B2` (light) or `#56B4E9` (dark), VIIRS `#B36B00` (light, darkened fr
 
 ### 5.5 Themes
 
-Light by default; dark follows `prefers-color-scheme`, and `data-theme="light|dark"` on the root overrides it. Viridis and PuOr keep the same hex in both themes (their meaning is fixed); contrast against the panel is recovered with the 1px `--cell-edge` outline, which is part of every cell and swatch.
+Dark is the default (a deep navy ground with a soft blue glow and a faint CSS star field). Light follows `prefers-color-scheme: light`, and `data-theme="light|dark"` on the root overrides the system either way. Both palettes are token sets in `web/styles/tokens.css`; components only use tokens. The top bar has its own `--topbar-*` tokens (transparent in dark, solid navy in light) and its buttons and focus ring are scoped to the bar, so light-theme white text never reaches the detail panel or other buttons.
 
-D0 judgment: acceptable. The fill is information carried also by the number (hover, focus, tap, table, CSV) and the cell boundary is defined by the 1px edge at 13.7:1 or more, so 1.4.11 is met by the edge, not the fill. Conditions: the edge is never removed or thinned, and the number must be reachable without hover (focus and tap), which the phone cells (no inline number) depend on.
+Palette direction (checked on spaceappschallenge.org on 2026-11-14): deep navy `#151622`, electric blue `#2491ff` for selection and links, one yellow `#e7f434` primary button in dark (blue `#0050d8` in light), orange `#ff7a33` or `#b83c00` for warn. No logo and no "NASA" wordmark are used.
+
+Viridis keeps its hue order in both themes (dark values in 5.1). The 1px `--cell-edge` is `rgb(255 255 255 / 0.14)` in dark (1.52:1 against the panel) and `#6b7490` in light (4.64:1). Known partial miss of WCAG 1.4.11 in dark: classes 0 and 1 are 1.7:1 and 2.6:1 against the panel and the edge is faint, so the fill is not a stand-alone carrier; the count printed in every desktop cell, the readout and aria-label, the table and the CSV carry the value.
+
+The estimated-value corner mark is 0.375rem at 55% opacity (0.25rem on phone). When 60% or more of the cells with data are estimated (`mostlyEstimated` in `calendar-grid.js`) the per-cell marks are hidden and the legend says "All values in this range are estimated." instead; marks return when estimated cells are the minority. On phone the calendar fits the card without scrolling (12 columns about 1.5rem wide at a 400px viewport, full year labels at 0.625rem).
+
+### 5.6 Type
+
+Fira Sans (text) and Fira Code (numbers in inputs, stat values, year labels), the faces the Space Apps site uses, self-hosted from `web/fonts/` (SIL Open Font License, texts in `web/fonts/OFL-*.txt`). Weights used: Fira Sans 400, 500, 600, 700 and Fira Code 400, 500, Latin subset, `font-display: swap`, with the system stack as fallback (`--font-sans`, `--font-mono`). No request leaves the origin, so `font-src 'self'` in `vercel.json` is unchanged.
+
+Source: `@fontsource/fira-sans@5.3.0` and `@fontsource/fira-code@5.3.0` from the npm registry (https://registry.npmjs.org/@fontsource/fira-sans/-/fira-sans-5.3.0.tgz, https://registry.npmjs.org/@fontsource/fira-code/-/fira-code-5.3.0.tgz), fetched 2026-11-14. Tarball sha256: fira-sans `2231966721c4c3f70194c336dd11428e15139bd902cac415528715028c9cd5a9`, fira-code `06b1a0a074e0115e36abc6f25c9698a62ea0b061598049d26896e754d3ca2ec6`. Each also matches the registry's `dist.integrity` (sha512) and `dist.shasum` (sha1), checked.
+
+| File | sha256 |
+|---|---|
+| `fira-sans-latin-400-normal.woff2` | `3e38d8c01fe97529fbf0a086bf958d724b723ca7fc8be77b4ba5745f6259b6ca` |
+| `fira-sans-latin-500-normal.woff2` | `88d3e420adee3fa99ae50c15b123e3c9a07ce0ec0c03a01bd6bdd5232822da28` |
+| `fira-sans-latin-600-normal.woff2` | `55e09735e30d8492afac5d59ac433c6b367bb7dd00c46e157cfe95c9fb29e833` |
+| `fira-sans-latin-700-normal.woff2` | `c753d7153cac2cfeb877264d18f11197ca672d3e04ba1472154a54777a4e354d` |
+| `fira-code-latin-400-normal.woff2` | `6dc9da171ccea71d525379ee1cbf51d143e31acac330a251bb71b3d6060e687c` |
+| `fira-code-latin-500-normal.woff2` | `9e4da5ad2c147be02544df5a732d22830a82b1e9800dc06267ba656f5c40f7e9` |
+| `OFL-fira-sans.txt` | `18aabf190848725e2576eefb5c29ba06aac1029d02132252a7f312eac2e50cf3` |
+| `OFL-fira-code.txt` | `126cd7bf732b86f42885f1fbf682e6aeea456672c7fdb99f2d557ec44e468a28` |
+
+D0 judgment, revised for the dark redesign: acceptable in light (the 1px edge is 4.64:1, so 1.4.11 is met by the edge) and a documented partial miss in dark for classes 0 and 1 (see above). The fill is information carried also by the number (hover, focus, tap, table, CSV). Conditions: the edge is never removed, and the number must be reachable without hover (focus and tap), which the phone cells (no inline number) depend on.
 
 ## 6. States
 
@@ -167,8 +194,8 @@ D0 judgment: acceptable. The fill is information carried also by the number (hov
 ## 7. Accessibility checklist (WCAG 2.2 AA)
 
 - [ ] All controls reachable and operable by keyboard; the map can be skipped (skip link "Skip map"), the form is a complete path (2.1.1, 2.1.2)
-- [ ] Focus visible: 3px `--color-focus` outline with a 2px offset and a halo, on every control and cell (2.4.7, 2.4.11 focus not obscured: sticky header and bottom sheet never cover the focused cell; `scroll-margin` set)
-- [ ] Target size at least 24 x 24 CSS px; calendar cells 1.6rem (25.6 px) minimum on phone, other controls `--target-min` 2.75rem (2.5.8)
+- [ ] Focus visible: 2px `--color-focus` outline with a 2px offset and a halo (yellow in dark, blue in light, yellow in the light top bar), on every control and cell; the only exception is headings and panels that receive focus programmatically (`tabindex="-1"` on `h1`, `h2`, `main`, dialogs), which show none (2.4.7, 2.4.11 focus not obscured: sticky header and bottom sheet never cover the focused cell; `scroll-margin` set)
+- [ ] Target size at least 24 x 24 CSS px; calendar cells 1.625rem tall and about 1.5rem (24 px) wide at a 400px viewport, narrower below that, other controls `--target-min` 2.75rem (2.5.8)
 - [ ] Contrast: text 4.5:1, large text and UI components 3:1 (table in section 9); data fills documented as info with outline and number as the carrier (1.4.3, 1.4.11)
 - [ ] Color never the only cue: numbers in labels and hover/focus, dash patterns, corner marks, hatch (1.4.1)
 - [ ] Text alternatives: table view of the grid, data table of the sensor chart, CSV export (1.1.1)
@@ -202,76 +229,91 @@ Vendored copy (M1-G3): `web/vendor/leaflet/` holds `leaflet.js`, `leaflet.css`, 
 
 ## 9. Contrast results
 
-Computed by a script, not by eye: it parses `web/styles/tokens.css`, applies the WCAG 2.x relative luminance formula (sRGB, 0.2126 / 0.7152 / 0.0722) and the ratio (L1 + 0.05) / (L2 + 0.05), for every pair below in both themes. Run on 2026-11-14 against the tokens as committed in this task. The script lives in the author's scratch space and is not in the repository; say so if you want it added as `tools/contrast.mjs` with a test.
+Computed by `tools/contrast.mjs`, which parses `web/styles/tokens.css` (dark is the bare `:root` block, light is `:root[data-theme="light"]`), applies the WCAG 2.x relative luminance formula (sRGB, 0.2126 / 0.7152 / 0.0722) and the ratio (L1 + 0.05) / (L2 + 0.05) to every required pair in both themes, and prints the tables below (`node tools/contrast.mjs`). `tools/contrast.test.js` asserts every required pair, so a token change that breaks one fails `node --test`. Ramp separation uses CIELAB DeltaE 1976 on Machado 2009 simulations (severity 1.0) of protanopia, deuteranopia and tritanopia; the floor asserted is 10 between neighbors. Table generated on 2026-11-14.
 
-Summary: every required pair passes in both themes. Rows marked "info" are not required by WCAG 2.2 (a data fill next to its own label and outline is not a stand-alone graphical object); they are listed so the weak ones are known. The viridis and PuOr ends that are close to the page color (for example class 0 in dark, 1.08:1; class 6 in light, 1.26:1) rely on the 1px `--cell-edge` outline (13.7:1 to 16.9:1 against the panel) and on the numeric label. Cell text on each class uses the better of black and white, chosen per class (`--bin-N-text`, `--div-*-text`); the minimum is 4.87:1 (PuOr above-4).
+Summary: every required pair passes in both themes. Rows marked "information only" are not required by WCAG 2.2 (a data fill next to its own label and outline is not a stand-alone graphical object); they are listed so the weak ones are known. In dark, classes 0 and 1 against the panel (1.7:1 and 2.6:1) and the faint cell edge (1.52:1) are the known partial miss described in 5.5; in light, the yellow end of viridis (1.26:1) and the PuOr center rely on the `#6b7490` edge (4.64:1) and the number. Cell text on each class uses the better of dark and white, chosen per class (`--bin-N-text`, `--div-*-text`). The dark `cell-edge` is composited over the panel color before measuring; `topbar-bg` is transparent in dark and measured over `color-bg`.
 
-Adjustments made while computing: `--color-border` light moved from #8a93a0 (2.9:1 on the page) to #7a8390; `--div-below-3-text` changed from white (4.23:1) to black; light VIIRS line darkened as noted in 5.4.
-
-| Pair (foreground on background) | Use | Min | Light | Dark |
+| Pair (foreground on background) | Use | Min | Dark | Light |
 |---|---|---|---|---|
-| `color-text` on `color-bg` | body text on page | 4.5:1 | 15.77 pass | 15.03 pass |
-| `color-text` on `color-surface` | text on panels | 4.5:1 | 16.91 pass | 13.71 pass |
-| `color-text-muted` on `color-surface` | secondary text on panels | 4.5:1 | 7.79 pass | 7.56 pass |
-| `color-text-muted` on `color-bg` | secondary text on page | 4.5:1 | 7.26 pass | 8.29 pass |
-| `color-accent` on `color-surface` | links on panels | 4.5:1 | 6.67 pass | 7.64 pass |
-| `color-accent` on `color-bg` | links on page | 4.5:1 | 6.22 pass | 8.38 pass |
-| `color-accent-text` on `color-accent` | primary button text | 4.5:1 | 6.67 pass | 7.98 pass |
-| `color-focus` on `color-surface` | focus ring on panels | 3:1 | 6.67 pass | 11.46 pass |
-| `color-focus` on `color-bg` | focus ring on page | 3:1 | 6.22 pass | 12.56 pass |
-| `color-border` on `color-surface` | control borders | 3:1 | 3.83 pass | 3.49 pass |
-| `color-border` on `color-bg` | control borders on page | 3:1 | 3.57 pass | 3.83 pass |
-| `color-error` on `color-surface` | error text | 4.5:1 | 7.75 pass | 7.28 pass |
-| `color-error` on `color-error-bg` | error text on error box | 4.5:1 | 6.79 pass | 7.08 pass |
-| `color-caveat-text` on `color-caveat-bg` | caveat strip text | 4.5:1 | 12.29 pass | 12.62 pass |
-| `color-caveat-border` on `color-bg` | caveat strip edge | 3:1 | 4.97 pass | 6.18 pass |
-| `color-badge-text` on `color-badge-bg` | provisional badge | 4.5:1 | 16.91 pass | 15.03 pass |
-| `bin-0-text` on `bin-0` | cell text, bin 0 | 4.5:1 | 15.24 pass | 15.24 pass |
-| `bin-1-text` on `bin-1` | cell text, bin 1 | 4.5:1 | 9.73 pass | 9.73 pass |
-| `bin-2-text` on `bin-2` | cell text, bin 2 | 4.5:1 | 6 pass | 6 pass |
-| `bin-3-text` on `bin-3` | cell text, bin 3 | 4.5:1 | 5.49 pass | 5.49 pass |
-| `bin-4-text` on `bin-4` | cell text, bin 4 | 4.5:1 | 8.2 pass | 8.2 pass |
-| `bin-5-text` on `bin-5` | cell text, bin 5 | 4.5:1 | 11.99 pass | 11.99 pass |
-| `bin-6-text` on `bin-6` | cell text, bin 6 | 4.5:1 | 16.63 pass | 16.63 pass |
-| `bin-0` on `color-surface` | swatch bin 0 vs panel (info) | info | 15.24 n/a | 1.08 n/a |
-| `bin-1` on `color-surface` | swatch bin 1 vs panel (info) | info | 9.73 n/a | 1.7 n/a |
-| `bin-2` on `color-surface` | swatch bin 2 vs panel (info) | info | 6 n/a | 2.76 n/a |
-| `bin-3` on `color-surface` | swatch bin 3 vs panel (info) | info | 3.82 n/a | 4.32 n/a |
-| `bin-4` on `color-surface` | swatch bin 4 vs panel (info) | info | 2.56 n/a | 6.45 n/a |
-| `bin-5` on `color-surface` | swatch bin 5 vs panel (info) | info | 1.75 n/a | 9.43 n/a |
-| `bin-6` on `color-surface` | swatch bin 6 vs panel (info) | info | 1.26 n/a | 13.09 n/a |
-| `cell-edge` on `color-surface` | cell outline on panel | 3:1 | 16.91 pass | 13.71 pass |
-| `nodata-text` on `nodata-bg` | no-data cell text | 4.5:1 | 14.16 pass | 11.31 pass |
-| `nodata-stripe` on `nodata-bg` | hatch stripe vs hatch ground | 3:1 | 3.96 pass | 5.34 pass |
-| `nodata-bg` on `color-surface` | no-data ground vs panel (info) | info | 1.19 n/a | 1.21 n/a |
-| `div-above-5-text` on `div-above-5` | cell text, above-5 | 4.5:1 | 8.3 pass | 8.3 pass |
-| `div-above-4-text` on `div-above-4` | cell text, above-4 | 4.5:1 | 4.87 pass | 4.87 pass |
-| `div-above-3-text` on `div-above-3` | cell text, above-3 | 4.5:1 | 7.37 pass | 7.37 pass |
-| `div-above-2-text` on `div-above-2` | cell text, above-2 | 4.5:1 | 12.21 pass | 12.21 pass |
-| `div-above-1-text` on `div-above-1` | cell text, above-1 | 4.5:1 | 16.55 pass | 16.55 pass |
-| `div-center-text` on `div-center` | cell text, center | 4.5:1 | 19.6 pass | 19.6 pass |
-| `div-below-1-text` on `div-below-1` | cell text, below-1 | 4.5:1 | 15.15 pass | 15.15 pass |
-| `div-below-2-text` on `div-below-2` | cell text, below-2 | 4.5:1 | 9.65 pass | 9.65 pass |
-| `div-below-3-text` on `div-below-3` | cell text, below-3 | 4.5:1 | 4.97 pass | 4.97 pass |
-| `div-below-4-text` on `div-below-4` | cell text, below-4 | 4.5:1 | 10.38 pass | 10.38 pass |
-| `div-below-5-text` on `div-below-5` | cell text, below-5 | 4.5:1 | 17.31 pass | 17.31 pass |
-| `div-above-5` on `color-surface` | swatch above-5 vs panel (info) | info | 8.3 n/a | 1.99 n/a |
-| `div-above-4` on `color-surface` | swatch above-4 vs panel (info) | info | 4.87 n/a | 3.4 n/a |
-| `div-above-3` on `color-surface` | swatch above-3 vs panel (info) | info | 2.85 n/a | 5.8 n/a |
-| `div-above-2` on `color-surface` | swatch above-2 vs panel (info) | info | 1.72 n/a | 9.61 n/a |
-| `div-above-1` on `color-surface` | swatch above-1 vs panel (info) | info | 1.27 n/a | 13.02 n/a |
-| `div-center` on `color-surface` | swatch center vs panel (info) | info | 1.07 n/a | 15.42 n/a |
-| `div-below-1` on `color-surface` | swatch below-1 vs panel (info) | info | 1.39 n/a | 11.92 n/a |
-| `div-below-2` on `color-surface` | swatch below-2 vs panel (info) | info | 2.18 n/a | 7.59 n/a |
-| `div-below-3` on `color-surface` | swatch below-3 vs panel (info) | info | 4.23 n/a | 3.91 n/a |
-| `div-below-4` on `color-surface` | swatch below-4 vs panel (info) | info | 10.38 n/a | 1.59 n/a |
-| `div-below-5` on `color-surface` | swatch below-5 vs panel (info) | info | 17.31 n/a | 1.05 n/a |
-| `series-modis` on `color-surface` | MODIS line | 3:1 | 5.19 pass | 7.16 pass |
-| `series-viirs` on `color-surface` | VIIRS line | 3:1 | 4.18 pass | 7.34 pass |
-| `series-harmonized` on `color-surface` | harmonized line | 3:1 | 21 pass | 16.52 pass |
-| `series-era-line` on `color-surface` | era marker line | 3:1 | 7.79 pass | 7.56 pass |
-| `series-live` on `color-surface` | live line (D) | 3:1 | 3.87 pass | 4.27 pass |
-| `series-live` on `color-bg` | live line on page (D) | 3:1 | 3.61 pass | 4.68 pass |
+| `color-text` on `color-bg` | body text on page | 4.5:1 | 16.35 pass | 16.6 pass |
+| `color-text` on `color-surface` | text on panels | 4.5:1 | 15.17 pass | 17.95 pass |
+| `color-text` on `color-surface-2` | text in inputs | 4.5:1 | 13.53 pass | 15.88 pass |
+| `color-text-muted` on `color-surface` | secondary text on panels | 4.5:1 | 8 pass | 8.38 pass |
+| `color-text-muted` on `color-bg` | secondary text on page | 4.5:1 | 8.62 pass | 7.75 pass |
+| `color-text-muted` on `color-surface-2` | secondary text on inputs | 4.5:1 | 7.13 pass | 7.41 pass |
+| `color-accent` on `color-surface` | links on panels | 4.5:1 | 5.62 pass | 6.69 pass |
+| `color-accent` on `color-bg` | links on page | 4.5:1 | 6.05 pass | 6.19 pass |
+| `color-accent-text` on `color-accent` | selected control text | 4.5:1 | 6.05 pass | 6.69 pass |
+| `color-cta-text` on `color-cta` | primary button text | 4.5:1 | 16.02 pass | 6.69 pass |
+| `color-focus` on `color-surface` | focus ring on panels | 3:1 | 14.86 pass | 6.69 pass |
+| `color-focus` on `color-bg` | focus ring on page | 3:1 | 16.02 pass | 6.19 pass |
+| `topbar-focus` on `topbar-bg` | focus ring in the top bar | 3:1 | 16.02 pass | 14.86 pass |
+| `topbar-text` on `topbar-bg` | top bar text | 4.5:1 | 16.35 pass | 17.95 pass |
+| `topbar-muted` on `topbar-bg` | top bar inactive tabs | 4.5:1 | 8.62 pass | 10.21 pass |
+| `topbar-border` on `topbar-bg` | top bar button borders | 3:1 | 3.3 pass | 3.87 pass |
+| `color-border-strong` on `color-surface` | control borders on panels | 3:1 | 3.06 pass | 4.64 pass |
+| `color-border-strong` on `color-bg` | control borders on page | 3:1 | 3.3 pass | 4.29 pass |
+| `color-warn` on `color-surface` | delta and flagged text | 4.5:1 | 6.91 pass | 5.7 pass |
+| `color-error` on `color-surface` | error text | 4.5:1 | 6.41 pass | 7.75 pass |
+| `color-error` on `color-error-bg` | error text on error box | 4.5:1 | 6.19 pass | 6.79 pass |
+| `color-caveat-text` on `color-caveat-bg` | caveat strip text | 4.5:1 | 13.09 pass | 11.69 pass |
+| `color-caveat-border` on `color-bg` | caveat strip edge | 3:1 | 7.45 pass | 5.27 pass |
+| `color-badge-text` on `color-badge-bg` | preliminary badge | 4.5:1 | 16.35 pass | 17.95 pass |
+| `bin-0-text` on `bin-0` | cell text, bin-0 | 4.5:1 | 10.58 pass | 15.24 pass |
+| `bin-1-text` on `bin-1` | cell text, bin-1 | 4.5:1 | 6.9 pass | 9.73 pass |
+| `bin-2-text` on `bin-2` | cell text, bin-2 | 4.5:1 | 4.65 pass | 6 pass |
+| `bin-3-text` on `bin-3` | cell text, bin-3 | 4.5:1 | 6.05 pass | 5.49 pass |
+| `bin-4-text` on `bin-4` | cell text, bin-4 | 4.5:1 | 8.49 pass | 8.2 pass |
+| `bin-5-text` on `bin-5` | cell text, bin-5 | 4.5:1 | 11.68 pass | 11.99 pass |
+| `bin-6-text` on `bin-6` | cell text, bin-6 | 4.5:1 | 15.45 pass | 16.63 pass |
+| `div-below-5-text` on `div-below-5` | cell text, div-below-5 | 4.5:1 | 15.44 pass | 17.31 pass |
+| `div-below-4-text` on `div-below-4` | cell text, div-below-4 | 4.5:1 | 11.04 pass | 10.38 pass |
+| `div-below-3-text` on `div-below-3` | cell text, div-below-3 | 4.5:1 | 6.85 pass | 4.97 pass |
+| `div-below-2-text` on `div-below-2` | cell text, div-below-2 | 4.5:1 | 4.99 pass | 9.65 pass |
+| `div-below-1-text` on `div-below-1` | cell text, div-below-1 | 4.5:1 | 8.39 pass | 15.15 pass |
+| `div-center-text` on `div-center` | cell text, div-center | 4.5:1 | 12.97 pass | 19.6 pass |
+| `div-above-1-text` on `div-above-1` | cell text, div-above-1 | 4.5:1 | 8.39 pass | 16.55 pass |
+| `div-above-2-text` on `div-above-2` | cell text, div-above-2 | 4.5:1 | 4.87 pass | 12.21 pass |
+| `div-above-3-text` on `div-above-3` | cell text, div-above-3 | 4.5:1 | 6.85 pass | 7.37 pass |
+| `div-above-4-text` on `div-above-4` | cell text, div-above-4 | 4.5:1 | 11.34 pass | 4.87 pass |
+| `div-above-5-text` on `div-above-5` | cell text, div-above-5 | 4.5:1 | 15.88 pass | 8.3 pass |
+| `nodata-text` on `nodata-bg` | no-data cell text | 4.5:1 | 7.13 pass | 14.64 pass |
+| `nodata-stripe` on `nodata-bg` | hatch stripe vs hatch ground | 3:1 | 3.45 pass | 3.78 pass |
+| `series-modis` on `color-surface` | MODIS line | 3:1 | 7.78 pass | 5.19 pass |
+| `series-viirs` on `color-surface` | VIIRS line | 3:1 | 7.97 pass | 4.18 pass |
+| `series-harmonized` on `color-surface` | harmonized line | 3:1 | 17.95 pass | 17.95 pass |
+| `series-live` on `color-surface` | live line | 3:1 | 6.91 pass | 3.87 pass |
+| `series-era-line` on `color-surface` | median line | 3:1 | 8 pass | 8.38 pass |
+
+| Pair (information only) | Use | Dark | Light |
+|---|---|---|---|
+| `bin-0` on `color-surface` | swatch bin-0 vs panel | 1.7 | 15.24 |
+| `bin-1` on `color-surface` | swatch bin-1 vs panel | 2.6 | 9.73 |
+| `bin-2` on `color-surface` | swatch bin-2 vs panel | 3.86 | 6 |
+| `bin-3` on `color-surface` | swatch bin-3 vs panel | 5.57 | 3.82 |
+| `bin-4` on `color-surface` | swatch bin-4 vs panel | 7.81 | 2.56 |
+| `bin-5` on `color-surface` | swatch bin-5 vs panel | 10.76 | 1.75 |
+| `bin-6` on `color-surface` | swatch bin-6 vs panel | 14.22 | 1.26 |
+| `div-below-5` on `color-surface` | swatch div-below-5 vs panel | 14.21 | 17.31 |
+| `div-below-4` on `color-surface` | swatch div-below-4 vs panel | 10.16 | 10.38 |
+| `div-below-3` on `color-surface` | swatch div-below-3 vs panel | 6.31 | 4.23 |
+| `div-below-2` on `color-surface` | swatch div-below-2 vs panel | 3.6 | 2.18 |
+| `div-below-1` on `color-surface` | swatch div-below-1 vs panel | 2.14 | 1.39 |
+| `div-center` on `color-surface` | swatch div-center vs panel | 1.38 | 1.07 |
+| `div-above-1` on `color-surface` | swatch div-above-1 vs panel | 2.14 | 1.27 |
+| `div-above-2` on `color-surface` | swatch div-above-2 vs panel | 3.69 | 1.72 |
+| `div-above-3` on `color-surface` | swatch div-above-3 vs panel | 6.3 | 2.85 |
+| `div-above-4` on `color-surface` | swatch div-above-4 vs panel | 10.44 | 4.87 |
+| `div-above-5` on `color-surface` | swatch div-above-5 vs panel | 14.62 | 8.3 |
+| `cell-edge` on `color-surface` | cell outline on panel | 1.52 | 4.64 |
+| `nodata-bg` on `color-surface` | no-data ground vs panel | 1.12 | 1.23 |
+
+| Ramp | Theme | Min adjacent DeltaE: normal | protanopia | deuteranopia | tritanopia | CIELAB L* |
+|---|---|---|---|---|---|---|
+| density | dark | 29.03 | 11.66 | 13.28 | 10.77 | 27, 38, 49, 59, 70, 81, 91 |
+| anomaly | dark | 14.82 | 14.06 | 14.72 | 12.28 | 91, 79, 63, 47, 33, 20, 33, 48, 63, 80, 92 |
+| density | light | 22.34 | 16.93 | 16.37 | 13.87 | 15, 29, 42, 55, 67, 79, 91 |
+| anomaly | light | 13.29 | 12.78 | 13.54 | 10.28 | 10, 27, 52, 72, 87, 97, 91, 80, 63, 48, 33 |
 
 ## 10. Open items
 

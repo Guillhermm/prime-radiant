@@ -4,7 +4,7 @@ const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 export const PRESET_IDS = [
   { id: 'all', label: 'All' },
-  { id: '10y', label: '10 y' },
+  { id: '10y', label: 'Last 10 years' },
   { id: 'year', label: 'This year' },
 ];
 
@@ -79,7 +79,7 @@ export const mount = (container, { span = null, from = '', to = '', onChange = (
   fromIn.addEventListener('input', refresh);
   toIn.addEventListener('input', refresh);
 
-  const presets = h('div', { class: 'chips', role: 'group', 'aria-label': 'Date presets' },
+  const presets = h('div', { class: 'chips range-presets', role: 'group', 'aria-label': 'Date presets' },
     PRESET_IDS.map(({ id, label }) => {
       const r = presetRange(id, span, now());
       return h('button', {
@@ -88,7 +88,7 @@ export const mount = (container, { span = null, from = '', to = '', onChange = (
       }, label);
     }));
 
-  container.append(h('div', { class: 'date-range' }, fromWrap, toWrap, presets));
+  container.append(h('fieldset', { class: 'period' }, h('legend', {}, 'Period'), h('div', { class: 'date-range' }, fromWrap, toWrap), presets));
   refresh();
   return {
     set: (f, t) => { fromIn.value = f ?? ''; toIn.value = t ?? ''; refresh(); },

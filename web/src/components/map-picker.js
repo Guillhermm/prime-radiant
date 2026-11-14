@@ -61,7 +61,7 @@ export const mount = (container, { bbox = null, onChange = () => {}, skipTo = '#
 
   const status = h('p', { class: 'map-status', role: 'status' });
   const phone = Boolean(globalThis.matchMedia?.('(max-width: 40rem)').matches);
-  const toggle = h('button', { type: 'button', class: 'map-toggle', 'aria-expanded': String(phone), 'aria-controls': 'map-body' }, 'Map');
+  const toggle = h('button', { type: 'button', class: 'map-toggle', 'aria-expanded': String(phone), 'aria-controls': 'map-body' }, phone ? 'Hide map' : 'Draw on map');
   const draw = h('button', { type: 'button', class: 'map-draw', 'aria-pressed': 'false' }, 'Draw rectangle');
   const clear = h('button', { type: 'button', class: 'map-clear' }, 'Clear');
   const done = h('button', { type: 'button', class: 'map-done btn-primary' }, 'Done');
@@ -161,6 +161,7 @@ export const mount = (container, { bbox = null, onChange = () => {}, skipTo = '#
   toggle.addEventListener('click', () => {
     const open = toggle.getAttribute('aria-expanded') !== 'true';
     toggle.setAttribute('aria-expanded', String(open));
+    toggle.textContent = open ? 'Hide map' : 'Draw on map';
     body.hidden = !open;
     if (open) { init().then(fit); }
   });

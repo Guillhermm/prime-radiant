@@ -71,7 +71,7 @@ export const mount = (container, { bbox = null, maxAreaDeg2 = Infinity, presets 
   };
   for (const { key } of FIELDS) inputs[key].addEventListener('input', refresh);
 
-  const presetBox = h('div', { class: 'presets' }, h('span', { class: 'label' }, 'Example areas'));
+  const presetBox = h('div', { class: 'presets' }, h('span', { class: 'label' }, 'Try an example'));
   mountPresets(presetBox, {
     presets,
     onPick: (p) => {
@@ -82,7 +82,7 @@ export const mount = (container, { bbox = null, maxAreaDeg2 = Infinity, presets 
     },
   });
 
-  container.append(h('fieldset', { class: 'aoi' }, h('legend', {}, 'Area'), row, bboxMsg, presetBox));
+  container.append(h('fieldset', { class: 'aoi' }, h('legend', {}, 'Area'), row, bboxMsg), presetBox);
   refresh();
   return {
     set(b) {

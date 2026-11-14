@@ -51,8 +51,8 @@ export const mount = (container, {
   const apply = h('button', { type: 'button', class: 'btn-primary', disabled: true }, 'Apply');
   const sync = () => { apply.disabled = !canApply(aoi, dates); };
 
-  const aoiBox = h('div');
-  const dateBox = h('div');
+  const aoiBox = h('div', { class: 'aoi-box' });
+  const dateBox = h('div', { class: 'date-box' });
   const s = store.get();
   const aoiCtl = aoiForm.mount(aoiBox, { bbox: s.bbox, maxAreaDeg2, presets, onChange: (v) => { aoi = v; sync(); onAoiInput(v); },
     onPreset: (p) => goTo(presetPatch(p, store.get(), span)) });
@@ -76,9 +76,10 @@ export const mount = (container, {
   // The full-screen map opens over the sheet, so the sheet stops being modal until focus is back.
   const drawBtn = onDrawMap ? h('button', { type: 'button', class: 'chip draw-map', onclick: () => { setModal(false); onDrawMap(); } }, 'Draw on map') : null;
   const closeBtn = h('button', { type: 'button', class: 'sheet-close' }, 'Close');
+  const actions = h('div', { class: 'actions' }, apply);
   const form = h('form', { class: 'query-form', 'aria-label': 'Query' },
     h('div', { class: 'sheet-head' }, h('strong', {}, 'Area and range'), closeBtn),
-    aoiBox, drawBtn, dateBox, layerBox, h('div', { class: 'actions' }, apply));
+    aoiBox, drawBtn, dateBox, layerBox, actions);
   form.addEventListener('submit', (e) => { e.preventDefault(); commit(); });
 
   // Phone: the form lives in a sheet opened from two summary chips. The sheet state is a
@@ -107,8 +108,8 @@ export const mount = (container, {
   const summary = h('div', { class: 'query-summary' }, areaChip, rangeChip);
   const paintSummary = (st) => {
     const m = summaryModel(st, span);
-    areaChip.textContent = `${m.area}  Change`;
-    rangeChip.textContent = `${m.range}  Change`;
+    areaChip.replaceChildren(h('span', { class: 'chip-text', text: m.area }), h('span', { class: 'chip-change', 'aria-hidden': 'true', text: 'Change' }));
+    rangeChip.replaceChildren(h('span', { class: 'chip-text', text: m.range }), h('span', { class: 'chip-change', 'aria-hidden': 'true', text: 'Change' }));
     areaChip.setAttribute('aria-label', `${m.area}. Change area`);
     rangeChip.setAttribute('aria-label', `${m.range}. Change range`);
   };
@@ -132,5 +133,5 @@ export const mount = (container, {
     last = st;
     paintSummary(st);
   });
-  return { aoi: aoiCtl, dates: dateCtl };
+  return { aoi: aoiCtl, dates: dateCtl, actions };
 };

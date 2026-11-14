@@ -59,7 +59,7 @@ export const mount = (container, deps) => {
       h('p', { class: 'kpi-title', text: c.title }),
       h('p', { class: 'kpi-value' }, h('span', { text: c.value }), c.delta ? h('span', { class: 'kpi-delta', text: ` ${c.delta}` }) : null),
       c.note ? h('p', { class: 'kpi-note', text: c.note }) : null));
-    const list = h('div', { class: 'kpi-list' }, cards);
+    const list = h('div', { class: 'kpi-list', role: 'group', 'aria-label': 'Figures', tabindex: '0' }, cards);
     const step = (dir) => () => list.scrollBy({ left: dir * list.clientWidth, behavior: 'auto' });
     container.replaceChildren(h('div', { class: 'kpi-strip', role: 'region', 'aria-label': 'Key figures' },
       h('button', { type: 'button', class: 'kpi-nav kpi-prev', 'aria-label': 'Previous figure', text: '‹' }),

@@ -82,3 +82,12 @@ test('calendarTableModel: years as rows, months as columns, null and partial mar
   assert.equal(t.rows[1].cells[11], 'No data');
   assert.equal(t.notes.length, 2);
 });
+
+test('mostlyEstimated flags a range once 60% of the cells with data are estimated', async () => {
+  const { mostlyEstimated } = await import('./calendar-grid.js');
+  const c = (estimated, value = 1) => ({ value, estimated });
+  assert.equal(mostlyEstimated([]), false);
+  assert.equal(mostlyEstimated([c(true), c(true), c(true), c(false), c(false)]), true);
+  assert.equal(mostlyEstimated([c(true), c(true), c(false), c(false), c(false)]), false);
+  assert.equal(mostlyEstimated([c(true), c(false, null), c(false, null)]), true);
+});
