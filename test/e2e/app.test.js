@@ -170,3 +170,21 @@ test('?preview=1: anomaly layer with rank in the detail, then the Live view and 
     assert.deepEqual(page.problems, []);
   } finally { await page.close(); }
 });
+
+test('tab switch updates the hash, back restores the previous view, disabled views are absent', { skip }, async () => {
+  const page = await open(1280);
+  try {
+    await page.until(`document.querySelector('.state-box-empty .chip')`, 'preset chips');
+    await page.click('.state-box-empty .chip');
+    await page.until(`location.hash.includes('view=calendar')`, 'calendar view in hash');
+    const tabs = await page.evaluate(`[...document.querySelectorAll('[role=tab]')].map((t) => t.dataset.view)`);
+    assert.deepEqual(tabs, ['calendar', 'sensors'], 'only enabled views get a tab');
+    await page.click('[role=tab][data-view="sensors"]');
+    await page.until(`location.hash.includes('view=sensors')`, 'sensors in hash');
+    await page.evaluate('history.back()');
+    await page.until(`location.hash.includes('view=calendar') && document.querySelector('[role=tab][data-view="calendar"]').getAttribute('aria-selected') === 'true'`, 'back returns to calendar');
+    assert.deepEqual(page.problems, []);
+  } finally {
+    await page.close();
+  }
+});

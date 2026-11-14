@@ -10,7 +10,12 @@ const CANDIDATES = [
   'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
 ];
 
-export const findChrome = () => [process.env.CHROME_PATH, ...CANDIDATES].find((p) => p && existsSync(p)) ?? null;
+// An explicit CHROME_PATH wins even when it does not exist, so the e2e skip path can be exercised.
+export const findChrome = () => {
+  const explicit = process.env.CHROME_PATH;
+  if (explicit) return existsSync(explicit) ? explicit : null;
+  return CANDIDATES.find((p) => existsSync(p)) ?? null;
+};
 
 export const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
