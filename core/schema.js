@@ -212,7 +212,7 @@ export function validateSeries(s, { manifest } = {}) {
 }
 
 /**
- * @param {unknown} c CalendarCell {year, month, value, status, estimated, median?, rank?}
+ * @param {unknown} c CalendarCell {year, month, value, status, estimated, flags?, median?, rank?}
  * @param {{manifest?: object}} [opts]
  */
 export function validateCalendarCell(c, { manifest } = {}) {
@@ -231,6 +231,9 @@ export function validateCalendarCell(c, { manifest } = {}) {
     e.push(err('STATUS_VALUE_MISMATCH', 'value', `${c.status} cells must have a value (0 means none detected)`));
   }
   if (typeof c.estimated !== 'boolean') e.push(err('BAD_ESTIMATED', 'estimated', 'estimated must be a boolean'));
+  if (c.flags !== undefined && (!Array.isArray(c.flags) || c.flags.some((f) => typeof f !== 'string'))) {
+    e.push(err('BAD_FLAGS', 'flags', 'flags must be an array of flag ids'));
+  }
   for (const k of ['median', 'rank']) {
     if (c[k] !== undefined && c[k] !== null && (typeof c[k] !== 'number' || !Number.isFinite(c[k]))) {
       e.push(err('BAD_VALUE', k, `${k} must be a finite number or null`));
