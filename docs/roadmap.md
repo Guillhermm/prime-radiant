@@ -491,7 +491,7 @@ Never cut: AOI by form and map, calendar with accessible ramp and no-data distin
 | H6 | Repository owner | Kaue's personal GitHub (Vercel Hobby cannot connect org repos), Guilherme collaborator |
 | H7 | Domain | Bought after M1 is live on `*.vercel.app`; name to choose |
 | H8 | Map base | Vendored Leaflet + OSM if policy and advisory checks pass, else SVG Natural Earth outline |
-| H9 | e2e tool | Playwright as a dev-only dependency after audit; fallback: integration tests only |
+| H9 | e2e tool | Decided: headless Chrome driven over the DevTools Protocol with Node built-ins (no dependency); tests skip when Chrome is absent |
 | H10 | D scope | Cron path only; keyed proxy built only with slack |
 | H11 | Post-S-NPP VIIRS | VIIRS series ends 2026-11-02; later months MODIS x R, marked estimated; NOAA-20 factor deferred |
 | H12 | CSV export content | AOI aggregates, not raw detection rows |

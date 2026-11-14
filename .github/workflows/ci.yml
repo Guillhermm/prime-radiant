@@ -13,3 +13,6 @@ jobs:
         with:
           node-version: 24
       - run: node --test
+        env:
+          # ubuntu-latest ships Google Chrome; fail instead of skipping the end-to-end tests if it ever goes missing.
+          REQUIRE_CHROME: '1'

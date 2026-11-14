@@ -9,8 +9,9 @@ const csp = () => Object.fromEntries(
   header('Content-Security-Policy').split(';').map((d) => d.trim().split(/\s+/)).map(([k, ...v]) => [k, v]),
 );
 
-test('serves web/ as static output with no build', () => {
-  assert.equal(config.outputDirectory, 'web');
+test('serves the repo root as static output with no build, / redirects to /web/', () => {
+  assert.equal(config.outputDirectory, '.');
+  assert.deepEqual(config.redirects, [{ source: '/', destination: '/web/', permanent: false }]);
   assert.equal(config.buildCommand, null);
   assert.equal(config.framework, null);
 });
@@ -58,4 +59,11 @@ test('Referrer-Policy still sends the origin cross-site (OSM tile policy needs a
 test('Permissions-Policy disables camera, microphone and geolocation', () => {
   const v = header('Permissions-Policy');
   for (const f of ['camera', 'microphone', 'geolocation']) assert.match(v, new RegExp(`${f}=\\(\\)`));
+});
+
+test('.vercelignore deploys only web/, core/, api/ and data/', () => {
+  const lines = readFileSync(new URL('../../.vercelignore', import.meta.url), 'utf8').split('\n').filter((l) => l && !l.startsWith('#'));
+  assert.equal(lines[0], '/*', 'ignore everything first');
+  assert.deepEqual(lines.filter((l) => l.startsWith('!')).sort(), ['!/api', '!/core', '!/data', '!/vercel.json', '!/web']);
+  assert.ok(lines.includes('*.test.js'), 'test files are not deployed');
 });

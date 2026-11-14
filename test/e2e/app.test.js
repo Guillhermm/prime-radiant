@@ -1,0 +1,160 @@
+import { test, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile, readdir, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { findChrome, launch, wait } from './cdp.mjs';
+import { createStaticServer, loadSite } from '../../tools/serve.mjs';
+import { toCsv } from '../../core/index.js';
+import { createDataSource } from '../../web/src/data-source.js';
+import { buildResult, csvMeta } from '../../web/src/view-data.js';
+import { parseHash } from '../../web/src/state.js';
+import { spanFromManifest } from '../../web/src/components/date-range.js';
+
+const root = fileURLToPath(new URL('../..', import.meta.url));
+const chrome = findChrome();
+const skip = chrome ? false : 'no Chrome found (set CHROME_PATH to run the end-to-end tests)';
+if (!chrome && process.env.REQUIRE_CHROME) throw new Error('REQUIRE_CHROME is set but no Chrome was found');
+
+let server;
+let browser;
+let base;
+let downloadDir;
+
+before(async () => {
+  if (skip) return;
+  server = createStaticServer(await loadSite(root, { extra: ['fixtures'] }));
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  base = `http://127.0.0.1:${server.address().port}`;
+  browser = await launch(chrome);
+  downloadDir = await mkdtemp(join(tmpdir(), 'pr-dl-'));
+});
+
+after(async () => {
+  await browser?.close();
+  server?.close();
+  if (downloadDir) await rm(downloadDir, { recursive: true, force: true });
+});
+
+const open = async (width, query = '?fixtures=1') => {
+  const page = await browser.newPage({ width, height: width < 600 ? 860 : 900, downloadDir });
+  await page.goto(`${base}/web/${query}`);
+  return page;
+};
+
+const applyFrom2005 = async (page) => {
+  await page.evaluate(`(() => { const i = document.querySelector('#date-from'); i.value = '2005-01'; i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  await page.click('.query-form .btn-primary');
+  await page.until(`location.hash.includes('from=2005-01')`, 'apply commits from=2005-01');
+  await page.until(`document.querySelector('.cal-row:not(.cal-head):last-child .cal-year')?.textContent === '2005' && !document.querySelector('.view-calendar').hidden`, 'calendar ends at 2005');
+};
+
+test('the site root redirects to the app and the default load shows the empty state', { skip }, async () => {
+  const res = await fetch(`${base}/`, { redirect: 'manual' });
+  assert.equal(res.status, 307);
+  assert.equal(res.headers.get('location'), '/web/');
+  const page = await open(1280);
+  try {
+    await page.until(`document.querySelector('.state-box-empty .chip')`, 'empty state with preset chips');
+    assert.equal(await page.evaluate(`document.querySelector('.caveat .badge')?.textContent`), 'Preliminary');
+    assert.equal(await page.evaluate(`document.querySelector('.method-button') !== null`), true);
+    assert.deepEqual(page.problems, []);
+  } finally { await page.close(); }
+});
+
+test('preset, apply, calendar, cell detail, Method drawer and CSV export', { skip }, async () => {
+  const page = await open(1280);
+  try {
+    await page.until(`document.querySelector('.state-box-empty .chip')`, 'preset chips');
+    await page.click('.state-box-empty .chip');
+    await page.until(`document.querySelector('.cal-grid') && !document.querySelector('.view-calendar').hidden`, 'calendar after preset');
+    await applyFrom2005(page);
+    assert.equal(await page.evaluate(`[...document.querySelectorAll('.cal-row:not(.cal-head) .cal-year')].every((y) => Number(y.textContent) >= 2005)`), true);
+
+    await page.evaluate(`document.querySelector('.cal-cell[tabindex="0"]').focus()`);
+    const label = await page.evaluate(`document.activeElement.getAttribute('aria-label')`);
+    await page.press('Enter');
+    await page.until(`document.querySelector('.detail-panel')`, 'cell detail opens on Enter');
+    assert.equal(await page.evaluate(`document.activeElement.classList.contains('detail-title')`), true);
+    await page.press('Escape');
+    await page.until(`!document.querySelector('.detail-panel')`, 'Esc closes the detail');
+    assert.equal(await page.evaluate(`document.activeElement.getAttribute('aria-label')`), label);
+
+    await page.click('.method-button');
+    await page.until(`document.querySelector('.drawer-panel[aria-modal="true"]')`, 'Method drawer opens');
+    assert.equal(await page.evaluate(`document.querySelector('.method-button').getAttribute('aria-expanded')`), 'true');
+    for (let i = 0; i < 6; i++) await page.press('Tab');
+    assert.equal(await page.evaluate(`document.querySelector('.drawer-panel').contains(document.activeElement)`), true, 'focus stays in the drawer');
+    await page.press('Escape');
+    await page.until(`!document.querySelector('.drawer-panel')`, 'Esc closes the drawer');
+    assert.equal(await page.evaluate(`document.activeElement.classList.contains('method-button')`), true);
+
+    await page.click('.export-button');
+    await page.click('.export-item[data-action="csv"]');
+    await page.until(`document.querySelector('.export-status').textContent === 'CSV downloaded'`, 'CSV export status');
+    for (let i = 0; i < 50 && !(await readdir(downloadDir)).some((f) => f.endsWith('.csv')); i++) await wait(100);
+    const files = (await readdir(downloadDir)).filter((f) => f.endsWith('.csv'));
+    assert.equal(files.length, 1, 'one CSV downloaded');
+    const actual = await readFile(join(downloadDir, files[0]), 'utf8');
+
+    // The same query computed in Node from the fixture files, through core.
+    const manifest = JSON.parse(await readFile(join(root, 'fixtures/manifest.json'), 'utf8'));
+    const { state } = parseHash(await page.evaluate('location.hash'), { span: spanFromManifest(manifest) });
+    const source = createDataSource({
+      manifestUrl: 'fixtures/manifest.json',
+      fetchFn: async (url) => ({ ok: true, json: async () => JSON.parse(await readFile(join(root, url), 'utf8')) }),
+    });
+    const { manifest: m, tiles } = await source.load(state.bbox);
+    const result = buildResult({ bbox: state.bbox, from: state.from, to: state.to, manifest: m, tiles });
+    assert.equal(actual, toCsv(result.series, csvMeta(result)));
+    assert.deepEqual(page.problems, []);
+  } finally { await page.close(); }
+});
+
+test('phone width (400px): sheet traps focus, apply works, no horizontal scroll', { skip }, async () => {
+  const page = await open(400);
+  try {
+    await page.until(`document.querySelector('.state-box-empty .chip')`, 'preset chips');
+    await page.click('.state-box-empty .chip');
+    await page.until(`document.querySelector('.cal-grid') && !document.querySelector('.view-calendar').hidden`, 'calendar after preset');
+    await page.click('.area-chip');
+    assert.equal(await page.evaluate(`document.querySelector('.query-form').getAttribute('aria-modal')`), 'true');
+    for (let i = 0; i < 25; i++) await page.press('Tab');
+    assert.equal(await page.evaluate(`document.querySelector('.query-form').contains(document.activeElement)`), true, 'focus trapped in the sheet');
+    await applyFrom2005(page);
+    assert.equal(await page.evaluate(`!document.querySelector('.query-bar').classList.contains('sheet-open') && document.activeElement.classList.contains('area-chip')`), true, 'sheet closed, focus back on the chip');
+    assert.equal(await page.evaluate(`document.documentElement.scrollWidth <= window.innerWidth`), true, 'no horizontal page scroll');
+    assert.deepEqual(page.problems, []);
+  } finally { await page.close(); }
+});
+
+test('?preview=1: anomaly layer with rank in the detail, then the Live view and its table', { skip }, async () => {
+  const page = await open(1280, '?fixtures=1&preview=1');
+  try {
+    await page.until(`document.querySelector('.state-box-empty .chip')`, 'preset chips');
+    await page.click('.state-box-empty .chip');
+    await page.until(`document.querySelector('.view-calendar .cal-grid') && !document.querySelector('.view-calendar').hidden`, 'calendar after preset');
+    await page.click('input[name="layer"][value="anomaly"]');
+    await page.until(`location.hash.includes('layer=anomaly') && document.querySelector('.view-calendar .anomaly-layer')?.offsetParent !== null`, 'anomaly layer shown');
+    assert.equal(await page.evaluate(`document.querySelector('.view-calendar .legend-ramp')?.children.length`), 11);
+    assert.equal(await page.evaluate(`document.querySelector('.view-calendar .anomaly-preview-note').textContent`), 'Preview: placeholder anomaly and live numbers, not validated.');
+
+    await page.evaluate(`document.querySelector('.view-calendar .anomaly-layer .cal-cell[tabindex="0"]').focus()`);
+    await page.press('Enter');
+    await page.until(`document.querySelector('.detail-panel')`, 'cell detail opens from the anomaly layer');
+    assert.equal(await page.evaluate(`[...document.querySelectorAll('.detail-list dt')].some((d) => d.textContent === 'Percentile rank')`), true);
+    await page.press('Escape');
+    await page.until(`!document.querySelector('.detail-panel')`, 'Esc closes the detail');
+
+    await page.click('#tab-anomalies');
+    await page.until(`document.querySelector('.view-anomalies .anomaly-layer')?.offsetParent !== null && document.querySelector('.view-calendar').hidden`, 'Anomalies view owned by the shell');
+    await page.click('#tab-live');
+    await page.until(`!document.querySelector('.view-live').hidden && document.querySelector('.view-live .live-chart')`, 'Live view with its chart');
+    assert.equal(await page.evaluate(`document.querySelector('.view-calendar').hidden && document.querySelector('.view-anomalies').hidden`), true);
+    await page.click('.view-live .cal-toggle');
+    await page.until(`document.querySelector('.view-live .live-table')?.offsetParent !== null`, 'Live table shown');
+    assert.equal(await page.evaluate(`document.querySelectorAll('.view-live .live-table tbody tr').length`), 12);
+    assert.deepEqual(page.problems, []);
+  } finally { await page.close(); }
+});

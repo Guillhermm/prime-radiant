@@ -5,7 +5,9 @@ Status: research notes for M0-G3. Decision H5 (where tiles live) is open until t
 
 ## Static site and headers (M0-K6)
 
-`vercel.json` serves `web/` with no build step and sets the headers on every path. `test/integration/headers.test.js` asserts them.
+`vercel.json` serves the repo root (`outputDirectory: "."`, no build step), because the app imports `../../core/`. `.vercelignore` is an allowlist (`/*`, then `!/web`, `!/core`, `!/data`, `!/api`, `!/vercel.json`, then `*.test.js`), so `raw/`, `pipeline/`, `fixtures/`, `test/`, `docs/` and the test files are not uploaded. `api/` is re-included so its functions deploy; `tools/serve.mjs` does not serve it (no local function runtime). A redirect sends `/` to `/web/` (a rewrite would keep the URL at `/` and break the page's relative `src/` and `styles/` links). The headers apply to every path. `test/integration/headers.test.js` asserts the config; `tools/serve.mjs` mirrors it (allowlist, redirect, headers) for `npm run serve` (127.0.0.1:8433) and the end-to-end tests. Consequence: `?fixtures=1` works locally only, not on the deployed site.
+
+Not checked: that `.vercelignore` re-inclusion of directories behaves as the gitignore syntax implies on a real `vercel deploy`; confirm on the first preview via the deployment's file list.
 
 | Header | Value | Note |
 |---|---|---|
@@ -43,3 +45,12 @@ Cloudflare R2 ([pricing](https://developers.cloudflare.com/r2/pricing/)):
 - Not checked: CORS on the public `r2.dev` URL (the page does not mention it; whether `r2.dev` is rate limited was also not read).
 
 Decision H5: open. Compare M0-K4 total brotli size and file count against 100 MB / 15,000 files; over either, R2 (10 GB free) is the path.
+
+## Live proxy
+
+`api/live.js` is a Vercel Node function (`GET /api/live?bbox=w,s,e,n&days=1|2`) that queries the FIRMS area API for the live view. It is optional: the daily Action path needs no key. Status: built and unit tested with a stubbed `fetch`; not deployed yet.
+
+- Env var: `MAP_KEY` (the FIRMS map key). It is read only from the function environment and never reaches the repository, the client, logs or responses.
+- Set it later: Vercel dashboard, Project, Settings, Environment Variables, add `MAP_KEY` for Production (and Preview if wanted), then redeploy. Without it the function answers 503 and the app shows "Live unavailable".
+- The bbox is snapped outward to 0.5 degrees and capped at 2,500 square degrees (operational cap, adjust in `MAX_AREA_DEG2`). Responses carry `Cache-Control: s-maxage=900, stale-while-revalidate=3600`.
+- Not verified: a WAF rate-limit rule on Hobby; the FIRMS CSV column names `latitude`, `longitude`, `acq_date` (the area page does not list them; check against a real response with a key).

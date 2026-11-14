@@ -1,0 +1,8 @@
+# Allowlist: only web/, core/, api/ and the generated data/ are deployed.
+/*
+!/web
+!/core
+!/api
+!/data
+!/vercel.json
+*.test.js

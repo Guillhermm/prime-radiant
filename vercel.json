@@ -3,7 +3,8 @@
   "framework": null,
   "buildCommand": null,
   "installCommand": null,
-  "outputDirectory": "web",
+  "outputDirectory": ".",
+  "redirects": [{ "source": "/", "destination": "/web/", "permanent": false }],
   "headers": [
     {
       "source": "/(.*)",
