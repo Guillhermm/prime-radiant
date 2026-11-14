@@ -4,11 +4,28 @@ import { h } from './h.js';
 /** "prime-radiant-2026-11-14.csv": UTC calendar date of `now`. */
 export const exportFilename = (now, { prefix = 'prime-radiant', ext = 'csv' } = {}) => `${prefix}-${now.toISOString().slice(0, 10)}.${ext}`;
 
-/** The CSV file for a series: text is exactly `core.toCsv(series, meta)`. */
+const FORMULA_START = /^[=+\-@\t\r]/;
+const NUMBER = /^-?\d+(\.\d+)?$/;
+const guardField = (f) => (FORMULA_START.test(f.trimStart()) && !NUMBER.test(f.trim()) ? `'${f}` : f);
+
+/**
+ * Temporary web-side guard against CSV formula injection (OWASP): every comma-separated field that
+ * starts with = + - @ tab or CR gets a leading apostrophe, and so does a header value after "# key: ".
+ * Bare numbers, negative ones included, are left alone. Remove when core/csv.js guards its own
+ * output (docs/deploy.md).
+ */
+export const guardCsv = (text) => text.split('\n').map((line) => {
+  const [first, ...rest] = line.split(',');
+  const i = line.startsWith('# ') ? first.indexOf(': ') : -1;
+  const head = i < 0 ? guardField(first) : `${first.slice(0, i + 2)}${guardField(first.slice(i + 2))}`;
+  return [head, ...rest.map(guardField)].join(',');
+}).join('\n');
+
+/** The CSV file for a series: text is `core.toCsv(series, meta)` passed through guardCsv. */
 export const csvExport = (series, meta, now) => ({
   filename: exportFilename(now),
   mime: 'text/csv;charset=utf-8',
-  text: toCsv(series, meta),
+  text: guardCsv(toCsv(series, meta)),
 });
 
 export const MENU_ITEMS = [

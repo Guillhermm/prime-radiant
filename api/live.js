@@ -11,10 +11,19 @@ const DAY_MS = 86400000;
 const CACHE = 's-maxage=900, stale-while-revalidate=3600';
 const UPSTREAM_TIMEOUT_MS = 8000;
 
+// Applied on every response: whether vercel.json headers reach functions is not verified, so the function sets its own.
+export const SECURITY_HEADERS = {
+  'X-Content-Type-Options': 'nosniff',
+  'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
+  'Cross-Origin-Resource-Policy': 'same-origin',
+  'Referrer-Policy': 'no-referrer',
+  'X-Frame-Options': 'DENY',
+};
+
 const json = (status, body, cache = false) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { 'Content-Type': 'application/json', ...(cache ? { 'Cache-Control': CACHE } : { 'Cache-Control': 'no-store' }) },
+    headers: { ...SECURITY_HEADERS, 'Content-Type': 'application/json', ...(cache ? { 'Cache-Control': CACHE } : { 'Cache-Control': 'no-store' }) },
   });
 
 const fail = (status, error, extra = {}) => json(status, { error, ...extra });

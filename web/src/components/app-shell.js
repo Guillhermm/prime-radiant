@@ -39,6 +39,25 @@ export const heroModel = ({ view, bbox, from, to }, { presets = [], span = null 
 // One result group per view; a disabled view's group stays hidden.
 export const GROUP_IDS = ['calendar', 'sensors', 'anomalies', 'live'];
 
+// Placeholder copy until the designer's pass. NOTICE and LICENSE live in the repo root and are not
+// deployed (.vercelignore), so they are plain text here, not links.
+export const FOOTER = {
+  name: 'Prime Radiant',
+  authors: ['Guilherme Almeida Zeni', 'Kauê Melo'],
+  rights: '© 2026 Guilherme Almeida Zeni and Kauê Melo. Prime Radiant, Apache-2.0.',
+  attributions: [
+    'Fire data: NASA FIRMS (LANCE, ESDIS), provided as is.',
+    'Map: © OpenStreetMap contributors.',
+    'Leaflet and Fira fonts: see NOTICE.',
+  ],
+};
+
+const footerEl = () => h('footer', { class: 'site-footer' },
+  h('p', { class: 'footer-name', text: FOOTER.name }),
+  h('p', { class: 'footer-authors', text: FOOTER.authors.join(', ') }),
+  h('p', { class: 'footer-rights', text: FOOTER.rights }),
+  h('ul', { class: 'footer-attributions' }, FOOTER.attributions.map((a) => h('li', { text: a }))));
+
 // Builds the page frame and returns the named slots other components mount into.
 export const mount = (container, { views, activeView, onView, previewIds = [] }) => {
   const tabs = tabsModel(views, activeView);
@@ -67,6 +86,7 @@ export const mount = (container, { views, activeView, onView, previewIds = [] })
   const slots = {
     method: slot('method', 'span'),
     export: slot('export', 'span'),
+    theme: slot('theme', 'span'),
     query: slot('query', 'section', { class: 'query-bar', 'aria-label': 'Query bar' }),
     caveat: slot('caveat', 'section', { class: 'caveat', 'aria-label': 'Caveats' }),
     empty: slot('empty', 'div', { class: 'empty' }),
@@ -92,11 +112,12 @@ export const mount = (container, { views, activeView, onView, previewIds = [] })
     h('a', { class: 'skip-link', href: '#main-view' }, 'Skip to main view'),
     h('header', { class: 'topbar' },
       h('div', { class: 'brand' }, h('span', { class: 'brand-mark', 'aria-hidden': 'true' }), 'Prime Radiant'), tablist, selectWrap,
-      h('div', { class: 'topbar-actions' }, slots.method, slots.export)),
+      h('div', { class: 'topbar-actions' }, slots.theme, slots.method, slots.export)),
     h('div', { class: 'page' },
       h('div', { class: 'hero' }, heroEyebrow, heroTitle, heroSub),
       slots.query, slots.map, slots.caveat,
       h('div', { class: 'content' }, main, slots.detail)),
+    footerEl(),
     slots.drawer);
 
   return {

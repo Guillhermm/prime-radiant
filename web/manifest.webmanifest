@@ -1,0 +1,14 @@
+{
+  "id": "/prime-radiant",
+  "name": "Prime Radiant",
+  "short_name": "Prime Radiant",
+  "description": "Harmonized MODIS and VIIRS fire hotspot calendar.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0c0d17",
+  "theme_color": "#0c0d17",
+  "icons": [
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

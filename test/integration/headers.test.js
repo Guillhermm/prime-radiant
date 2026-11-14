@@ -61,6 +61,27 @@ test('Permissions-Policy disables camera, microphone and geolocation', () => {
   for (const f of ['camera', 'microphone', 'geolocation']) assert.match(v, new RegExp(`${f}=\\(\\)`));
 });
 
+test('CSP allows the manifest and the service worker from self only', () => {
+  const d = csp();
+  assert.deepEqual(d['manifest-src'], ["'self'"]);
+  assert.deepEqual(d['worker-src'], ["'self'"]);
+});
+
+test('cross-origin isolation and legacy framing headers are set', () => {
+  assert.equal(header('Cross-Origin-Opener-Policy'), 'same-origin');
+  assert.equal(header('Cross-Origin-Resource-Policy'), 'same-origin');
+  assert.equal(header('X-Frame-Options'), 'DENY');
+});
+
+test('Permissions-Policy also disables motion sensors and FLoC', () => {
+  for (const f of ['payment', 'usb', 'accelerometer', 'gyroscope', 'magnetometer', 'interest-cohort']) assert.match(header('Permissions-Policy'), new RegExp(`${f}=\\(\\)`));
+});
+
+test('the service worker needs no Service-Worker-Allowed: it lives at /web/sw.js, the scope it controls', () => {
+  assert.equal(header('Service-Worker-Allowed'), undefined);
+  assert.ok(readFileSync(new URL('../../web/sw.js', import.meta.url), 'utf8').length > 0);
+});
+
 test('.vercelignore deploys only web/, core/, api/ and data/', () => {
   const lines = readFileSync(new URL('../../.vercelignore', import.meta.url), 'utf8').split('\n').filter((l) => l && !l.startsWith('#'));
   assert.equal(lines[0], '/*', 'ignore everything first');

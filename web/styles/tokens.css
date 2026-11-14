@@ -129,6 +129,13 @@
   --target-min: 2.75rem;
   --focus-width: 2px;
   --focus-offset: 2px;
+  /* Stacking scale. Leaflet's panes (z-index 200-1000) live inside .map-canvas, which isolates them. */
+  --z-map: 1;
+  --z-sticky: 10;
+  --z-sheet: 20;
+  --z-map-full: 25;
+  --z-drawer: 30;
+  --z-toast: 40;
   /* Reference only: custom properties cannot be used inside @media conditions, so the
      stylesheets must repeat these two values literally. */
   --bp-phone: 40rem;

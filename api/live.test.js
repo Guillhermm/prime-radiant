@@ -119,3 +119,10 @@ test('never logs the key', async () => {
   }
   assert.ok(!logged.join('\n').includes(KEY));
 });
+
+test('every response, success or error, carries the security headers', async () => {
+  const { SECURITY_HEADERS } = await import('./live.js');
+  for (const res of [await call(BBOX, { fetch: async () => new Response('', { status: 500 }) }), await call('x')]) {
+    for (const [k, v] of Object.entries(SECURITY_HEADERS)) assert.equal(res.headers.get(k), v, k);
+  }
+});

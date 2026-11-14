@@ -6,6 +6,7 @@ import * as queryBar from './components/query-bar.js';
 import { spanFromManifest } from './components/date-range.js';
 import { h } from './components/h.js';
 import * as legend from './components/legend.js';
+import * as themeControl from './components/theme-control.js';
 import * as exportMenu from './components/export-menu.js';
 import * as kpiStrip from './components/kpi-strip.js';
 import * as calendarGrid from './components/calendar-grid.js';
@@ -18,7 +19,14 @@ import * as anomalyLayer from './components/anomaly-layer.js';
 import * as liveView from './components/live-view.js';
 import { PREVIEW_NOTE, previewAnomaly, previewLive } from './preview-stubs.js';
 import { createDataSource, dataSourceConfig } from './data-source.js';
-import { buildResult, csvMeta } from './view-data.js';
+import { buildResult, csvMeta, isSyntheticManifest } from './view-data.js';
+import { registerSW } from './pwa.js';
+
+const offerUpdate = (apply) => {
+  const toast = h('div', { class: 'update-toast', role: 'status' }, h('span', { text: 'A new version is ready.' }),
+    h('button', { type: 'button', class: 'btn-primary', text: 'Reload', onclick: apply }));
+  document.body.append(toast);
+};
 
 // Mount slots. Each is a no-op until its owner replaces it (task in the comment). They all
 // receive the slot element and { store, slots, span, data, preview, onSelect, onClose }, and may return nothing. `data` is a
@@ -27,6 +35,7 @@ import { buildResult, csvMeta } from './view-data.js';
 const noop = () => {};
 export const MOUNTS = {
   method: noop, // the Method button is mounted by the drawer, which owns it
+  theme: (el) => themeControl.mount(el),
   export: (el, { data }) => exportMenu.mount(el, {
     getSeries: () => data.get().result?.series ?? null,
     getMeta: () => (data.get().result ? csvMeta(data.get().result) : {}),
@@ -137,7 +146,7 @@ export const start = async (root = document.getElementById('app')) => {
   qb.actions.append(slots.map.querySelector('.map-head'));
 
   const drawer = methodDrawer.mount(slots.drawer, { trigger: slots.method, manifest });
-  caveatStrip.mount(slots.caveat, { onReadMore: (btn) => drawer.open(btn) });
+  caveatStrip.mount(slots.caveat, { onReadMore: (btn) => drawer.open(btn), synthetic: isSyntheticManifest(manifest) });
   const detail = cellDetail.mount(slots.detail, { aoiCells: 0 });
 
   // The shell hides slots.empty once an area is set; the loading, error and zero states
@@ -213,4 +222,7 @@ export const start = async (root = document.getElementById('app')) => {
   return store;
 };
 
-if (typeof document !== 'undefined' && document.getElementById('app')) start();
+if (typeof document !== 'undefined' && document.getElementById('app')) {
+  start();
+  registerSW({ onUpdate: offerUpdate });
+}

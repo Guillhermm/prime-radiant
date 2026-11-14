@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { GROUP_IDS, heroModel, tabsModel, nextTabIndex, viewTitle } from './app-shell.js';
+import { FOOTER, GROUP_IDS, heroModel, tabsModel, nextTabIndex, viewTitle } from './app-shell.js';
 import { VIEWS } from '../views.js';
 
 test('disabled views are absent from the tabs', () => {
@@ -36,4 +36,12 @@ test('hero falls back to a custom area and to a prompt without an area', () => {
   const none = heroModel({ view: 'calendar', bbox: null });
   assert.equal(none.title, 'Choose an area');
   assert.match(none.subtitle, /example area/);
+});
+
+test('footer names the authors with accents, the Apache-2.0 notice and the three attributions, never "all rights reserved"', () => {
+  assert.deepEqual(FOOTER.authors, ['Guilherme Almeida Zeni', 'Kauê Melo']);
+  assert.match(FOOTER.rights, /^© 2026 .*Apache-2\.0\.$/);
+  assert.doesNotMatch(JSON.stringify(FOOTER), /all rights reserved/i);
+  assert.equal(FOOTER.attributions.length, 3);
+  assert.ok(FOOTER.attributions.some((a) => a.includes('OpenStreetMap contributors')));
 });

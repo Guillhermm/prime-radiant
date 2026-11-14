@@ -9,6 +9,7 @@ import { createStaticServer, loadSite } from '../../tools/serve.mjs';
 import { toCsv } from '../../core/index.js';
 import { createDataSource } from '../../web/src/data-source.js';
 import { buildResult, csvMeta } from '../../web/src/view-data.js';
+import { guardCsv } from '../../web/src/components/export-menu.js';
 import { parseHash } from '../../web/src/state.js';
 import { spanFromManifest } from '../../web/src/components/date-range.js';
 
@@ -110,7 +111,7 @@ test('preset, apply, calendar, cell detail, Method drawer and CSV export', { ski
     });
     const { manifest: m, tiles } = await source.load(state.bbox);
     const result = buildResult({ bbox: state.bbox, from: state.from, to: state.to, manifest: m, tiles });
-    assert.equal(actual, toCsv(result.series, csvMeta(result)));
+    assert.equal(actual, guardCsv(toCsv(result.series, csvMeta(result))));
     assert.deepEqual(page.problems, []);
   } finally { await page.close(); }
 });
@@ -187,4 +188,51 @@ test('tab switch updates the hash, back restores the previous view, disabled vie
   } finally {
     await page.close();
   }
+});
+
+test('map open, then Method drawer: the drawer paints over the Leaflet panes', { skip }, async () => {
+  const page = await open(1280);
+  try {
+    await page.until(`document.querySelector('.map-toggle')`, 'map toggle');
+    await page.click('.map-toggle');
+    await page.until(`document.querySelector('.map-canvas .leaflet-pane')`, 'Leaflet map mounted');
+    await page.click('.method-button');
+    await page.until(`document.querySelector('.drawer-panel[aria-modal="true"]')`, 'drawer open');
+    // Tiles are pointer-events: none (and hidden here, offline), so hit-testing skips them; undo that so
+    // elementFromPoint follows paint order and a tile painted over the drawer is caught (CSSOM, so the CSP allows it).
+    await page.until(`document.querySelector('.map-canvas .leaflet-tile')`, 'tiles present');
+    await page.evaluate(`document.styleSheets[0].insertRule('.leaflet-tile { pointer-events: auto !important; visibility: visible !important; }')`);
+    const topAt = (sel, xFrom) => page.evaluate(`(() => { const m = document.querySelector('.map-canvas').getBoundingClientRect(); const x = Math.max(m.x, ${xFrom}) + 40; const y = Math.min(Math.max(m.y + m.height / 2, 1), innerHeight - 1); return document.querySelector('${sel}').contains(document.elementFromPoint(x, y)); })()`);
+    assert.equal(await topAt('.drawer-panel', `document.querySelector('.drawer-panel').getBoundingClientRect().x`), true, 'the drawer paints over the map where they overlap');
+    assert.equal(await topAt('.drawer-backdrop', 0), true, 'the backdrop covers the rest of the map');
+  } finally { await page.close(); }
+});
+
+test('theme: choosing dark sets data-theme, persists across reload, system removes it', { skip }, async () => {
+  const page = await open(1280);
+  try {
+    await page.until(`document.querySelector('#theme-select')`, 'theme control');
+    assert.equal(await page.evaluate(`document.documentElement.hasAttribute('data-theme')`), false);
+    await page.evaluate(`(() => { const s = document.querySelector('#theme-select'); s.value = 'light'; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+    assert.equal(await page.evaluate(`document.documentElement.getAttribute('data-theme')`), 'light');
+    await page.goto(`${base}/web/?fixtures=1`);
+    await page.until(`document.querySelector('#theme-select')`, 'reloaded');
+    assert.equal(await page.evaluate(`document.documentElement.getAttribute('data-theme')`), 'light', 'restored by the early script');
+    assert.equal(await page.evaluate(`document.querySelector('#theme-select').value`), 'light');
+    await page.evaluate(`(() => { const s = document.querySelector('#theme-select'); s.value = 'system'; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+    assert.equal(await page.evaluate(`document.documentElement.hasAttribute('data-theme')`), false);
+  } finally { await page.close(); }
+});
+
+test('PWA: the manifest is valid and the service worker registers and activates', { skip }, async () => {
+  const page = await open(1280);
+  try {
+    const m = await (await fetch(`${base}/web/manifest.webmanifest`)).json();
+    assert.equal(m.id, '/prime-radiant');
+    assert.equal(await page.evaluate(`document.querySelector('link[rel=manifest]').href`), `${base}/web/manifest.webmanifest`);
+    await page.until(`navigator.serviceWorker.getRegistration().then((r) => r?.active?.state === 'activated')`, 'service worker activated');
+    assert.equal(await page.evaluate(`navigator.serviceWorker.getRegistration().then((r) => r.scope)`), `${base}/web/`);
+    assert.equal(await page.evaluate(`caches.keys().then((k) => k.some((n) => n.startsWith('pr-shell-')))`), true);
+    assert.equal(await fetch(`${base}/web/manifest.webmanifest`).then((r) => r.headers.get('content-type')), 'application/manifest+json');
+  } finally { await page.close(); }
 });
