@@ -173,7 +173,8 @@ test('synthetic About: a popover that explains the data, with one link to Method
     await page.evaluate(`document.querySelector('.synth-more').focus(); scrollBy(0, 200)`);
     await page.until(`!document.querySelector('#synth-about').matches(':popover-open')`, 'scroll closes the popover');
     await page.until(`document.activeElement.classList.contains('synth-about')`, 'focus back on About after scroll');
-    await page.evaluate(`scrollTo(0, 0)`);
+    // Scroll events are dispatched on the next frame; let them land before reopening the popover.
+    await page.evaluate(`scrollTo(0, 0); new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))`);
     await page.click('.synth-about');
     await page.click('.synth-more');
     await page.until(`document.querySelector('.drawer-panel[aria-modal="true"]') && !document.querySelector('#synth-about').matches(':popover-open')`, 'Method drawer from the popover link');
