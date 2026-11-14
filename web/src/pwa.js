@@ -26,3 +26,23 @@ export const registerSW = async ({ onUpdate, nav = globalThis.navigator, reload 
   });
   return reg;
 };
+
+export const IOS_HINT_KEY = 'pr-ios-hint-closed';
+
+/** iPhone, iPod or iPad (iPadOS reports a Mac platform but has touch points). */
+export const isIOS = ({ userAgent = '', platform = '', maxTouchPoints = 0 } = {}) =>
+  /iPhone|iPad|iPod/.test(userAgent) || (platform === 'MacIntel' && maxTouchPoints > 1);
+
+/**
+ * iOS has no beforeinstallprompt, so it gets a written hint instead: once, until closed, and never
+ * when the app already runs from the home screen. Storage errors count as "not closed".
+ */
+// Reading the localStorage property itself throws when site data is blocked, so it happens inside the try.
+export const showIosHint = (nav = globalThis.navigator, { standalone = false, storage } = {}) => {
+  if (!isIOS(nav) || standalone || nav?.standalone === true) return false;
+  try { return (storage ?? globalThis.localStorage)?.getItem(IOS_HINT_KEY) !== '1'; } catch { return true; }
+};
+
+export const closeIosHint = (storage) => {
+  try { (storage ?? globalThis.localStorage)?.setItem(IOS_HINT_KEY, '1'); } catch { /* shows again next visit */ }
+};

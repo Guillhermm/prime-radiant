@@ -1,6 +1,7 @@
 import { isSyntheticManifest } from '../view-data.js';
 import { h } from './h.js';
 import { icon } from './icons.js';
+import { popover, restoreFocus } from './popover.js';
 
 export const TITLE_PREFIX = 'Synthetic data: ';
 
@@ -57,7 +58,7 @@ const collapse = (band, below, done) => {
 /**
  * mount(container, {manifest, tagSlot, below, onMethod(trigger)}). Renders the closable band
  * (role note), the "Synthetic data" tag that stays in the top bar once the band is closed, and
- * the About popover (Popover API: light dismiss and Escape come from the browser) that both
+ * the About popover (see popover.js for browsers without the Popover API) that both
  * open, whose one link opens the Method drawer. `below` lists the elements that slide up when
  * the band collapses.
  */
@@ -73,34 +74,21 @@ export const mount = (container, { manifest, tagSlot, below = [], onMethod, stor
   const pop = h('div', { id: 'synth-about', class: 'synth-pop', popover: 'auto', role: 'dialog', 'aria-labelledby': 'synth-about-title' },
     h('h2', { id: 'synth-about-title', class: 'synth-pop-title', text: a.title }),
     h('p', { text: a.what }), h('p', { text: a.why }), h('p', { class: 'synth-pop-not', text: a.not }), more);
+  // Place the popover under whichever button opened it. A fixed popover would float away from
+  // its button on scroll, so scrolling closes it; on close focus returns to that button.
   let opener = about;
-  // Place the popover under whichever button opened it; the click runs before the popover opens.
-  const anchor = (btn) => () => {
-    opener = btn;
-    const r = btn.getBoundingClientRect();
-    pop.dataset.anchor = btn === tag ? 'start' : 'end';
-    pop.style.setProperty('--pop-top', `${Math.round(r.bottom + 6)}px`);
-    pop.style.setProperty('--pop-start', `${Math.round(r.left)}px`);
-  };
-  about.addEventListener('click', anchor(about));
-  tag.addEventListener('click', anchor(tag));
-  more.addEventListener('click', () => { pop.hidePopover(); onMethod?.(opener); });
-  // A fixed popover would float away from its button on scroll, so scrolling closes it. When it
-  // closes (Escape, scroll, light dismiss) focus goes back to the button unless it moved elsewhere.
-  const onScroll = () => pop.hidePopover();
-  // beforetoggle fires synchronously on open; toggle is queued and could miss an early scroll.
-  pop.addEventListener('beforetoggle', (e) => { if (e.newState === 'open') addEventListener('scroll', onScroll, { passive: true }); });
-  pop.addEventListener('toggle', (e) => {
-    if (e.newState === 'open') return;
-    removeEventListener('scroll', onScroll);
-    const at = document.activeElement;
-    if (!at || at === document.body || pop.contains(at)) opener.focus({ preventScroll: true });
+  const ctl = popover(pop, [about, tag], {
+    onOpen: (btn) => {
+      opener = btn;
+      const r = btn.getBoundingClientRect();
+      pop.dataset.anchor = btn === tag ? 'start' : 'end';
+      pop.style.setProperty('--pop-top', `${Math.round(r.bottom + 6)}px`);
+      pop.style.setProperty('--pop-start', `${Math.round(r.left)}px`);
+    },
+    onClose: (btn) => restoreFocus(pop, btn),
+    closeOnScroll: true,
   });
-  // Without the Popover API the attribute does nothing; toggling hidden keeps About useful.
-  if (typeof pop.showPopover !== 'function') {
-    pop.hidden = true;
-    [about, tag].forEach((b) => b.addEventListener('click', () => { pop.hidden = !pop.hidden; }));
-  }
+  more.addEventListener('click', () => { ctl.hide(); onMethod?.(opener); });
   const band = h('div', { class: 'synth-band', role: 'note' },
     h('span', { class: 'stripes', 'aria-hidden': 'true' }),
     h('strong', { text: m.label }),

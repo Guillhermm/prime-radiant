@@ -53,7 +53,10 @@ export const screenState = ({ hasArea, status, cells = [] }) => {
 };
 
 /** Error state copy for a data-source error (DataSourceError kinds). */
-export const errorState = (err) => {
+export const errorState = (err, { offline = false } = {}) => {
+  if (offline && err?.kind === 'network') {
+    return { kind: 'error', what: 'the data tiles', hint: 'This area is not saved for offline use. Try again when you are back online.' };
+  }
   if (err?.kind === 'invalid' || err?.kind === 'parse') {
     return { kind: 'error', what: 'the data files, they failed validation', hint: 'No numbers are shown from files that fail validation. Try again, or try another area.' };
   }

@@ -81,9 +81,12 @@ export const mount = (container, { views, activeView, onView, previewIds = [], s
   const tabEls = tabs.map((t) => h('button', {
     type: 'button', role: 'tab', id: `tab-${t.id}`, 'aria-controls': 'main-view', 'data-view': t.id, class: 'tab',
   }, h('span', { class: 'tab-ic' }, icon(VIEW_ICONS[t.id] ?? 'calendarView')),
+  h('span', { class: 'tab-dot', hidden: true, 'aria-hidden': 'true' }),
   h('span', { class: 'tab-label', text: t.label }),
-  previewIds.includes(t.id) ? h('span', { class: 'tab-tag', text: 'preview' }) : null));
-  const tablist = h('div', { class: 'tabs', role: 'tablist', 'aria-label': 'Views' }, tabEls);
+  previewIds.includes(t.id) ? h('span', { class: 'tab-tag', text: 'preview' }) : null,
+  h('span', { class: 'tab-dot-text sr-only' })));
+  // One view needs no switcher; the bar comes back when a second view is enabled.
+  const tablist = h('div', { class: 'tabs', role: 'tablist', 'aria-label': 'Views', hidden: tabEls.length < 2 }, tabEls);
   tablist.addEventListener('click', (e) => {
     const b = e.target.closest('[role=tab]');
     if (b) onView(b.dataset.view);
@@ -101,6 +104,7 @@ export const mount = (container, { views, activeView, onView, previewIds = [], s
   const slots = {
     synthetic: slot('synthetic'),
     synthTag: slot('synth-tag', 'span'),
+    offline: slot('offline', 'span'),
     method: slot('method', 'span'),
     export: slot('export', 'span'),
     themeFoot: slot('theme-foot', 'span'),
@@ -132,7 +136,7 @@ export const mount = (container, { views, activeView, onView, previewIds = [], s
     h('header', { class: 'topbar' },
       // An empty hash is the first-run view: the hashchange listener clears the area.
       h('a', { class: 'brand', href: '#', 'aria-label': 'Prime Radiant, home' }, mark('mark brand-mark'), h('span', { text: 'Prime Radiant' })), tablist,
-      h('div', { class: 'topbar-actions' }, slots.synthTag, slots.method, slots.export)),
+      h('div', { class: 'topbar-actions' }, slots.offline, slots.synthTag, slots.method, slots.export)),
     h('div', { class: 'page' },
       h('div', { class: 'main-col' }, context, slots.verdict, slots.caveat, main, footerEl(slots)),
       slots.detail),
@@ -141,6 +145,13 @@ export const mount = (container, { views, activeView, onView, previewIds = [], s
   return {
     slots,
     groups: Object.values(groups),
+    /** A small dot on a tab, with `label` for screen readers; label null removes it. */
+    setTabDot(id, label) {
+      const tab = tabEls.find((el) => el.dataset.view === id);
+      if (!tab) return;
+      tab.querySelector('.tab-dot').hidden = !label;
+      tab.querySelector('.tab-dot-text').textContent = label ? `, ${label}` : '';
+    },
     context,
     // hasArea=false shows the empty state and hides the data groups.
     update({ view, hasArea, hero = null }) {

@@ -103,6 +103,19 @@ export const launch = async (chromePath) => {
       screenshot: async () => Buffer.from((await cmd('Page.captureScreenshot', { format: 'png', fromSurface: true, clip: { x: 0, y: 0, width, height, scale: 1 } })).data, 'base64'),
       goto: (url) => cmd('Page.navigate', { url }),
       moveMouse: (x, y) => cmd('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y }),
+      // Chrome fires offline and online and fails every request while this is on.
+      setOffline: async (offline) => {
+        await cmd('Network.enable');
+        // Emulation does not reach the service worker's own fetches, so they are bypassed while offline.
+        await cmd('Network.setBypassServiceWorker', { bypass: offline });
+        await cmd('Network.emulateNetworkConditions', { offline, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+      },
+      // Runs before any page script on every navigation (feature removal, device emulation).
+      addInitScript: (source) => cmd('Page.addScriptToEvaluateOnNewDocument', { source }),
+      emulateDevice: async ({ userAgent, platform, maxTouchPoints = 0 }) => {
+        await cmd('Emulation.setUserAgentOverride', { userAgent, platform });
+        if (maxTouchPoints) await cmd('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints });
+      },
       close: async () => { listeners.delete(onEvent); await send('Target.closeTarget', { targetId }); },
     };
   };

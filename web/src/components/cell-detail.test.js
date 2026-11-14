@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { NOT_AVAILABLE, NO_MEDIAN, barStripModel, detailModel, panelEyebrow, medianLead, provenanceText, satellitesInOrbit, scrollForSheet, valueLabelY } from './cell-detail.js';
+import { NOT_AVAILABLE, NO_MEDIAN, barStripModel, detailModel, panelEyebrow, medianLead, provenanceText, satellitesInOrbit, scrollForSheet, valueLabel, valueLabelY } from './cell-detail.js';
 
 const obs = { year: 2012, month: 9, value: 1204, status: 'observed', estimated: false };
 const sept = (year, value, o = {}) => ({ year, month: 9, value, status: 'harmonized', estimated: true, ...o });
@@ -119,4 +119,29 @@ test('the panel eyebrow names synthetic data, since the sheet covers the top bar
   const cell = { year: 2005, month: 9, value: 12, status: 'observed', estimated: false };
   assert.equal(detailModel(cell, { aoiCells: 10, manifest: { dataVersion: 'synthetic-1' } }).eyebrow, 'Selected month · Synthetic data');
   assert.equal(detailModel({ ...cell, value: null }, { aoiCells: 10, manifest: { dataVersion: 'synthetic-1' } }).eyebrow, 'Selected month · Synthetic data');
+});
+
+test('regression: with the median near the top and the bar just under it, the value moves beside the bar', () => {
+  const bar = { x: 100, w: 10, y: 18 };
+  const at = valueLabel(bar, 14, 360);
+  assert.equal(at.anchor, 'start', 'left half: to the right of the bar');
+  assert.ok(at.x >= bar.x + bar.w, 'clear of the bar');
+  assert.ok(at.y - 8 >= 14 + 6, '0.375rem under the line');
+  const far = valueLabel({ ...bar, x: 300 }, 14, 360);
+  assert.equal(far.anchor, 'end');
+  assert.ok(far.x <= 300);
+  assert.deepEqual(valueLabel({ x: 100, w: 10, y: 90 }, 40, 360), { x: 105, y: 32, anchor: 'middle' }, 'room above: centered');
+  const gap = valueLabel({ x: 100, w: 10, y: 80 }, 12, 360);
+  assert.equal(gap.anchor, 'middle', 'fits between the line and a lower bar');
+  assert.ok(gap.y + 2 + 4 <= 80);
+});
+
+test('regression: the median label sits on the side away from the selected value', () => {
+  const list = [2001, 2002, 2003, 2004, 2005, 2006].map((year, i) => ({ year, value: [900, 100, 120, 110, 130, 95][i] }));
+  const early = barStripModel(list, { year: 2001 }, 115);
+  assert.equal(early.median.anchor, 'end', 'value on the left, median label on the right');
+  assert.equal(early.median.labelX, 358);
+  const late = barStripModel(list, { year: 2006 }, 115);
+  assert.equal(late.median.anchor, 'start');
+  assert.equal(late.median.labelX, 2);
 });

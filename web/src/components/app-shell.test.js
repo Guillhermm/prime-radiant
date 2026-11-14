@@ -5,7 +5,9 @@ import { ICON_NAMES } from './icons.js';
 import { VIEWS } from '../views.js';
 
 test('disabled views are absent from the tabs', () => {
-  assert.deepEqual(tabsModel(VIEWS, 'sensors').map((t) => [t.id, t.selected]), [['calendar', false], ['sensors', true]]);
+  assert.deepEqual(tabsModel(VIEWS, 'calendar').map((t) => [t.id, t.selected]), [['calendar', true]], 'Sensors waits for ?preview=1');
+  const preview = VIEWS.map((v) => ({ ...v, enabled: true }));
+  assert.deepEqual(tabsModel(preview, 'sensors').map((t) => [t.id, t.selected]), [['calendar', false], ['sensors', true], ['anomalies', false], ['live', false]]);
 });
 
 test('tab keys wrap and ignore others', () => {
@@ -54,7 +56,7 @@ test('every view has a bottom-bar icon and the footer links are https', () => {
   assert.match(FOOTER.tagline, /MODIS since 2000 and VIIRS since 2012/);
 });
 
-test('one rectangle-with-pencil icon serves the draw button and the area chip', () => {
-  assert.ok(ICON_NAMES.includes('drawArea'));
+test('draw buttons use the rectangle with a pencil, the area chip a dashed rectangle', () => {
+  assert.ok(ICON_NAMES.includes('drawArea') && ICON_NAMES.includes('areaDashed'));
   assert.ok(!ICON_NAMES.includes('area'), 'the old pentagon is gone');
 });

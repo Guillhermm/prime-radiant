@@ -7,6 +7,7 @@ Status: accepted by the team on 2026-11-14 (planning ritual). Open decisions in 
 - Two humans, two tracks, one contract. **Kaue owns data and science** (pipeline, `core/` science, data hosting, live ingestion). **Guilherme owns the web app** (shell, inputs, views, the Vercel function). The axis can be swapped wholesale (decision H1); nothing else depends on who is who.
 - Task ID: `M{milestone}-{K|G}{n}`. K = Kaue, G = Guilherme. Every deliverable task has exactly one owner.
 - "Done" for any task: code + tests in the same commit, `node --test` green, docs that describe it true, reviewed by the other human (or the dev master) before merge.
+- ✅ marks a task whose deliverable is built and tested (checked 2026-11-14). M2-G1 and M3-G1 run on core stubs until M2-K1 and M3-K3 land. Not marked: M0-G3 (H5 still open), M1-G11 (no Sensors step until M1-K10), M1-G12 (production serves synthetic data, not real).
 - Size points used for balancing: S = 1, M = 2, L = 3.
 - Gates are not tasks of one person; they are checkpoints a milestone cannot pass without. Each gate names who triggers it.
 
@@ -92,13 +93,13 @@ Gate rules:
 - Tests: none (no code). Docs: `docs/data.md`.
 - Files: `docs/data.md`, `.gitignore`.
 
-**M0-K2 Contract: schema, fixtures, contract test** · M · depends: M0-G1
+✅ **M0-K2 Contract: schema, fixtures, contract test** · M · depends: M0-G1
 - Deliverable: `core/schema.js` (validators for manifest, tile, Series, CalendarCell, returning a list of errors), `core/grid.js` (cell id, center, tile id, edge rule: a point on a cell edge belongs to the cell to its east/north; lon 180 maps to -180), `fixtures/manifest.json`, three tiles (one crossing the antimeridian neighbor, one with an empty month, one coarse), `fixtures/firms-modis-50.csv`, `fixtures/firms-viirs-50.csv` hand-built with known answers, `fixtures/README.md` listing the expected totals.
 - Acceptance: every fixture validates; an invalid tile (mismatched column lengths, month out of range, negative count) fails with a named error; grid known answers pass (cell edge, +/-180, poles clamp).
 - Tests: unit `core/schema.test.js`, `core/grid.test.js`; integration `test/integration/contract.test.js`.
 - Files: `core/schema.js`, `core/grid.js`, `fixtures/*`, `test/integration/contract.test.js`.
 
-**M0-K3 Core API stubs** · S · depends: M0-K2
+✅ **M0-K3 Core API stubs** · S · depends: M0-K2
 - Deliverable: `core/index.js` exporting the M1 API with real signatures. `seriesForAoi` already real on fixtures if cheap, else stub; `harmonize`, `baseline`, `toCalendar`, `kpis`, `toCsv` return fixture-shaped values tagged `method.id:"stub"`. JSDoc on every export is the interface doc.
 - Acceptance: every stub output passes `core/schema.js`; Guilherme can render every M1 view from `core/index.js` + fixtures without waiting for real science.
 - Tests: unit `core/index.test.js` (shape of each export).
@@ -110,12 +111,12 @@ Gate rules:
 - Tests: unit tests on the prototype parsers carry into M1-K1.
 - Files: `pipeline/read.js`, `pipeline/bin.js`, `docs/data.md`.
 
-**M0-K5 Method note draft and early science questions** · S · depends: none
+✅ **M0-K5 Method note draft and early science questions** · S · depends: none
 - Deliverable: `docs/method.md` v0: unit (fire-cell-days, type=0, 0.1 deg assumption), dedupe rules, era definitions, R definition, fallback rule, baseline rule, caveat list. Open questions sent to the Second Foundation now so answers arrive before M1-K6: parent region definition for the fallback (default: enclosing 10 x 10 deg tile, then continent box), threshold 129 MODIS fire-cell-days, physicist on NOAA-20 after S-NPP, MODIS confidence cutoff (default: no confidence filter, stated).
 - Acceptance: every assumption labeled as assumption; each open question has an owner in the Second Foundation and a default.
 - Tests: none. Files: `docs/method.md`.
 
-**M0-K6 Vercel project, domain and headers** · S · depends: M0-G1
+✅ **M0-K6 Vercel project, domain and headers** · S · depends: M0-G1
 - Deliverable: repository under Kaue's personal GitHub (H6: Vercel Hobby cannot connect an org-owned repo), Guilherme as collaborator; Vercel Hobby project serving `web/` with a placeholder page; `vercel.json` with CSP (`default-src 'self'`, `connect-src` including the tile host and map tile host once chosen), HSTS, `X-Content-Type-Options`, `Referrer-Policy`, `frame-ancestors 'none'`; domain bought only after M1 deploys on `*.vercel.app` (H7).
 - Acceptance: placeholder reachable on the preview URL; headers verified with `curl -I` and recorded in `docs/deploy.md`.
 - Tests: `test/integration/headers.test.js` asserts `vercel.json` contains each required header.
@@ -123,13 +124,13 @@ Gate rules:
 
 ### Guilherme
 
-**M0-G1 Repository bootstrap and CI** · S · depends: none
+✅ **M0-G1 Repository bootstrap and CI** · S · depends: none
 - Deliverable: `package.json` (`"type":"module"`, `test` = `node --test`, no dependencies), `.gitignore` (see section 1), repo `CLAUDE.md` pointing to the team contract and naming the layout, `README.md` skeleton (what it is, how to run, data citation placeholder), `.github/workflows/ci.yml` running `node --test` on push and PR, a trivial passing test.
 - Acceptance: CI green on the first commit; `node --test` runs locally with zero installs.
 - Tests: one smoke unit test.
 - Files: `package.json`, `.gitignore`, `CLAUDE.md`, `README.md`, `.github/workflows/ci.yml`.
 
-**M0-G2 Web contract: QueryState, URL codec, VIEWS** · M · depends: M0-G1
+✅ **M0-G2 Web contract: QueryState, URL codec, VIEWS** · M · depends: M0-G1
 - Deliverable: `web/src/state.js` (parse/serialize hash, validate bbox lat in [-90,90], lon in [-180,180], west<east, south<north, area cap H4, dates within manifest span; invalid input falls back to defaults with a reported reason), a tiny subscribe/notify store, `web/src/views.js` (`VIEWS` list; disabled views not rendered).
 - Acceptance: round trip parse(serialize(s)) == s; every invalid case has a test; unknown keys ignored.
 - Tests: unit `web/src/state.test.js`, `web/src/views.test.js`.
@@ -141,13 +142,13 @@ Gate rules:
 - Tests: none beyond the manual check; the fetch path is tested in M1-G5.
 - Files: `docs/deploy.md`.
 
-**M0-G4 Map spike** · S · depends: M0-G1
+✅ **M0-G4 Map spike** · S · depends: M0-G1
 - Deliverable: decision H8 between vendored Leaflet 1.9.x + OpenStreetMap tiles (check the OSM tile usage policy and Leaflet advisories first) and a zero-dependency SVG world outline (Natural Earth 1:110m, public domain) with pan/zoom and custom rectangle draw. Prototype the rectangle draw on the chosen base.
 - Acceptance: decision recorded with the policy and advisory check results (scanned, not assumed); prototype draws a bbox and emits `[w,s,e,n]`.
 - Tests: unit on the pixel-to-lonlat conversion if SVG; none if Leaflet.
 - Files: `docs/ux.md`, `web/vendor/` (if Leaflet).
 
-**M0-G5 UX spec and designer gate D0** · S · depends: none
+✅ **M0-G5 UX spec and designer gate D0** · S · depends: none
 - Deliverable: `docs/ux.md`: IA (tabs Calendar | Sensors | Anomalies | Live, Query bar, caveat strip, Method drawer, Export), desktop and phone wireframes (ASCII or SVG), color tokens (viridis 7 log bins, zero = lowest bin labeled 0, no data = gray hatch, PuOr 11 diverging, Okabe-Ito series), states (empty, zero, loading, error, live unavailable), a11y checklist (WCAG 2.2 AA). Run `foundation:designer` review.
 - Acceptance: D0 passed; C and D slots visible in wireframes; contrast of every token pair computed.
 - Tests: none. Files: `docs/ux.md`, `web/styles/tokens.css`.
@@ -239,63 +240,63 @@ Sync point **S0 (contract freeze)**: both review schema, fixtures, stubs, QueryS
 
 ### Guilherme (web app, deploy)
 
-**M1-G1 App shell, tabs, layout, themes** · M · depends: M0-G2, M0-G5
+✅ **M1-G1 App shell, tabs, layout, themes** · M · depends: M0-G2, M0-G5
 - Deliverable: `web/index.html`, `app-shell.js` (top bar: name, tabs from VIEWS, Method, Export), Query bar slot, caveat strip slot, main view slot; desktop and phone layouts (view select on phone); light + dark from tokens; `rem` everywhere; reduced motion respected. DOM built with `textContent`, no `innerHTML`.
 - Acceptance: tab switch updates hash and back button works; disabled views absent; layout holds at 400px and 1440px.
 - Tests: unit on any pure layout helpers; e2e smoke covers it (M1-G12).
 - Files: `web/index.html`, `web/styles/app.css`, `web/src/components/app-shell.js`, `web/src/main.js`.
 
-**M1-G2 AOI form and presets** · M · depends: M1-G1
+✅ **M1-G2 AOI form and presets** · M · depends: M1-G1
 - Deliverable: `aoi-form.js`: lat/lon inputs (full keyboard path), inline validation messages from `state.js`, area cap message, presets (demo AOIs from H3), explicit Apply on phone.
 - Acceptance: every invalid input shows a specific message bound with `aria-describedby`; Apply disabled while invalid; presets set hash.
 - Tests: unit on input-to-bbox parsing; integration on fixtures.
 - Files: `web/src/components/aoi-form.js`, `query-bar.js`.
 
-**M1-G3 Map picker** · M · depends: M0-G4, M1-G2
+✅ **M1-G3 Map picker** · M · depends: M0-G4, M1-G2
 - Deliverable: `map-picker.js` on the base chosen in H8: draw/redraw one rectangle, sync both ways with the form, collapsible on desktop, full screen from the Area sheet on phone, attribution shown.
 - Acceptance: drawn bbox equals form values to 0.1 deg; keyboard users can skip the map entirely; tile host in CSP.
 - Tests: unit on projection math (SVG) or on the bbox snapping helper.
 - Files: `web/src/components/map-picker.js`, `vercel.json` (CSP).
 
-**M1-G4 Date range picker** · S · depends: M1-G1
+✅ **M1-G4 Date range picker** · S · depends: M1-G1
 - Deliverable: `date-range.js`: from/to month inputs bounded to manifest span, presets All / last 10 years / this year.
 - Acceptance: from > to rejected; presets clamp to coverage.
 - Tests: unit.
 - Files: `web/src/components/date-range.js`.
 
-**M1-G5 Data source** · M · depends: M0-K3, M0-G3
+✅ **M1-G5 Data source** · M · depends: M0-K3, M0-G3
 - Deliverable: `data-source.js`: load manifest, `tilesForBbox`, fetch with in-memory cache and concurrency limit, fixture mode (`?fixtures=1` or test flag), abort on new query, typed errors (network, schema-invalid, out-of-coverage); validates every tile with `core/schema.js` before use.
 - Acceptance: invalid tile surfaces an error state, never a wrong number; switching AOI cancels stale requests; first result under 3 s on the demo AOI on a cold cache (measured, recorded).
 - Tests: unit with injected `fetch`; integration against fixtures served from disk.
 - Files: `web/src/data-source.js`.
 
-**M1-G6 Calendar grid and legend (A)** · L · depends: M1-G1, M0-K3 (stubs), M0-G5
+✅ **M1-G6 Calendar grid and legend (A)** · L · depends: M1-G1, M0-K3 (stubs), M0-G5
 - Deliverable: `calendar-grid.js`: year x month grid, `role="grid"` with roving tabindex, arrow/Home/End navigation, `aria-label` per cell (month, year, value, status, estimated), sticky year column, viridis 7 log bins, zero distinct label, no-data hatch, estimated corner mark, partial month mark; `legend.js` with bins and the unit; table view toggle.
 - Acceptance: no-data never painted as zero; all keys work; 1.6rem cells on phone; contrast tokens from D0.
 - Tests: unit on binning (`bins.test.js`) and cell label builder; integration on fixture calendar.
 - Files: `web/src/components/calendar-grid.js`, `legend.js`, `web/src/bins.js`.
 - Slice before starting: (a) static render + bins + legend, (b) keyboard + aria, (c) phone layout.
 
-**M1-G7 Cell detail** · M · depends: M1-G6
+✅ **M1-G7 Cell detail** · M · depends: M1-G6
 - Deliverable: `cell-detail.js`: side panel on desktop, bottom sheet on phone: value, status, source sensor, R applied if estimated, median and years used, caveats relevant to that cell.
 - Acceptance: opens on Enter/tap, closes on Escape, focus returns to the cell; all content via `textContent`.
 - Tests: unit on the detail view-model; e2e covers open/close.
 - Files: `web/src/components/cell-detail.js`.
 
-**M1-G8 KPI strip** · S · depends: M1-G1, M0-K3
+✅ **M1-G8 KPI strip** · S · depends: M1-G1, M0-K3
 - Deliverable: `kpi-strip.js` from `core.kpis`: current month vs median (number and years used), total in range, sensor era; swipe cards on phone.
 - Status: replaced in design 3 by `verdict-row.js` (latest month vs median, peak month, busiest year, total in range).
 - Acceptance: median shown with n years; null shows "not enough history", not 0.
 - Tests: unit on formatting.
 - Files: `web/src/components/kpi-strip.js`.
 
-**M1-G9 Caveats, Method drawer, states** · M · depends: M1-G1, M1-K9 (catalog; stubs until then)
+✅ **M1-G9 Caveats, Method drawer, states** · M · depends: M1-G1, M1-K9 (catalog; stubs until then)
 - Deliverable: `caveat-strip.js` (persistent, non-dismissible), `method-drawer.js` (focus-trapped, renders `docs/method.md` content via `core/caveats.js` texts and citation from manifest), `states.js` (empty with example AOI chips, zero detections, skeleton with `aria-busy`, inline error with retry).
 - Acceptance: caveats visible without a click on every view; "preliminary" label shown while the gate flag is set; drawer traps and restores focus.
 - Tests: unit on focus-trap helper; e2e covers drawer.
 - Files: `web/src/components/caveat-strip.js`, `method-drawer.js`, `states.js`.
 
-**M1-G10 Data table and export menu** · S · depends: M1-G1, M0-K3
+✅ **M1-G10 Data table and export menu** · S · depends: M1-G1, M0-K3
 - Deliverable: `data-table.js` (generic accessible table used by the calendar table view and the sensors view), `export-menu.js` (calls `core.toCsv`, downloads via Blob with a filename named after the selected range).
 - Acceptance: table headers scoped; export file equals `core.toCsv` output byte for byte.
 - Tests: unit on filename and table model.
@@ -360,7 +361,7 @@ Sync points:
 
 ### Guilherme
 
-**M2-G1 Anomaly layer in the grid** · M · depends: M2-K1 (stub first), M1-G6
+✅ **M2-G1 Anomaly layer in the grid** · M · depends: M2-K1 (stub first), M1-G6
 - Deliverable: `anomaly-layer.js`: layer toggle "Counts | vs median" (QueryState `layer`), PuOr 11 diverging centered on median, flag marker independent of color, legend for the diverging ramp, cell labels include percentile rank.
 - Acceptance: colorblind-safe check; flag readable without color; no-data stays hatch.
 - Tests: unit on diverging bin mapping and labels.
@@ -406,13 +407,13 @@ Sync **S4**: anomaly stub replaced by real core; V2, D2, Q2; deploy.
 
 ### Guilherme
 
-**M3-G1 Live view** · M · depends: M3-K3 (stub first), M1-G5
+✅ **M3-G1 Live view** · M · depends: M3-K3 (stub first), M1-G5
 - Deliverable: `live-view.js`: current season line vs historical band, current month overlay in the calendar with a "provisional" badge, `fetched_at` shown, "Live unavailable" state when live data is missing or stale (default: older than 48 hours).
 - Acceptance: never mixed into harmonized totals; stale and missing both degrade cleanly.
 - Tests: unit on staleness rule and band path; integration on fixture live tiles.
 - Files: `web/src/components/live-view.js`, `data-source.js`.
 
-**M3-G2 Keyed proxy api/live (cuttable)** · M · depends: M3-G1, H10
+✅ **M3-G2 Keyed proxy api/live (cuttable)** · M · depends: M3-G1, H10
 - Deliverable: `api/live.js` Vercel function: `MAP_KEY` from env (set in the Vercel dashboard by the account owner, Kaue), bbox validated and snapped to 0.5 deg, days 1-2, whitelisted sources, `Cache-Control: s-maxage=900, stale-while-revalidate`, `fetch` injected for tests, errors never echo the upstream URL (it contains the key); WAF rate-limit rule if Hobby allows it (unverified).
 - Acceptance: key never in response, logs or client bundle (grep of built site and a response capture); invalid bbox 400.
 - Tests: unit with stubbed fetch, including an upstream error containing the key.

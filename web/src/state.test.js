@@ -1,13 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseHash, serializeHash, defaultState, createStore, validateBbox } from './state.js';
+import { VIEWS } from './views.js';
+
+// Sensors is enabled only with ?preview=1; these tests use it as a non-default view.
+const views = VIEWS.map((v) => ({ ...v, enabled: true }));
 
 const span = { from: '2012-01', to: '2025-12' };
 const full = { bbox: [-60.5, -15, -50, -5.25], from: '2020-01', to: '2023-12', view: 'sensors', layer: 'anomaly' };
 
 test('round trip parse(serialize(s)) equals s', () => {
   for (const [s, sp] of [[full, span], [defaultState(), null], [{ ...full, bbox: null }, span], [defaultState({ span }), span]]) {
-    const { state, errors } = parseHash(serializeHash(s), { span: sp });
+    const { state, errors } = parseHash(serializeHash(s), { span: sp, views });
     assert.deepEqual(errors, []);
     assert.deepEqual(state, s);
   }
@@ -26,7 +30,7 @@ test('empty and missing hash give defaults without errors', () => {
 });
 
 test('unknown keys are ignored', () => {
-  const r = parseHash('#foo=1&view=sensors');
+  const r = parseHash('#foo=1&view=sensors', { views });
   assert.equal(r.state.view, 'sensors');
   assert.deepEqual(r.errors, []);
 });
@@ -80,7 +84,7 @@ test('disabled, unknown view and unknown layer fall back', () => {
 });
 
 test('one bad field does not discard the others', () => {
-  const r = parseHash('#aoi=bad&view=sensors&layer=anomaly');
+  const r = parseHash('#aoi=bad&view=sensors&layer=anomaly', { views });
   assert.equal(r.state.view, 'sensors');
   assert.equal(r.state.layer, 'anomaly');
 });
@@ -109,4 +113,8 @@ test('store treats equal bbox arrays as no change', () => {
   store.set({ bbox: [0, 0, 1, 1] });
   store.set({ bbox: [0, 0, 2, 2] });
   assert.equal(n, 1);
+});
+
+test('without ?preview=1 a link to the Sensors view falls back to the calendar', () => {
+  assert.equal(parseHash('#view=sensors').state.view, 'calendar');
 });

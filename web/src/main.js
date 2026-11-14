@@ -18,12 +18,13 @@ import * as methodDrawer from './components/method-drawer.js';
 import * as states from './components/states.js';
 import * as anomalyLayer from './components/anomaly-layer.js';
 import * as liveView from './components/live-view.js';
+import * as offlineChip from './components/offline-chip.js';
 import * as syntheticBand from './components/synthetic-band.js';
 import { icon } from './components/icons.js';
 import { PREVIEW_NOTE, previewAnomaly, previewLive } from './preview-stubs.js';
 import { createDataSource, dataSourceConfig } from './data-source.js';
 import { buildResult, csvMeta, isSyntheticManifest } from './view-data.js';
-import { registerSW } from './pwa.js';
+import { closeIosHint, isIOS, registerSW, showIosHint } from './pwa.js';
 
 const offerUpdate = (apply) => {
   const toast = h('div', { class: 'update-toast', role: 'status' }, h('span', { text: 'A new version is ready.' }),
@@ -146,16 +147,36 @@ export const MOUNTS = {
     mountResults(data, (r) => anomalyDeps(r, { onSelect, onClose }), anomalyLayer, grid);
     legend.mount(key, { layer: 'anomaly' });
   },
-  live: (el, { data, preview }) => {
+  live: (el, ctx) => {
+    const { data, preview } = ctx;
     if (!preview) return;
     const chart = h('div');
     el.replaceChildren(h('section', { class: 'card' }, previewNote(), chart));
-    mountResults(data, (r) => ({ input: previewLive(r.cells) }), liveView, chart);
+    mountResults(data, (r) => {
+      const input = previewLive(r.cells);
+      ctx.setTabDot?.('live', states.liveStatus(input.fetched_at).available ? `updated in the last ${states.LIVE_STALE_HOURS} hours` : null);
+      return { input };
+    }, liveView, chart);
   },
 };
 
+// iOS Safari has no beforeinstallprompt. The footer always says how to install; a card says it
+// once, after the first area loads, above the bottom tab bar.
+const IOS_HOW = 'Install: tap Share, then Add to Home Screen.';
+const iosCard = () => {
+  const close = h('button', { type: 'button', class: 'ios-hint-close', 'aria-label': 'Close the install tip' }, icon('close'));
+  const el = h('aside', { class: 'ios-card', 'aria-label': 'Install tip' }, icon('share'), h('span', { text: IOS_HOW }), close);
+  close.addEventListener('click', () => {
+    el.remove();
+    document.getElementById('main-view')?.focus({ preventScroll: true });
+  });
+  return el;
+};
+
 const mountInstall = (slot) => {
-  if (globalThis.matchMedia?.('(display-mode: standalone)').matches) return;
+  const standalone = Boolean(globalThis.matchMedia?.('(display-mode: standalone)').matches);
+  if (isIOS(navigator) && !standalone && navigator.standalone !== true) { slot.replaceChildren(h('p', { class: 'ios-hint' }, icon('share'), h('span', { text: IOS_HOW }))); return; }
+  if (standalone) return;
   let prompt = null;
   const btn = h('button', { type: 'button', class: 'btn install-button', hidden: true }, icon('install'), 'Install app');
   btn.addEventListener('click', async () => {
@@ -173,12 +194,14 @@ const mountInstall = (slot) => {
 export const start = async (root = document.getElementById('app')) => {
   const params = new URLSearchParams(location.search);
   const fixtures = params.get('fixtures') === '1';
-  // ?preview=1 turns on the Anomalies and Live views, fed by placeholder numbers (preview-stubs.js).
+  // ?preview=1 turns on Sensors (empty until M1-K10) and the Anomalies and Live views, fed by
+  // placeholder numbers (preview-stubs.js).
   const preview = params.get('preview') === '1';
-  const views = preview ? VIEWS.map((v) => (v.id === 'anomalies' || v.id === 'live' ? { ...v, enabled: true } : v)) : VIEWS;
+  const views = preview ? VIEWS.map((v) => ({ ...v, enabled: true })) : VIEWS;
   const presets = presetsFor({ fixtures });
   const source = createDataSource(dataSourceConfig({ fixtures }));
-  const manifest = await source.manifest().catch(() => null);
+  let manifestError = null;
+  const manifest = await source.manifest().catch((e) => { manifestError = e; return null; });
   const synthetic = isSyntheticManifest(manifest);
   const span = manifest ? spanFromManifest(manifest) : null;
   const { state, errors } = parseHash(location.hash, { span, views });
@@ -215,6 +238,16 @@ export const start = async (root = document.getElementById('app')) => {
     trigger: slots.method, manifest, beforeOpen: () => { map.ctl?.closeFull(); qb.close(); }, themeMount: (el) => themeControl.mount(el),
   });
   toast.prepare();
+  // The service worker serves cached tiles offline, so a fetch can succeed with the network down:
+  // the browser's online flag and network failures both drive the chip.
+  const offline = offlineChip.mount(slots.offline);
+  const paintOffline = () => {
+    const d = data.get();
+    const failed = (d.status === 'error' && d.error?.kind === 'network') || (manifest === null && manifestError?.kind === 'network');
+    offline.set({ failed, hasData: d.status === 'ready' || (d.status === 'idle' && manifest !== null) });
+  };
+  data.subscribe(paintOffline);
+  paintOffline();
   syntheticBand.mount(slots.synthetic, {
     manifest, tagSlot: slots.synthTag, below: [...document.querySelectorAll('.topbar, .page')], onMethod: (btn) => drawer.open(btn),
   });
@@ -227,7 +260,7 @@ export const start = async (root = document.getElementById('app')) => {
     isSynthetic: () => synthetic,
   });
 
-  const ctx = { store, slots, span, data, preview, views, grids: [], verdict: null };
+  const ctx = { store, slots, span, data, preview, views, grids: [], verdict: null, setTabDot: shell.setTabDot };
   const grid = () => ctx.grids[0]?.();
   const allGrids = () => ctx.grids.map((g) => g()).filter(Boolean);
   const detail = cellDetail.mount(slots.detail, {
@@ -276,7 +309,7 @@ export const start = async (root = document.getElementById('app')) => {
     slots.verdict.hidden = !screen.results;
     slots.caveat.hidden = store.get().bbox === null;
     if (!screen.results) shell.groups.forEach((g) => { g.hidden = true; });
-    const next = screen.kind === 'error' ? states.errorState(d.error) : screen.kind && { kind: screen.kind };
+    const next = screen.kind === 'error' ? states.errorState(d.error, { offline: offline.state().online === false }) : screen.kind && { kind: screen.kind };
     const key = JSON.stringify(next);
     if (key === shownState) return;
     shownState = key;
@@ -294,6 +327,16 @@ export const start = async (root = document.getElementById('app')) => {
 
   for (const [name, mountFn] of Object.entries(MOUNTS)) mountFn(slots[name], ctx);
 
+  const standalone = Boolean(globalThis.matchMedia?.('(display-mode: standalone)').matches);
+  let iosShown = false;
+  const offerIosCard = ({ status: st }) => {
+    if (iosShown || st !== 'ready' || !store.get().bbox || !showIosHint(navigator, { standalone })) return;
+    iosShown = true;
+    closeIosHint(); // shown once: the key is written as it appears
+    document.body.append(iosCard());
+  };
+  data.subscribe(offerIosCard);
+
   let seq = 0;
   const run = async ({ bbox, from, to }) => {
     const mine = ++seq;
@@ -308,6 +351,9 @@ export const start = async (root = document.getElementById('app')) => {
       data.set({ status: 'error', error: err });
     }
   };
+
+  window.addEventListener('online', () => { if (data.get().status === 'error') run(store.get()); });
+  window.addEventListener('offline', () => { shownState = null; paintState(); });
 
   const render = (s) => {
     shell.update({ view: s.view, hasArea: s.bbox !== null, hero: appShell.heroModel(s, { presets, span }) });

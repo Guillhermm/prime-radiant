@@ -4,6 +4,7 @@ import { h } from './h.js';
 import { icon } from './icons.js';
 import { bboxText } from './states.js';
 import { trapTab } from './focus-trap.js';
+import * as shareMenu from './share-menu.js';
 import * as aoiForm from './aoi-form.js';
 import * as dateRange from './date-range.js';
 
@@ -49,7 +50,7 @@ export const layerChoices = (views) => (isEnabledView('anomalies', views)
 
 export const mount = (container, {
   store, span = null, maxAreaDeg2 = Infinity, now, presets, mapSlot = null,
-  goTo = (patch) => store.set(patch), onAoiInput = () => {}, onDrawMap = null, onMapToggle = null,
+  goTo = (patch) => store.set(patch), onAoiInput = () => {}, onDrawMap = null, onMapToggle = null, copy,
 } = {}) => {
   let aoi = { valid: false };
   let dates = { valid: false };
@@ -89,7 +90,7 @@ export const mount = (container, {
     else { form.removeAttribute('role'); form.removeAttribute('aria-modal'); }
   };
   const chip = (cls, ic) => h('button', { type: 'button', class: `chip summary-chip ${cls}`, 'aria-haspopup': 'dialog', 'aria-expanded': 'false' }, icon(ic));
-  const areaChip = chip('area-chip', 'drawArea');
+  const areaChip = chip('area-chip', 'areaDashed');
   const rangeChip = chip('range-chip', 'calendar');
   const setExpanded = (on) => [areaChip, rangeChip].forEach((c) => c.setAttribute('aria-expanded', String(on && c === opener)));
   const openSheet = (from, focusEl) => {
@@ -108,12 +109,15 @@ export const mount = (container, {
     setExpanded(false);
     opener?.focus();
   };
-  const summary = h('div', { class: 'query-summary chips' }, areaChip, rangeChip);
+  const share = shareMenu.create({ getBbox: () => store.get().bbox, ...(copy && { copy }) });
+  // The share button rides on the area chip; the pair wraps as one unit.
+  const summary = h('div', { class: 'query-summary chips' }, h('span', { class: 'chip-split' }, areaChip, share.button), share.menu, rangeChip);
   const paintSummary = (st) => {
     const m = chipModel(st, span);
-    areaChip.replaceChildren(icon('drawArea'), h('span', { class: 'chip-text mono', text: m.area }), icon('pencil', 'chip-edit'));
+    areaChip.replaceChildren(icon('areaDashed'), h('span', { class: 'chip-text mono', text: m.area }), icon('pencil', 'chip-edit'));
     rangeChip.replaceChildren(icon('calendar'), h('span', { class: 'chip-text', text: m.period }), icon('chevron', 'chip-edit'));
     areaChip.setAttribute('aria-label', m.areaLabel);
+    share.update();
     rangeChip.setAttribute('aria-label', m.periodLabel);
   };
   paintSummary(store.get());

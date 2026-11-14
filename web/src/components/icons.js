@@ -14,11 +14,15 @@ const ICONS = {
   // A drawn polygon with its vertices: reads as "select an area" even at 1rem, where a dashed box looked like a broken image.
   crosshair: [['circle', { cx: 12, cy: 12, r: 6.5 }], ['circle', { cx: 12, cy: 12, r: 1.25, fill: 'currentColor', stroke: 'none' }], ['path', { d: 'M12 2v4M12 18v4M2 12h4M18 12h4' }]],
   pencil: [['path', { d: 'M14 5l5 5L9 20H4v-5z' }]],
+  // A selected area: dashed rectangle. Round caps add a unit to each dash, so 2 on 4 reads as 4 on 2.
+  areaDashed: [['rect', { x: 3, y: 5, width: 18, height: 14, rx: 2, 'stroke-dasharray': '2 4' }]],
   // Rounded rectangle open at the lower right, where a pencil crosses the corner.
   drawArea: [['path', { d: 'M10 16H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v3' }], ['path', { d: 'M20.4 10.9l2.2 2.2-7 7-3.6 1.4 1.4-3.6z' }], ['path', { d: 'M13.4 17.9l2.2 2.2' }]],
   chevron: [['path', { d: 'M6 9l6 6 6-6' }]],
   warning: [['path', { d: 'M12 3l9.5 17h-19z' }], ['path', { d: 'M12 10v4M12 17v.5' }]],
   arrow: [['path', { d: 'M5 12h14M13 6l6 6-6 6' }]],
+  cloudOff: [['path', { d: 'M8 19h9a4 4 0 0 0 1.6-7.7M15.9 7.6A6 6 0 0 0 6.1 10 4.5 4.5 0 0 0 6 19' }], ['path', { d: 'M3 3l18 18' }]],
+  share: [['path', { d: 'M12 3v12M8 7l4-4 4 4M8 11H6v9h12v-9h-2' }]],
   link: [['path', { d: 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1' }]],
   table: [['rect', { x: 3.5, y: 4.5, width: 17, height: 15, rx: 2 }], ['path', { d: 'M3.5 9.5h17M3.5 14.5h17M9.5 9.5v10' }]],
   calendarView: [['rect', { x: 3.5, y: 3.5, width: 7, height: 7, rx: 1.5 }], ['rect', { x: 13.5, y: 3.5, width: 7, height: 7, rx: 1.5 }], ['rect', { x: 3.5, y: 13.5, width: 7, height: 7, rx: 1.5 }], ['rect', { x: 13.5, y: 13.5, width: 7, height: 7, rx: 1.5 }]],

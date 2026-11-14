@@ -73,3 +73,41 @@ test('the first install claiming the page does not reload it', async () => {
   nav.serviceWorker.dispatchEvent(new Event('controllerchange'));
   assert.equal(n, 0);
 });
+
+test('iOS install hint: iPhone and iPad only, not standalone, until closed', async () => {
+  const { isIOS, showIosHint, closeIosHint, IOS_HINT_KEY } = await import('./pwa.js');
+  const iphone = { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1', platform: 'iPhone', maxTouchPoints: 5 };
+  const ipad = { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15', platform: 'MacIntel', maxTouchPoints: 5 };
+  const mac = { ...ipad, maxTouchPoints: 0 };
+  const android = { userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) Chrome/130.0 Mobile Safari/537.36', platform: 'Linux armv8l', maxTouchPoints: 5 };
+  assert.equal(isIOS(iphone), true);
+  assert.equal(isIOS(ipad), true, 'iPadOS reports a Mac platform with touch');
+  assert.equal(isIOS(mac), false);
+  assert.equal(isIOS(android), false);
+  const store = new Map();
+  const storage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
+  assert.equal(showIosHint(iphone, { storage }), true);
+  assert.equal(showIosHint(iphone, { storage, standalone: true }), false, 'display-mode standalone');
+  assert.equal(showIosHint({ ...iphone, standalone: true }, { storage }), false, 'navigator.standalone on iOS');
+  assert.equal(showIosHint(android, { storage }), false);
+  closeIosHint(storage);
+  assert.equal(store.get(IOS_HINT_KEY), '1');
+  assert.equal(showIosHint(iphone, { storage }), false, 'once closed, never again');
+  const broken = { getItem: () => { throw new Error('blocked'); }, setItem: () => { throw new Error('blocked'); } };
+  assert.equal(showIosHint(iphone, { storage: broken }), true);
+  assert.doesNotThrow(() => closeIosHint(broken));
+});
+
+test('iOS install hint survives a localStorage getter that throws', async () => {
+  const { showIosHint, closeIosHint } = await import('./pwa.js');
+  const iphone = { userAgent: 'iPhone', platform: 'iPhone', maxTouchPoints: 5 };
+  const had = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, get: () => { throw new Error('SecurityError'); } });
+  try {
+    assert.equal(showIosHint(iphone), true);
+    assert.equal(showIosHint({ userAgent: 'Android', platform: 'Linux', maxTouchPoints: 5 }), false);
+    assert.doesNotThrow(() => closeIosHint());
+  } finally {
+    if (had) Object.defineProperty(globalThis, 'localStorage', had); else delete globalThis.localStorage;
+  }
+});

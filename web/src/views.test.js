@@ -6,8 +6,8 @@ test('lists all four views in order', () => {
   assert.deepEqual(VIEWS.map((v) => v.id), ['calendar', 'sensors', 'anomalies', 'live']);
 });
 
-test('only calendar and sensors are enabled', () => {
-  assert.deepEqual(enabledViews().map((v) => v.id), ['calendar', 'sensors']);
+test('only calendar is enabled until the other views have data', () => {
+  assert.deepEqual(enabledViews().map((v) => v.id), ['calendar']);
 });
 
 test('isEnabledView rejects disabled and unknown ids', () => {

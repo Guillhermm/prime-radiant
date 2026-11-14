@@ -55,7 +55,10 @@ export const barStripModel = (list, cell, median) => {
     .map((b) => ({ year: b.year, x: b.x + b.w / 2 }));
   const med = typeof median === 'number' ? { value: median, y: y(median) } : null;
   const sel = bars.find((b) => b.selected && b.value !== null);
-  return { width: W, height: H, bars, ticks, median: med, valueY: sel ? valueLabelY(sel.y, med?.y ?? null) : null };
+  const value = sel ? valueLabel(sel, med?.y ?? null, W) : null;
+  // The median's own label goes to the side away from the selected value, so the two never overlap.
+  if (med) Object.assign(med, value && value.x < W / 2 ? { labelX: W - 2, anchor: 'end' } : { labelX: 2, anchor: 'start' }, { labelY: Math.max(9, med.y - 5) });
+  return { width: W, height: H, bars, ticks, median: med, value };
 };
 
 // Viewbox units render at about 1px: 4 = 0.25rem gap, 6 = 0.375rem clearance from the median line.
@@ -69,6 +72,19 @@ export const valueLabelY = (barY, medianY, l = LABEL) => {
   if (medianY === null) return Math.max(l.minY, barY - l.gap);
   const above = Math.min(barY - l.gap, medianY - l.clear - l.descent);
   return above >= l.minY ? above : medianY + l.clear + l.ascent;
+};
+
+/**
+ * Where the selected bar's value goes: centered above when there is room, centered between the
+ * line and the bar when that gap fits it, otherwise beside the bar (toward the wider side) just
+ * under the line, so it never sits on the bar or the line. {x, y, anchor}.
+ */
+export const valueLabel = (bar, medianY, width, l = LABEL) => {
+  const center = bar.x + bar.w / 2;
+  const y = valueLabelY(bar.y, medianY, l);
+  if (medianY === null || y < medianY || y + l.descent + l.gap <= bar.y) return { x: center, y, anchor: 'middle' };
+  const right = center < width / 2;
+  return { x: right ? bar.x + bar.w + l.gap : bar.x - l.gap, y, anchor: right ? 'start' : 'end' };
 };
 
 /** "vs the median of the 23 earlier Septembers (2001–2023)": names the years, so two medians on one screen read apart. */
@@ -170,7 +186,7 @@ const stripSvg = (m) => {
     if (b.value === null) continue;
     svg.append(svgEl('rect', { x: f1(b.x), y: f1(b.y), width: f1(b.w), height: f1(Math.max(b.h, 1)), rx: 2, class: b.selected ? 'bs-bar is-sel' : 'bs-bar' }));
     if (b.selected) {
-      const t = svgEl('text', { x: f1(b.x + b.w / 2), y: f1(s.valueY), 'text-anchor': 'middle', class: 'bs-value' });
+      const t = svgEl('text', { x: f1(s.value.x), y: f1(s.value.y), 'text-anchor': s.value.anchor, class: 'bs-value' });
       t.textContent = formatCount(b.value);
       svg.append(t);
     }
@@ -182,7 +198,7 @@ const stripSvg = (m) => {
   }
   if (s.median) {
     svg.append(svgEl('line', { x1: 0, x2: s.width, y1: f1(s.median.y), y2: f1(s.median.y), class: 'bs-median' }));
-    const t = svgEl('text', { x: 2, y: f1(Math.max(9, s.median.y - 5)), class: 'bs-median-label' });
+    const t = svgEl('text', { x: f1(s.median.labelX), y: f1(s.median.labelY), 'text-anchor': s.median.anchor, class: 'bs-median-label' });
     t.textContent = `median of earlier years ${formatCount(s.median.value)}`;
     svg.append(t);
   }

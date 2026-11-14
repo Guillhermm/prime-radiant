@@ -143,6 +143,8 @@
     --color-fire: #ff8a4c;
     --color-fire-soft: rgb(255 138 76 / 0.14);
     --color-highlight: #fbba1f;
+    --color-below: #9a8fe0;
+    --color-below-soft: rgb(154 143 224 / 0.14);
     --color-synth: #b83a00;
     --color-synth-text: #ffffff;
     --glow-a: rgb(77 163 255 / 0.18);
@@ -262,6 +264,8 @@
     --color-fire: #a33500;
     --color-fire-soft: rgb(194 65 12 / 0.10);
     --color-highlight: #a33500;
+    --color-below: #542788;
+    --color-below-soft: rgb(84 39 136 / 0.14);
     --glow-a: rgb(0 80 216 / 0.10);
     --glow-b: rgb(246 128 19 / 0.08);
     --glow-cell: transparent;
@@ -364,6 +368,8 @@
     --color-fire: #a33500;
     --color-fire-soft: rgb(194 65 12 / 0.10);
     --color-highlight: #a33500;
+    --color-below: #542788;
+    --color-below-soft: rgb(84 39 136 / 0.14);
     --glow-a: rgb(0 80 216 / 0.10);
     --glow-b: rgb(246 128 19 / 0.08);
     --glow-cell: transparent;

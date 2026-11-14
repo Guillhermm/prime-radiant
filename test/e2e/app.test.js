@@ -65,7 +65,8 @@ const lastYear = `[...document.querySelectorAll('.view-calendar .cal-year-row .c
 const focusedLabel = `document.activeElement.getAttribute('aria-label')`;
 
 // Clicks land by coordinates, so wait for entrance animations to stop moving the target.
-const settle = (page) => page.until(`document.getAnimations().every((a) => a.playState !== 'running')`, 'animations settle');
+// Infinite loops (the Live freshness dot) never settle and move nothing, so they are skipped.
+const settle = (page) => page.until(`document.getAnimations().every((a) => a.playState !== 'running' || a.effect?.getComputedTiming().iterations === Infinity)`, 'animations settle');
 
 const openExample = async (page) => {
   await page.until(`document.querySelector('${EXAMPLE}')`, 'first-run example cards');
@@ -170,6 +171,8 @@ test('synthetic About: a popover that explains the data, with one link to Method
     assert.equal(await page.evaluate(`document.activeElement.classList.contains('synth-about')`), true, 'Esc returns focus to About');
     await page.click('.synth-about');
     await page.until(`document.querySelector('#synth-about').matches(':popover-open')`, 'About open again');
+    // Scrolling closes it from the frame after it opened.
+    await page.evaluate(`new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))`);
     await page.evaluate(`document.querySelector('.synth-more').focus(); scrollBy(0, 200)`);
     await page.until(`!document.querySelector('#synth-about').matches(':popover-open')`, 'scroll closes the popover');
     await page.until(`document.activeElement.classList.contains('synth-about')`, 'focus back on About after scroll');
@@ -224,6 +227,107 @@ test('synthetic banner: closes with an animation, a persistent tag stays and ope
     assert.equal(await next.evaluate(`document.querySelector('.panel-host .panel-top .eyebrow').textContent`), 'Selected month · Synthetic data', 'the sheet says synthetic while it covers the top bar');
     assert.equal(await next.evaluate(`document.documentElement.scrollWidth <= innerWidth`), true, 'no horizontal scroll at 400px');
   } finally { await next.close(); }
+});
+
+test('offline chip: saved data while offline, plain Offline and the offline error for an area not loaded, gone on reconnect', { skip }, async () => {
+  const page = await open(1280);
+  const chip = `(() => { const c = document.querySelector('.topbar .offline-chip'); return c && !c.hidden ? c.textContent : null; })()`;
+  try {
+    await openExample(page);
+    assert.equal(await page.evaluate(chip), null, 'hidden while online');
+    assert.equal(await page.evaluate(`document.querySelector('.offline-chip').closest('[role=status]') !== null`), true, 'announced through a status region');
+    await page.setOffline(true);
+    await page.until(`${chip} === 'Offline · showing saved data'`, 'offline chip over loaded data');
+    await page.evaluate(`location.hash = location.hash.replace(/aoi=bbox:[^&]*/, 'aoi=bbox:-179,41,-175,45')`);
+    await page.until(`${chip} === 'Offline'`, 'plain Offline when the area cannot load');
+    await page.until(`/not saved for offline use/.test(document.querySelector('[data-slot=empty]').textContent)`, 'offline error copy').catch(async (e) => { throw new Error(`${e.message}: ${await page.evaluate(`document.querySelector('[data-slot=empty]').textContent`)}`); });
+    await page.setOffline(false);
+    await page.until(`${chip} === null`, 'chip gone on reconnect');
+    await page.until(CALENDAR_READY, 'the area loads again once online');
+  } finally { await page.setOffline(false).catch(() => {}); await page.close(); }
+});
+
+test('share menu on the area chip: arrows move, Escape returns focus, copy reports in a toast, at desktop and phone width', { skip }, async () => {
+  for (const width of [1280, 400]) {
+    const page = await open(width);
+    const open_ = `document.querySelector('.share-menu').matches(':popover-open')`;
+    try {
+      await openExample(page);
+      await settle(page);
+      await page.click('.share-chip');
+      await page.until(`${open_} && document.activeElement?.dataset.id === 'link'`, 'menu open, first item focused');
+      await page.press('ArrowDown');
+      assert.equal(await page.evaluate(`document.activeElement.dataset.id`), 'coords');
+      await page.press('ArrowDown');
+      assert.equal(await page.evaluate(`document.activeElement.dataset.id`), 'link', 'wraps around');
+      await page.press('Escape');
+      await page.until(`!${open_} && document.activeElement.classList.contains('share-chip')`, 'Escape closes, focus back on the button');
+      await page.click('.share-chip');
+      await page.until(open_, 'menu open again');
+      await page.evaluate(`document.querySelector('.share-item[data-id=coords]').click()`);
+      await page.until(`/oordinates/.test(document.querySelector('.toast-host .toast-msg')?.textContent ?? '')`, 'coordinates result in a toast');
+      assert.match(await page.evaluate(`document.querySelector('.toast-host .toast-msg').textContent`), /-?\d+(\.\d+)?,-?\d+(\.\d+)?,-?\d+(\.\d+)?,-?\d+(\.\d+)?/);
+      const box = await page.evaluate(`(() => { const r = document.querySelector('.share-chip').getBoundingClientRect(); return [r.right <= innerWidth, r.width >= 40, document.documentElement.scrollWidth <= innerWidth]; })()`);
+      assert.deepEqual(box, [true, true, true], `share button fits at ${width}px`);
+    } finally { await page.close(); }
+  }
+});
+
+test('without the Popover API, About and the share menu still close on Escape and return focus', { skip }, async () => {
+  const page = await browser.newPage({ width: 1280, height: 900, downloadDir });
+  await page.addInitScript('for (const k of ["showPopover", "hidePopover", "togglePopover"]) delete HTMLElement.prototype[k];');
+  await page.goto(`${synthBase}/web/?fixtures=1`);
+  const shown = (sel) => `(() => { const e = document.querySelector('${sel}'); return Boolean(e && !e.hidden && e.getClientRects().length); })()`;
+  try {
+    await page.until(`document.querySelector('.synth-about')`, 'band');
+    assert.equal(await page.evaluate(`typeof HTMLElement.prototype.showPopover`), 'undefined');
+    assert.equal(await page.evaluate(shown('#synth-about')), false, 'closed at start');
+    await page.click('.synth-about');
+    await page.until(shown('#synth-about'), 'About opens');
+    assert.equal(await page.evaluate(`document.querySelector('.synth-about').getAttribute('aria-expanded')`), 'true');
+    await page.evaluate(`document.querySelector('.synth-more').focus()`);
+    await page.press('Escape');
+    await page.until(`!${shown('#synth-about')} && document.activeElement.classList.contains('synth-about')`, 'Escape closes, focus on About');
+    await page.click('.synth-about');
+    await page.until(shown('#synth-about'), 'About again');
+    await page.click('h1, .hero-title');
+    await page.until(`!${shown('#synth-about')}`, 'outside click closes');
+    await openExample(page);
+    await settle(page);
+    await page.click('.share-chip');
+    await page.until(`${shown('.share-menu')} && document.activeElement?.dataset.id === 'link'`, 'share menu opens');
+    await page.press('Escape');
+    await page.until(`!${shown('.share-menu')} && document.activeElement.classList.contains('share-chip')`, 'share menu closes on Escape');
+  } finally { await page.close(); }
+});
+
+test('iOS install hint: a permanent footer line, and a card once after the first area loads, never on first run', { skip }, async () => {
+  const page = await browser.newPage({ width: 400, height: 860, downloadDir });
+  await page.emulateDevice({ userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1', platform: 'iPhone', maxTouchPoints: 5 });
+  await page.goto(`${base}/web/?fixtures=1`);
+  try {
+    await page.until(`document.querySelector('.site-footer .ios-hint')`, 'footer line');
+    assert.match(await page.evaluate(`document.querySelector('.site-footer .ios-hint').textContent`), /Share, then Add to Home Screen/);
+    assert.equal(await page.evaluate(`document.querySelector('.ios-card')`), null, 'no card on first run');
+    await openExample(page);
+    await page.until(`document.querySelector('.ios-card')`, 'card after the first area loads');
+    const [cardBottom, barTop] = await page.evaluate(`(() => { const t = document.querySelector('.tabs'); return [document.querySelector('.ios-card').getBoundingClientRect().bottom, t.hidden ? innerHeight : t.getBoundingClientRect().top]; })()`);
+    assert.ok(cardBottom <= barTop, `card sits above the tab bar or the screen edge (${cardBottom} <= ${barTop})`);
+    assert.equal(await page.evaluate(`localStorage.getItem('pr-ios-hint-closed')`), '1', 'shown once');
+    await settle(page);
+    await page.click('.ios-card .ios-hint-close');
+    await page.until(`!document.querySelector('.ios-card')`, 'closed');
+    await page.goto(`${base}/web/?fixtures=1`);
+    await openExample(page);
+    await page.evaluate(`new Promise((r) => setTimeout(r, 300))`);
+    assert.equal(await page.evaluate(`document.querySelector('.ios-card')`), null, 'never again');
+    assert.ok(await page.evaluate(`document.querySelector('.site-footer .ios-hint')`), 'the footer line stays');
+  } finally { await page.close(); }
+  const other = await open(400);
+  try {
+    await openExample(other);
+    assert.equal(await other.evaluate(`document.querySelector('.ios-hint, .ios-card')`), null, 'not on other devices');
+  } finally { await other.close(); }
 });
 
 test('toast: hover pauses the countdown, the close button dismisses it; drawer lock keeps the layout still', { skip }, async () => {
@@ -369,6 +473,10 @@ test('?preview=1: anomaly layer with rank in the panel, then the Live view and i
     await page.click('#tab-anomalies');
     await page.until(`document.querySelector('.view-anomalies .anomaly-layer')?.offsetParent !== null && document.querySelector('.view-calendar').hidden`, 'Anomalies view owned by the shell');
     await settle(page);
+    assert.equal(await page.evaluate(`(() => { const d = document.querySelector('#tab-live .tab-dot'); return Boolean(d && !d.hidden && d.getClientRects().length); })()`), true, 'Live tab shows the freshness dot');
+    const gap = await page.evaluate(`(() => { const t = document.querySelector('#tab-live'); return t.querySelector('.tab-label').getBoundingClientRect().left - t.querySelector('.tab-dot').getBoundingClientRect().right; })()`);
+    assert.ok(Math.abs(gap - 8) < 0.5, `dot sits 0.5rem before the label (${gap}px)`);
+    assert.match(await page.evaluate(`document.querySelector('#tab-live').textContent`), /updated in the last 48 hours/);
     await page.click('#tab-live');
     await page.until(`!document.querySelector('.view-live').hidden && document.querySelector('.view-live .live-chart')`, 'Live view with its chart');
     assert.equal(await page.evaluate(`document.querySelector('.view-calendar').hidden && document.querySelector('.view-anomalies').hidden`), true);
@@ -381,12 +489,18 @@ test('?preview=1: anomaly layer with rank in the panel, then the Live view and i
 });
 
 test('tab switch updates the hash, back restores the previous view, disabled views are absent', { skip }, async () => {
-  const page = await open(1280);
+  const plain = await open(1280);
+  try {
+    await openExample(plain);
+    assert.deepEqual(await plain.evaluate(`[...document.querySelectorAll('[role=tab]')].map((t) => t.dataset.view)`), ['calendar'], 'only enabled views get a tab');
+    assert.equal(await plain.evaluate(`document.querySelector('[role=tablist]').hidden`), true, 'one view needs no switcher');
+  } finally { await plain.close(); }
+  const page = await open(1280, '?fixtures=1&preview=1');
   try {
     await openExample(page);
     await page.until(`location.hash.includes('view=calendar')`, 'calendar view in hash');
     const tabs = await page.evaluate(`[...document.querySelectorAll('[role=tab]')].map((t) => t.dataset.view)`);
-    assert.deepEqual(tabs, ['calendar', 'sensors'], 'only enabled views get a tab');
+    assert.deepEqual(tabs, ['calendar', 'sensors', 'anomalies', 'live'], 'preview turns on every view');
     await page.click('[role=tab][data-view="sensors"]');
     await page.until(`location.hash.includes('view=sensors')`, 'sensors in hash');
     await page.evaluate('history.back()');

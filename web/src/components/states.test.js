@@ -60,6 +60,8 @@ test('zero needs every month to be a real 0, never null', () => {
 test('errorState tells a validation failure from a connection failure', () => {
   assert.match(stateModel(errorState({ kind: 'invalid' })).lines[0], /failed validation/);
   assert.match(stateModel(errorState({ kind: 'network' })).lines[1], /Check your connection/);
+  assert.match(stateModel(errorState({ kind: 'network' }, { offline: true })).lines[1], /not saved for offline use/);
+  assert.match(stateModel(errorState({ kind: 'invalid' }, { offline: true })).lines[0], /failed validation/, 'offline does not hide a validation failure');
 });
 
 test('first-run record dates come from the manifest, missing ones are skipped', () => {
