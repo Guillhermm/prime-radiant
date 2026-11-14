@@ -6,7 +6,7 @@ burning-activity calendar per area. Built for the NASA Space Apps Challenge 2026
 
 ## Status
 
-Milestone M0 (bootstrap) in progress. Nothing user-facing is built yet. The plan is in
+Milestone M0 (bootstrap) built: data contract, fixtures, core API stubs, URL state, security headers and the UX spec. Still open in M0: the FIRMS archive request, the size spike and the first Vercel deploy. Nothing user-facing is built yet. The plan is in
 [docs/roadmap.md](docs/roadmap.md).
 
 | Product line | Status |
