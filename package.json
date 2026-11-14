@@ -1,0 +1,11 @@
+{
+  "name": "prime-radiant",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Harmonized MODIS and VIIRS hotspot calendar (NASA Space Apps Challenge 2026)",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "node --test"
+  }
+}

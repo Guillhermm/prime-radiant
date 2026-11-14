@@ -1,0 +1,12 @@
+# FIRMS archive downloads and generated tiles
+raw/
+data/
+
+# Local and deploy state
+.vercel/
+.env*
+!.env.example
+
+node_modules/
+test-results/
+.DS_Store
