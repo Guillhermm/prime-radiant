@@ -71,3 +71,21 @@ month vary by season and by the sensors operating, so this is an order of magnit
 Decision (H3, recorded): Brazil full history plus global 2026, as decided by the humans.
 Node is fast enough for the pipeline; the Python fallback is not needed. Hosting (H5)
 is the web owner's spike (M0-G3) and uses these numbers.
+
+## First Brazil build (2026-11-14)
+
+Command: `/usr/bin/time -v node pipeline/build.js --in raw/country --in raw/spike-2026 --out data/brazil --domain pipeline/domain/brazil.geojson`
+
+| Measure | Value |
+|---|---|
+| Coverage | MODIS 2000-11 to 2026-08; S-NPP 2012-01 (partial) to 2026-07; NOAA-20 2018-04 to 2026-07 |
+| Detections in / kept / other types | 60,764,285 / 58,540,429 / 2,223,856 |
+| Clipped by the domain | 18,666,530 (almost all from the global 2026 files; MODIS 2010 is identical with and without the clip) |
+| Fire-cell-days | MODIS 4,384,498 + Terra-only 104,509; S-NPP 5,492,486; NOAA-20 3,108,635 |
+| Tiles | 17; 0.1 deg 62.7 MB raw / 5.2 MB brotli; 1 deg 3.1 MB / 0.35 MB |
+| Wall time / peak RSS | 427 s / 1.4 GB |
+
+Sanity check: Brazil January-August monthly MODIS and S-NPP fire-cell-days for 2026
+(global Shapefile source) sit in the same range as 2023-2025 (country CSV source), so
+the source switch at 2026-01 shows no visible step. Not yet compared against the FIRMS
+map for a hand-picked cell and day (planned in M1-K4).
