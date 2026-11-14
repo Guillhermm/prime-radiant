@@ -18,6 +18,16 @@ not checked end to end), **assumption** (a choice the team made) or **unverified
   standard (archive) product, not in near-real-time data.
 - **Unverified lead**: VIIRS monthly archive files before version 3 (reprocessed in
   May 2025) labeled some static sources as type 0. Check that downloads are version 3.
+- **Verified** (physicist, MODIS C6/C6.1 Fire User Guide 1.0, Giglio et al. 2021, sec.
+  2.1 and 5.5): FIRMS MODIS `version` 6.2 / 6.03 / 61.03 are standard MCD14ML
+  Collection 6 and 6.1 files; C6.1 made no change to active fire detection, so
+  2000-2026 is one series for counts and R. VIIRS `version` 2 is Collection 2 standard.
+- **Caveat, verified on Brazil data**: MCD14ML v03 (2018 onward) improved hotspot
+  typing. Type 2 (static sources) rises from about 0.2-0.9% of MODIS rows (2008-2017)
+  to 1.2-2.7% (2018-2025), so the `type = 0` filter puts a small labeling step in the
+  MODIS series at 2018 that is not a change in burning. Default kept: `type = 0`, step
+  stated. Option for V1: a static-source cell mask built from 2018+ type 2 and applied
+  to every year.
 - No confidence filter. **Supported**: FIRMS gives no fixed cutoff, and the MODIS 0-100
   score and VIIRS l/n/h classes come from different tests (FIRMS FAQ). R absorbs a
   steady false-alarm excess over the overlap. Optional sensitivity check at V1:
@@ -116,3 +126,5 @@ excluded from R and from the baseline.
 | Q5 | Is the method published | Not as such; precedent exists (4.1) |
 | Q6 | Group R by biome instead of tiles | Open, physicist |
 | Q7 | 25% CI half-width and 5-year minimums | Open, to set at V1 |
+| Q8 | Static-source mask vs the 2018 typing step | Open, V1 |
+| Q9 | VIIRS C2 v2 type-0 mislabeling (unverified lead) | Open, reviewer |
