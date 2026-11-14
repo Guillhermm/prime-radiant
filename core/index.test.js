@@ -59,12 +59,12 @@ test('harmonize stub: tagged, schema-valid, VIIRS where it operates, estimated f
   assert.ok(sensors.modis.values.length === h.series.values.length);
 });
 
-test('baseline stub: null with a reason, schema-valid', () => {
+test('baseline: fixture span has under 5 earlier years, so null with a reason, schema-valid', () => {
   const { b } = pipeline();
-  assert.equal(b.series.method.id, 'stub');
+  assert.equal(b.series.method.id, 'baseline-median');
   assert.deepEqual(validateSeries(b.series, { manifest }), []);
   assert.ok(b.series.values.every((v) => v === null));
-  assert.ok(b.reasons.every((r) => r === 'stub'));
+  assert.ok(b.reasons.every((r) => typeof r === 'string' && r.length > 0));
 });
 
 test('toCalendar: no-data and zero never collapse; estimated months marked', () => {
