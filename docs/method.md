@@ -29,7 +29,8 @@ not checked end to end), **assumption** (a choice the team made) or **unverified
   east/north; longitude 180 is the same as -180.
 - Day is the UTC acquisition date (`acq_date`).
 - MODIS family = Terra + Aqua merged: one fire-cell-day per (cell, UTC day).
-- VIIRS family = S-NPP only. NOAA-20 handling: see section 4.4.
+- VIIRS family = S-NPP only. NOAA-20 is binned as its own family, used only for K
+  and after S-NPP (section 4.4).
 
 ## 3. Eras
 
@@ -40,7 +41,7 @@ not checked end to end), **assumption** (a choice the team made) or **unverified
 | MODIS Terra only | 2000-11-01 to 2002-07-03 | Shown in Sensors as Terra-only; excluded from R, from MODIS x R and from the baseline |
 | MODIS Terra + Aqua | 2002-07-04 onward | MODIS series and R overlap |
 | VIIRS S-NPP | 2012-01-20 to 2026-11-02 15:40 UTC | VIIRS series and R overlap |
-| VIIRS NOAA-20 | 2018-04-01 onward | Not used yet (section 4.4) |
+| VIIRS NOAA-20 | 2018-04-01 onward | K overlap, and VIIRS continuation after S-NPP (section 4.4) |
 
 Partial months for either sensor (2002-07, 2012-01, 2026-11, any outage month) are
 excluded from R and from the baseline.
@@ -75,12 +76,13 @@ excluded from R and from the baseline.
   surrounding ring of tiles, (3) global. Each level must pass 4.2; the result reports
   the level used and the UI shows a low-confidence chip.
 
-### 4.4 After S-NPP (open, for the humans)
+### 4.4 After S-NPP
 
-- Default (roadmap H11): months after 2026-11-02 use MODIS x R, marked estimated.
-- Physicist proposal (**supported**): continue VIIRS with NOAA-20 x K, where
+- Decided by the humans (2026-11-14, roadmap H11), **supported** (physicist): months
+  after 2026-11-02 continue VIIRS with NOAA-20 x K, marked estimated, where
   K = sum(S-NPP) / sum(NOAA-20) over full months 2018-04 to 2026-10 per AOI. Same
-  instrument and orbit; MODIS is ending. Not K = 1 without a computation.
+  instrument and orbit; MODIS is ending. K is computed, never assumed to be 1; it
+  passes the same usability rule (4.2) and fallback (4.3) as R. Validated at V1.
 
 ## 5. Baseline
 
@@ -109,7 +111,7 @@ excluded from R and from the baseline.
 |---|---|---|
 | Q1 | Parent region for the fallback | Answered (assumption): 4.3 |
 | Q2 | Usability of R | Answered (assumption): 4.2 |
-| Q3 | NOAA-20 after S-NPP | Proposal in 4.4; humans decide H11 |
+| Q3 | NOAA-20 after S-NPP | Decided: NOAA-20 x K (4.4) |
 | Q4 | MODIS confidence cutoff | Answered (supported): none |
 | Q5 | Is the method published | Not as such; precedent exists (4.1) |
 | Q6 | Group R by biome instead of tiles | Open, physicist |
