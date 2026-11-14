@@ -173,3 +173,42 @@
   outline: var(--focus-width) solid var(--color-focus);
   outline-offset: var(--focus-offset);
 }
+
+/* Anomaly layer: PuOr 11 diverging classes, centered on the median. */
+.div-0 { background: var(--div-below-5); color: var(--div-below-5-text); }
+.div-1 { background: var(--div-below-4); color: var(--div-below-4-text); }
+.div-2 { background: var(--div-below-3); color: var(--div-below-3-text); }
+.div-3 { background: var(--div-below-2); color: var(--div-below-2-text); }
+.div-4 { background: var(--div-below-1); color: var(--div-below-1-text); }
+.div-5 { background: var(--div-center); color: var(--div-center-text); }
+.div-6 { background: var(--div-above-1); color: var(--div-above-1-text); }
+.div-7 { background: var(--div-above-2); color: var(--div-above-2-text); }
+.div-8 { background: var(--div-above-3); color: var(--div-above-3-text); }
+.div-9 { background: var(--div-above-4); color: var(--div-above-4-text); }
+.div-10 { background: var(--div-above-5); color: var(--div-above-5-text); }
+.div-norank { background: var(--color-surface); color: var(--color-text); outline-style: dashed; }
+/* Flag: a filled dot top-left plus a heavy inset frame, in the cell's text color, so it reads on every ramp color. */
+.cal-cell.is-flagged { box-shadow: inset 0 0 0 0.1875rem currentColor; }
+.cal-cell.is-flagged::before, .swatch.mark-flagged::before { content: ""; position: absolute; inset-block-start: 0.25rem; inset-inline-start: 0.25rem; inline-size: 0.5rem; block-size: 0.5rem; border-radius: 50%; background: currentColor; }
+.swatch.mark-flagged { background: var(--color-surface); box-shadow: inset 0 0 0 0.1875rem currentColor; }
+.legend-ramp { display: flex; margin: 0; padding: 0; list-style: none; }
+.legend-ramp .swatch { inline-size: 1.75rem; block-size: 1.5rem; }
+.legend-ends { display: flex; justify-content: space-between; gap: var(--space-4); margin: var(--space-1) 0 var(--space-2); color: var(--color-text-muted); font-size: var(--text-sm); }
+.anomaly-preview-note { margin: 0 0 var(--space-2); }
+
+/* Live view: the band and median stay neutral next to the live line. */
+.live-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-block-end: var(--space-2); }
+.live-fetched, .live-readout { color: var(--color-text-muted); }
+.live-readout { min-block-size: 1.5rem; margin: var(--space-2) 0 0; }
+.live-chart { display: block; inline-size: 100%; max-inline-size: 45rem; block-size: auto; }
+.live-grid { stroke: var(--color-border); stroke-width: 1; opacity: 0.4; }
+.live-tick { fill: var(--color-text-muted); font-size: 0.75rem; }
+.live-band { fill: var(--series-era-line); opacity: 0.22; stroke: none; }
+.live-median { fill: none; stroke: var(--series-era-line); stroke-width: 2; stroke-dasharray: 0.5rem 0.25rem; }
+.live-line { fill: none; stroke: var(--series-live); stroke-width: 3; }
+.live-tail { fill: none; stroke: var(--series-live); stroke-width: 3; stroke-dasharray: 0.25rem 0.25rem; }
+.live-point { fill: var(--series-live); stroke: var(--color-bg); stroke-width: 2; cursor: pointer; }
+.live-point.is-provisional { fill: var(--color-bg); stroke: var(--series-live); stroke-width: 3; }
+.live-point:focus-visible { outline: var(--focus-width) solid var(--color-focus); outline-offset: var(--focus-offset); }
+.live-label { font-size: 0.75rem; fill: var(--color-text); }
+.live-label-live { font-weight: 700; }

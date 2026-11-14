@@ -1,6 +1,7 @@
 import { density } from '../bins.js';
 import { caveatsForCell } from '../caveat-catalog.js';
 import { formatCount, formatDensity, monthLabel } from '../format.js';
+import { rankText } from './anomaly-layer.js';
 import { h } from './h.js';
 
 export const NOT_AVAILABLE = 'not available yet';
@@ -11,9 +12,10 @@ const STATUS_TEXT = { observed: 'Observed', harmonized: 'Harmonized', partial: '
  * View model of the panel. Optional cell fields (`r`, `median`, `medianYears`) show
  * "not available yet" when absent: nothing is computed or guessed here.
  * @param {object} cell CalendarCell
- * @param {{aoiCells: number}} opts grid cells in the AOI (density denominator)
+ * @param {{aoiCells: number, layer?: 'counts'|'anomaly'}} opts grid cells in the AOI (density
+ *   denominator); layer 'anomaly' adds the cell's percentile rank and flag
  */
-export const detailModel = (cell, { aoiCells }) => {
+export const detailModel = (cell, { aoiCells, layer = 'counts' }) => {
   const title = monthLabel(cell.year, cell.month);
   const caveats = caveatsForCell(cell);
   if (cell.value === null) {
@@ -29,11 +31,16 @@ export const detailModel = (cell, { aoiCells }) => {
   ];
   if (cell.estimated) rows.push({ label: 'R', value: typeof cell.r === 'number' ? String(cell.r) : NOT_AVAILABLE });
   rows.push({ label: 'Median', value: num(cell.median) }, { label: 'Years used', value: num(cell.medianYears) });
+  if (layer === 'anomaly') {
+    const ranked = typeof cell.rank === 'number';
+    const cap = (t) => t[0].toUpperCase() + t.slice(1);
+    rows.push({ label: 'Percentile rank', value: cap(rankText(cell.rank)) }, { label: 'Flagged', value: ranked ? (cell.flagged ? 'Yes, unusual for this month' : 'No') : NOT_AVAILABLE });
+  }
   return { title, rows, caveats };
 };
 
 /**
- * mount(container, {aoiCells, onClose}). `open(cell)` shows the panel and remembers the
+ * mount(container, {aoiCells, onClose}). `open(cell, {layer})` shows the panel and remembers the
  * focused element (the calendar cell) to give focus back to on close. Escape closes.
  * Desktop side panel and phone bottom sheet are the same markup; CSS picks the layout.
  */
@@ -55,9 +62,9 @@ export const mount = (container, deps) => {
     if (ev.key === 'Escape') { ev.stopPropagation(); close(); }
   };
 
-  const open = (cell) => {
+  const open = (cell, { layer } = {}) => {
     if (!container.contains(document.activeElement)) opener = document.activeElement;
-    const m = detailModel(cell, { aoiCells });
+    const m = detailModel(cell, { aoiCells, layer });
     const heading = h('h2', { class: 'detail-title', tabindex: '-1', text: m.title });
     container.replaceChildren(h('div', { class: 'detail-panel', role: 'group', 'aria-labelledby': 'detail-title' },
       h('div', { class: 'detail-head' }, heading, h('button', { type: 'button', class: 'detail-close', 'aria-label': 'Close cell detail', text: 'Close', onclick: () => close() })),

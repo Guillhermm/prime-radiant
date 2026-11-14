@@ -79,6 +79,7 @@
   --series-viirs-dash: 0.5rem 0.25rem;
   --series-harmonized-dash: none;
   --series-era-line: #4a5360;
+  --series-live: #d55e00;
 
   /* Spacing, type, shape. */
   --space-1: 0.25rem;

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { tabsModel, nextTabIndex, viewTitle } from './app-shell.js';
+import { GROUP_IDS, tabsModel, nextTabIndex, viewTitle } from './app-shell.js';
 import { VIEWS } from '../views.js';
 
 test('disabled views are absent from the tabs', () => {
@@ -19,4 +19,8 @@ test('tab keys wrap and ignore others', () => {
 test('title names the view', () => {
   assert.equal(viewTitle(VIEWS, 'calendar'), 'Calendar - Prime Radiant');
   assert.equal(viewTitle(VIEWS, 'live'), 'Prime Radiant');
+});
+
+test('the shell has a result group for every view', () => {
+  assert.deepEqual(GROUP_IDS, VIEWS.map((v) => v.id));
 });

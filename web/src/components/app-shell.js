@@ -19,6 +19,9 @@ export const viewTitle = (views, activeId) => {
   return v ? `${v.label} - Prime Radiant` : 'Prime Radiant';
 };
 
+// One result group per view; a disabled view's group stays hidden.
+export const GROUP_IDS = ['calendar', 'sensors', 'anomalies', 'live'];
+
 // Builds the page frame and returns the named slots other components mount into.
 export const mount = (container, { views, activeView, onView }) => {
   const tabs = tabsModel(views, activeView);
@@ -55,13 +58,15 @@ export const mount = (container, { views, activeView, onView }) => {
     legend: slot('legend'),
     table: slot('table'),
     sensors: slot('sensors'),
+    anomalies: slot('anomalies'),
+    live: slot('live'),
     detail: slot('detail', 'aside', { class: 'detail', 'aria-label': 'Cell detail' }),
     drawer: slot('drawer'),
     map: slot('map'),
   };
-  const calendarGroup = h('div', { class: 'view-calendar', 'data-for': 'calendar' }, slots.kpi, slots.calendar, slots.legend, slots.table);
-  const sensorsGroup = h('div', { class: 'view-sensors', 'data-for': 'sensors' }, slots.sensors);
-  const main = h('main', { id: 'main-view', role: 'tabpanel', tabindex: '-1' }, slots.empty, calendarGroup, sensorsGroup);
+  const groupSlots = { calendar: [slots.kpi, slots.calendar, slots.legend, slots.table], sensors: [slots.sensors], anomalies: [slots.anomalies], live: [slots.live] };
+  const groups = Object.fromEntries(GROUP_IDS.map((id) => [id, h('div', { class: `view-${id}`, 'data-for': id }, groupSlots[id])]));
+  const main = h('main', { id: 'main-view', role: 'tabpanel', tabindex: '-1' }, slots.empty, Object.values(groups));
 
   container.append(
     h('a', { class: 'skip-link', href: '#main-view' }, 'Skip to main view'),
@@ -74,6 +79,7 @@ export const mount = (container, { views, activeView, onView }) => {
 
   return {
     slots,
+    groups: Object.values(groups),
     // hasArea=false shows the empty state and hides the data groups.
     update({ view, hasArea }) {
       tabEls.forEach((el) => {
@@ -84,8 +90,7 @@ export const mount = (container, { views, activeView, onView }) => {
       select.value = view;
       main.setAttribute('aria-labelledby', `tab-${view}`);
       slots.empty.hidden = hasArea;
-      calendarGroup.hidden = !hasArea || view !== 'calendar';
-      sensorsGroup.hidden = !hasArea || view !== 'sensors';
+      for (const [id, el] of Object.entries(groups)) el.hidden = !hasArea || view !== id;
       document.title = viewTitle(views, view);
     },
   };

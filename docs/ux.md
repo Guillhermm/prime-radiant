@@ -52,7 +52,7 @@ Slots C and D are drawn in every wireframe below as dashed boxes so the layout d
 |                                                               | 22 yrs)          |
 | Legend: [0][1-3][4-15][16-63][64-255][256-1023][1024+]  ///no data  Color = density |
 +---------------------------------------------------------------+------------------+
-* Anomalies (slot C, M2) and Live (slot D, M3) appear only when enabled in VIEWS.
+* Anomalies (slot C, M2) and Live (slot D, M3) appear only when enabled in VIEWS. Until core delivers them, `?preview=1` enables both with placeholder numbers from `web/src/preview-stubs.js`, labeled on screen as not validated; the flagged-periods list is planned, not built.
   C adds the "vs median" layer, a flag marker on cells and a flagged-periods list under the grid.
   D adds a live season line over a historical band, and a provisional overlay on the current month.
 ```
@@ -102,15 +102,15 @@ Fields first (lat/lon, presets), the map in a "Draw on map" section that opens f
 | Query bar | Plain form; inline validation message per field via `aria-describedby`; Apply disabled while invalid (phone shows an explicit Apply) | Area cap message states the limit and the nearest valid size |
 | KPI strip | Current month vs median with n years; "not enough history" instead of 0 when null | Swipe cards on phone, with prev/next buttons |
 | Calendar grid | `role="grid"`, roving tabindex, arrows/Home/End/PageUp/PageDown, Enter opens detail, Escape closes. Cell label: "September 2020, 12,450 fire-cell-days, density 38 per 1,000 cells, observed, MODIS" | Sticky year column. Number inside the cell only if it fits (it will not at 1.6rem on phone, and rarely at 2rem; abbreviate as 12k or enlarge the desktop cell, see open items). Color is always paired with the number on hover, focus and tap |
-| Cell marks | Estimated: triangle in the top-right corner. Partial month: dotted bottom edge. Flag (C): filled dot top-left. All use the cell's own text token, so contrast equals the text pair | Marks never rely on color |
+| Cell marks | Estimated: triangle in the top-right corner. Partial month: dotted bottom edge. Flag (C): filled dot top-left plus a heavy inset frame. All use the cell's own text token, so contrast equals the text pair | Marks never rely on color |
 | Legend | Seven classes plus no-data hatch plus the density unit sentence (5.1); for C, the diverging ramp with the center labeled "median" | Always visible next to the grid |
 | Table view | Same data as an accessible table, toggled from the grid; this is the text alternative of the chart | Years as rows, months as columns, scoped headers |
 | Sensor chart (B) | Three lines: MODIS, VIIRS, harmonized, with different dash patterns and direct labels, era lines at 2012-01-20 and 2026-11-02, per-series toggles, data table alternative | Series tokens `--series-*` |
 | Caveat strip | Non-dismissible | Text from `core/caveats.js` |
 | Method drawer | Method text, citation, version, R and level | Focus trap |
-| Cell detail | Value, status, source sensor, R if estimated, median and years used, relevant caveats | Focus returns to the cell on close |
+| Cell detail | Value, status, source sensor, R if estimated, median and years used, relevant caveats; opened from the anomaly layer, also percentile rank and flag | Focus returns to the cell on close |
 | Export menu | "CSV (aggregates)", "Copy link" | Output equals `core.toCsv` |
-| Live (D) | "Provisional" badge, `fetched_at`, never added to harmonized totals | Badge tokens |
+| Live (D) | "Provisional" badge, `fetched_at`, never added to harmonized totals; Table view toggle as the text alternative (one row per period, live value next to median and quartiles) | Badge tokens; live line `--series-live` (Okabe-Ito vermillion #D55E00, both themes), band and median `--series-era-line` |
 
 ## 5. Color
 
@@ -270,6 +270,8 @@ Adjustments made while computing: `--color-border` light moved from #8a93a0 (2.9
 | `series-viirs` on `color-surface` | VIIRS line | 3:1 | 4.18 pass | 7.34 pass |
 | `series-harmonized` on `color-surface` | harmonized line | 3:1 | 21 pass | 16.52 pass |
 | `series-era-line` on `color-surface` | era marker line | 3:1 | 7.79 pass | 7.56 pass |
+| `series-live` on `color-surface` | live line (D) | 3:1 | 3.87 pass | 4.27 pass |
+| `series-live` on `color-bg` | live line on page (D) | 3:1 | 3.61 pass | 4.68 pass |
 
 ## 10. Open items
 

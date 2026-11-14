@@ -47,3 +47,23 @@ test('caveats follow the cell', () => {
   assert.deepEqual(ids({ ...obs, estimated: true }), ['C1', 'C2', 'C3', 'C8']);
   assert.ok(ids({ ...obs, year: 2021 }).includes('C4'));
 });
+
+test('anomaly layer adds percentile rank and flag; counts layer does not', () => {
+  const ranked = { ...obs, rank: 0.95, flagged: true };
+  const m = detailModel(ranked, { aoiCells: 1000, layer: 'anomaly' });
+  assert.equal(row(m, 'Percentile rank'), '95th percentile of its baseline, above median');
+  assert.equal(row(m, 'Flagged'), 'Yes, unusual for this month');
+  assert.equal(row(detailModel({ ...ranked, flagged: false }, { aoiCells: 1000, layer: 'anomaly' }), 'Flagged'), 'No');
+  assert.equal(row(detailModel(ranked, { aoiCells: 1000 }), 'Percentile rank'), undefined);
+});
+
+test('anomaly layer: a zero month keeps its rank, a missing rank is not invented', () => {
+  const zero = detailModel({ ...obs, value: 0, rank: 0.05, flagged: false }, { aoiCells: 1000, layer: 'anomaly' });
+  assert.equal(row(zero, 'Value'), '0 fire-cell-days');
+  assert.match(row(zero, 'Percentile rank'), /^5th percentile.*below median$/);
+  const short = detailModel({ ...obs, rank: null, flagged: false }, { aoiCells: 1000, layer: 'anomaly' });
+  assert.equal(row(short, 'Percentile rank'), 'No percentile rank (baseline too short)');
+  assert.equal(row(short, 'Flagged'), NOT_AVAILABLE);
+  const off = detailModel({ ...obs, value: null, status: 'no-data', rank: null }, { aoiCells: 1000, layer: 'anomaly' });
+  assert.equal(row(off, 'Percentile rank'), undefined);
+});
