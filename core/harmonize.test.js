@@ -158,3 +158,15 @@ test('a factor that is not usable flags the series low-confidence; Terra-only mo
   assert.equal(h.R.usable, false);
   assert.ok(h.series.flags.some((x) => x.month === null && x.flag === 'low-confidence'));
 });
+
+test('R window: default ends 2021-12, later months do not change R, window recorded', () => {
+  const mk = (after) => level('aoi', '2012-02', 155, { m: () => 2, v: (i, ym) => (ym > '2021-12' ? after : 4) });
+  const a = harmonize([mk(2)], manifest());
+  const b = harmonize([mk(40)], manifest());
+  assert.equal(a.R.value, 2);
+  assert.equal(b.R.value, 2);
+  assert.deepEqual(a.R.window, { from: '2002-08', to: '2021-12' });
+  const c = harmonize([mk(40)], manifest(), { rWindow: { from: '2013-01', to: '2030-12' } });
+  assert.deepEqual(c.R.window, { from: '2013-01', to: '2030-12' });
+  assert.ok(c.R.value > 2);
+});

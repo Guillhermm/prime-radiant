@@ -42,7 +42,7 @@ test('seriesForAoi: coarse level gives the same totals', () => {
 
 const pipeline = () => {
   const sensors = core.seriesForAoi(whole, tiles, manifest);
-  const h = core.harmonize([{ level: 'aoi', ...sensors }], manifest);
+  const h = core.harmonize([{ level: 'aoi', ...sensors }], manifest, { rWindow: { to: '2030-12' } }); // fixture months are 2023
   const b = core.baseline(h.series);
   const cells = core.toCalendar(h, b, manifest);
   return { sensors, h, b, cells };

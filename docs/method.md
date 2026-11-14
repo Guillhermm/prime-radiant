@@ -75,11 +75,15 @@ excluded from R and from the baseline.
 - Per-calendar-month R where each month passes the usability rule; otherwise annual R.
 - Confidence interval by resampling whole overlap years (seeded). A draw whose MODIS sum
   is 0 has no R and is counted as a failed draw.
-- **Supported**: scaling VIIRS against MODIS over the overlap with regional ratios has
-  precedent (Chen et al. 2026, ESSD 18, 7535-7555, doi:10.5194/essd-18-7535-2026;
-  they scale to burned area at 0.25 deg with type = 0). **Assumption**: our exact
-  method (fire-cell-days, 0.1 deg, ratio of sums) is not published; labeled
-  "preliminary" until V1.
+- **Supported, indirect precedent** (reviewer, V1): Chen et al. 2026 (ESSD 18,
+  7535-7555, doi:10.5194/essd-18-7535-2026) calibrate VIIRS counts against MODIS-based
+  burned area (GFED5) over the 2012-2022 overlap, with regional coefficients at 0.25 deg
+  and type = 0. They do not scale VIIRS to MODIS counts. **Assumption**: our exact
+  method (fire-cell-days, 0.1 deg, ratio of sums) is not published.
+- R window (decided by the humans after V1, 2026-11-14): R uses full overlap months
+  from 2012-02 to 2021-12 only, before the MODIS Terra and Aqua orbit drift seen in the
+  data from 2022 (physicist, V1; NASA Terra drift notices). For Brazil this moves R
+  from 2.44 to about 2.52. K is not affected (both VIIRS satellites keep their orbits).
 
 ### 4.2 Usability rule (replaces the 129 threshold)
 
@@ -100,7 +104,12 @@ excluded from R and from the baseline.
   after 2026-11-02 continue VIIRS with NOAA-20 x K, marked estimated, where
   K = sum(S-NPP) / sum(NOAA-20) over full months 2018-04 to 2026-10 per AOI. Same
   instrument and orbit; MODIS is ending. K is computed, never assumed to be 1; it
-  passes the same usability rule (4.2) and fallback (4.3) as R. Validated at V1.
+  passes the same usability rule (4.2) and fallback (4.3) as R.
+- What the first build actually does (V1, physicist): the S-NPP and NOAA-20 archives
+  both end at 2026-07, so 2026-08 (the last archived MODIS month) is MODIS x R,
+  flagged `estimated` and `viirs-not-archived`; 2026-09 and 2026-10 are not in the
+  series until the archive catches up. NOAA-20 x K applies to months NOAA-20's
+  archive covers after S-NPP stops.
 
 ### 4.5 Implementation choices (core/harmonize.js)
 
@@ -133,7 +142,9 @@ excluded from R and from the baseline.
 ## 6. Caveats (shown on screen)
 
 1. Counts are fire-cell-days, not fires or burned area.
-2. Harmonized values before VIIRS are estimates (MODIS x R).
+2. Values before VIIRS are estimates scaled to VIIRS-equivalent (MODIS x R). R is
+   fit on 2012-2021, when fires were fewer than in 2002-2007; applying it to those
+   larger fire years is an extrapolation.
 3. No confidence filter is applied.
 4. Clouds, smoke and overpass timing hide fires; zero means none detected, not none
    burning.
@@ -152,8 +163,8 @@ excluded from R and from the baseline.
 | Q2 | Usability of R | Answered (assumption): 4.2 |
 | Q3 | NOAA-20 after S-NPP | Decided: NOAA-20 x K (4.4) |
 | Q4 | MODIS confidence cutoff | Answered (supported): none |
-| Q5 | Is the method published | Not as such; precedent exists (4.1) |
+| Q5 | Is the method published | Not as such; indirect precedent (4.1) |
 | Q6 | Group R by biome instead of tiles | Open, physicist |
-| Q7 | 25% CI half-width and 5-year minimums | Open, to set at V1 |
+| Q7 | 25% CI half-width and 5-year minimums | Kept at V1; results near the line depend on the draws |
 | Q8 | Static-source mask vs the 2018 typing step | Open, V1 |
 | Q9 | VIIRS C2 v2 type-0 mislabeling (unverified lead) | Open, reviewer |
