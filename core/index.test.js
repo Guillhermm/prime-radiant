@@ -44,7 +44,7 @@ const pipeline = () => {
   const sensors = core.seriesForAoi(whole, tiles, manifest);
   const h = core.harmonize([{ level: 'aoi', ...sensors }], manifest);
   const b = core.baseline(h.series);
-  const cells = core.toCalendar(h.series, b);
+  const cells = core.toCalendar(h, b, manifest);
   return { sensors, h, b, cells };
 };
 
@@ -71,31 +71,21 @@ test('baseline: fixture span has under 5 earlier years, so null with a reason, s
 test('toCalendar: no-data and zero never collapse; estimated months marked', () => {
   const { cells } = pipeline();
   for (const c of cells) assert.deepEqual(validateCalendarCell(c, { manifest }), []);
-  assert.deepEqual(cells.map((c) => c.status), ['harmonized', 'harmonized', 'observed', 'observed', 'observed', 'observed']);
+  assert.deepEqual(cells.map((c) => c.status), ['harmonized', 'harmonized', 'observed', 'observed', 'observed', 'partial']);
   assert.equal(cells[3].value, 0);
-  const nd = core.toCalendar({ id: 'harmonized', unit: 'fire-cell-days', start: '2023-01', values: [null, 0],
-    method: { id: 'stub', version: 0 }, comparable: true });
+  const nd = core.toCalendar({ series: { id: 'harmonized', unit: 'fire-cell-days', start: '2023-01', values: [null, 0],
+    method: { id: 'stub', version: 0 }, comparable: true } }, null, manifest);
   assert.deepEqual(nd.map((c) => [c.value, c.status]), [[null, 'no-data'], [0, 'observed']]);
 });
 
 test('kpis: numbers equal the series they come from', () => {
-  const { h, b, cells } = pipeline();
-  const k = core.kpis(cells, h, b);
+  const { h, b } = pipeline();
+  const k = core.kpis(h, b, manifest, {});
   assert.equal(k.total, sum(h.series.values));
-  assert.equal(k.current.value, 11);
-  assert.deepEqual([k.median, k.R, k.level, k.method.id], [null, 28 / 15, 'aoi', 'stub']);
-  assert.equal(core.kpis([], h).current, null);
+  assert.equal(k.latest.value, 11);
+  assert.deepEqual([k.median, k.R.value, k.R.level], [null, 28 / 15, 'aoi']);
 });
 
-test('toCsv stub: header, null empty, 0 as 0, rejects unknown kind', () => {
-  const { sensors, h, cells } = pipeline();
-  const cal = core.toCsv('calendar', cells, { aoi: 'whole world' });
-  assert.ok(cal.startsWith('# unit: fire-cell-days\n# aoi: whole world\n# method: stub 0'));
-  assert.ok(cal.includes('2023,4,0,observed\n'));
-  const nd = core.toCalendar({ id: 'harmonized', unit: 'fire-cell-days', start: '2023-01', values: [null],
-    method: { id: 'stub', version: 0 }, comparable: true });
-  assert.ok(core.toCsv('calendar', nd).includes('2023,1,,no-data\n'));
-  const s = core.toCsv('sensors', { ...sensors, harmonized: h.series });
-  assert.ok(s.includes('2023,1,viirs,\n') && s.includes('2023,4,viirs,0\n'));
+test('toCsv is the core/csv.js export (detail in csv.test.js)', () => {
   assert.throws(() => core.toCsv('x', []), RangeError);
 });
