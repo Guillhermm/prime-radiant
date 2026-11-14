@@ -192,6 +192,14 @@ D0 judgment: acceptable. The fill is information carried also by the number (hov
 
 Decision H8 (M0-G4, checked 2026-11-14): vendored Leaflet 1.9.4, the current stable release (2.0.0 is still a beta, so it is not used). GitHub lists no published security advisories for it; `npm audit` was not run because it is vendored, not installed. Basemap: OpenStreetMap standard tiles. Their usage policy requires visible attribution and forbids a restrictive Referrer-Policy (the site sends `strict-origin-when-cross-origin`), bulk or pre-seeded downloads and offline use. Service is best effort with no SLA (service-level agreement), so the zero-dependency SVG Natural Earth outline stays as the fallback basemap. The spec does not depend on it: the map is optional, collapsible on desktop, full screen from the Area sheet on phone, with the attribution shown and a form that covers every function.
 
+Vendored copy (M1-G3): `web/vendor/leaflet/` holds `leaflet.js`, `leaflet.css`, `LICENSE` and `images/layers*.png` from the official npm tarball.
+
+- Source: https://registry.npmjs.org/leaflet/-/leaflet-1.9.4.tgz
+- Tarball sha256: `84c65a256e50657896f54c33bd857b6849ebe94c817803be818bf32a3dde0b77`. It also matches the registry's `dist.shasum` (sha1 `23fae724e282fa25745aff82ca4d394748db7d8d`) and `dist.integrity` (sha512 `nxS1ynzJOmOlHp+iL3FyWqK89GtNL8U8rvlMOsQdTTssxZwCXh8N2NB3GDQOL+YR3XnWyZAxwQixURb+FA74PA==`), both checked on 2026-11-14.
+- Vendored files, sha256: `leaflet.js` `db49d009c841f5ca34a888c96511ae936fd9f5533e90d8b2c4d57596f4e5641a`, `leaflet.css` `a7837102824184820dfa198d1ebcd109ff6d0ff9a2672a074b9a1b4d147d04c6`, `LICENSE` `53e8dc25862014e4324741ca18fbe3611e11d42ef69f59f86ea8c5389647d4cb`, `images/layers.png` `1dbbe9d028e292f36fcba8f8b3a28d5e8932754fc2215b9ac69e4cdecf5107c6`, `images/layers-2x.png` `066daca850d8ffbef007af00b06eac0015728dee279c51f3cb6c716df7c42edf`.
+- Tiles come from `https://tile.openstreetmap.org/{z}/{x}/{y}.png` with the attribution control on. The CSP `img-src` therefore lists the bare host (a `*.tile` wildcard does not match it). Leaflet needs no CSP change for scripts or styles: it is served from `'self'` and sets styles through the DOM, not inline attributes in markup. Checked in headless Chrome with the `vercel.json` CSP: no violations.
+- The picker draws with two clicks on opposite corners (no Leaflet.draw). A skip link and the collapse button let keyboard users bypass it.
+
 ## 9. Contrast results
 
 Computed by a script, not by eye: it parses `web/styles/tokens.css`, applies the WCAG 2.x relative luminance formula (sRGB, 0.2126 / 0.7152 / 0.0722) and the ratio (L1 + 0.05) / (L2 + 0.05), for every pair below in both themes. Run on 2026-11-14 against the tokens as committed in this task. The script lives in the author's scratch space and is not in the repository; say so if you want it added as `tools/contrast.mjs` with a test.

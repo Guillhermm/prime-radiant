@@ -16,7 +16,7 @@ Status: research notes for M0-G3. Decision H5 (where tiles live) is open until t
 | Permissions-Policy | camera, microphone, geolocation, payment, usb disabled | |
 
 CSP placeholders to change when decided:
-- `img-src`: `https://*.tile.openstreetmap.org` stands in for the basemap tile host (M0-G4). Replace it if the basemap changes.
+- `img-src`: `https://tile.openstreetmap.org` is the OpenStreetMap tile host (M0-G4, used by the map picker). The bare host is needed because tiles are requested without a subdomain; replace it if the basemap changes.
 - `connect-src`: `'self'` only. If H5 picks R2, add the bucket origin (its `r2.dev` or custom domain host). Tiles are fetched with `fetch`, so `connect-src` is the directive, not `img-src`.
 - `style-src 'self'`: Leaflet sets styles through `element.style`, which CSP allows; if the app injects `<style>` or `style=""` attributes, this must be revisited.
 

@@ -38,7 +38,7 @@ test('CSP allows no inline or eval script and no wildcard source', () => {
 
 test('CSP img-src and connect-src hold only the documented hosts', () => {
   const d = csp();
-  assert.deepEqual(d['img-src'], ["'self'", 'data:', 'https://*.tile.openstreetmap.org']);
+  assert.deepEqual(d['img-src'], ["'self'", 'data:', 'https://tile.openstreetmap.org']);
   assert.deepEqual(d['connect-src'], ["'self'"]);
 });
 
