@@ -102,6 +102,25 @@ excluded from R and from the baseline.
   instrument and orbit; MODIS is ending. K is computed, never assumed to be 1; it
   passes the same usability rule (4.2) and fallback (4.3) as R. Validated at V1.
 
+### 4.5 Implementation choices (core/harmonize.js)
+
+- The 95% CI is the 2.5th and 97.5th percentiles (linear interpolation) of the successful
+  draws, from resampling whole overlap years, as many years per draw as the overlap has.
+- A level is usable when all twelve per-calendar-month ratios pass 4.2 (then per-month R
+  is applied) or, failing that, the annual ratio passes. Per-month usability counts years
+  with MODIS above 0 in that calendar month.
+- R and K come from the first usable level; the harmonized series always takes its counts
+  from the AOI level. MODIS x R also fills months after S-NPP ends when NOAA-20 is null.
+- 2002-07 (partial MODIS) is scaled in the harmonized series but excluded from R.
+- Flags on the harmonized series: `estimated` (MODIS x R or NOAA-20 x K);
+  `viirs-not-archived` (months after the S-NPP archive ends but before S-NPP stopped,
+  2026-08 to 2026-10 in the first build: estimated, not observed); `terra-only`
+  (before 2002-07: MODIS operated but the value is null, not scaled); `low-confidence`
+  (an applied R or K failed 4.2 at every level).
+- First real-data values (Brazil build of 2026-11-14, preliminary, not validated):
+  Brazil R = 2.438 (95% CI 2.34-2.52, per-month), K = 0.970; Pantanal box R = 1.85;
+  Amazon arc box R = 2.13; a small Sao Paulo box R = 4.0.
+
 ## 5. Baseline
 
 - Median of the same calendar month over earlier years in which that month is complete.

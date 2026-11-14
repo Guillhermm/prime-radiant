@@ -42,20 +42,21 @@ test('seriesForAoi: coarse level gives the same totals', () => {
 
 const pipeline = () => {
   const sensors = core.seriesForAoi(whole, tiles, manifest);
-  const h = core.harmonize(sensors);
+  const h = core.harmonize([{ level: 'aoi', ...sensors }], manifest);
   const b = core.baseline(h.series);
   const cells = core.toCalendar(h.series, b);
   return { sensors, h, b, cells };
 };
 
-test('harmonize stub: tagged, schema-valid, VIIRS where it operates, estimated flags', () => {
+test('harmonize: tagged, schema-valid, VIIRS where it operates, MODIS x R estimated before it', () => {
   const { sensors, h } = pipeline();
-  assert.equal(h.method.id, 'stub');
-  assert.equal(h.series.method.id, 'stub');
+  assert.deepEqual(h.series.method, { id: 'ratio-of-sums', version: 1 });
   assert.deepEqual(validateSeries(h.series, { manifest }), []);
-  assert.deepEqual(h.series.values, [9, 7, 18, 0, 10, 11]);
-  assert.deepEqual(h.series.flags.map((f) => f.month), ['2023-01', '2023-02']);
-  assert.deepEqual([h.R, h.ci, h.level], [1, null, 'aoi']);
+  const R = 28 / 15; // full overlap months 2023-03..05
+  assert.deepEqual(h.series.values, [9 * R, 7 * R, 18, 0, 10, 11]);
+  assert.deepEqual(h.series.flags.filter((f) => f.flag === 'estimated').map((f) => f.month), ['2023-01', '2023-02']);
+  assert.ok(h.series.flags.some((f) => f.month === null && f.flag === 'low-confidence')); // R not usable
+  assert.deepEqual([h.R.value, h.R.level, h.R.usable], [R, 'aoi', false]); // 3 overlap years < 5
   assert.ok(sensors.modis.values.length === h.series.values.length);
 });
 
@@ -77,12 +78,12 @@ test('toCalendar: no-data and zero never collapse; estimated months marked', () 
   assert.deepEqual(nd.map((c) => [c.value, c.status]), [[null, 'no-data'], [0, 'observed']]);
 });
 
-test('kpis stub: numbers equal the series they come from', () => {
+test('kpis: numbers equal the series they come from', () => {
   const { h, b, cells } = pipeline();
   const k = core.kpis(cells, h, b);
   assert.equal(k.total, sum(h.series.values));
   assert.equal(k.current.value, 11);
-  assert.deepEqual([k.median, k.R, k.level, k.method.id], [null, 1, 'aoi', 'stub']);
+  assert.deepEqual([k.median, k.R, k.level, k.method.id], [null, 28 / 15, 'aoi', 'stub']);
   assert.equal(core.kpis([], h).current, null);
 });
 
