@@ -18,7 +18,9 @@
  * @typedef {{series: Series, yearsUsed: number[][], reasons: (string|null)[], method: Method}} Baseline
  */
 import { addMonths } from './months.js';
-export { seriesForAoi } from './aggregate.js';
+export { seriesForAoi, cellCount, MAX_FINE_CELLS } from './aggregate.js';
+export { decodeTile, coverageLookup, tilesForBbox } from './tiles.js';
+export { baseline } from './baseline.js';
 
 const STUB = { id: 'stub', version: 0 };
 const UNIT = 'fire-cell-days';
@@ -44,26 +46,6 @@ export function harmonize(sensors, { perMonth = false } = {}) {
   });
   const series = { id: 'harmonized', unit: UNIT, start: modis.start, values, flags, method: STUB, comparable: true };
   return { series, R: 1, ci: null, level: 'aoi', yearsUsed: [], perMonth, method: STUB };
-}
-
-/**
- * Baseline: median of the same calendar month over earlier complete years (method.md section 5).
- * Real (M1-K7): current year excluded, partial months excluded, at least `minYears` years,
- * else value null with a reason.
- * Stub: every value null, reason "stub".
- * @param {Series} series harmonized (or raw) series
- * @param {{minYears?: number}} [opts] default 5
- * @returns {Baseline}
- */
-export function baseline(series, { minYears = 5 } = {}) {
-  void minYears;
-  const n = series.values.length;
-  return {
-    series: { id: 'baseline', unit: UNIT, start: series.start, values: Array(n).fill(null), method: STUB, comparable: true },
-    yearsUsed: Array.from({ length: n }, () => []),
-    reasons: Array(n).fill('stub'),
-    method: STUB,
-  };
 }
 
 /**
