@@ -11,10 +11,10 @@ Web app (Guilherme's track) built and QA-approved on fixture data: calendar, are
 
 | Product line | Status |
 |---|---|
-| A. Burning calendar per area | planned (M1) |
-| B. Sensor comparison (MODIS, VIIRS, harmonized) | planned (M1) |
-| C. Anomalies against a multi-year baseline | planned (M2) |
-| D. Live season from near-real-time data | planned (M3) |
+| A. Burning calendar per area | UI built on fixtures; science stubbed (M1) |
+| B. Sensor comparison (MODIS, VIIRS, harmonized) | planned (M1, Kaue: sensors view) |
+| C. Anomalies against a multi-year baseline | UI built behind `?preview=1`; science planned (M2) |
+| D. Live season from near-real-time data | UI and keyed proxy built; live data pipeline planned (M3) |
 
 ## Run the tests
 
