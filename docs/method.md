@@ -1,6 +1,6 @@
 # Method note
 
-Version: v0 draft (M0-K5), with the first answers of the Second Foundation
+Version: v1, passed gate V1 with caveats (`docs/gates/V1.md`); started as v0 draft (M0-K5), with the first answers of the Second Foundation
 (2026-11-14). Nothing here has passed the V1 gate. Every statement carries a status:
 **verified** (checked against a primary source), **supported** (consistent with sources,
 not checked end to end), **assumption** (a choice the team made) or **unverified**.
@@ -126,9 +126,10 @@ excluded from R and from the baseline.
   2026-08 to 2026-10 in the first build: estimated, not observed); `terra-only`
   (before 2002-07: MODIS operated but the value is null, not scaled); `low-confidence`
   (an applied R or K failed 4.2 at every level).
-- First real-data values (Brazil build of 2026-11-14, preliminary, not validated):
-  Brazil R = 2.438 (95% CI 2.34-2.52, per-month), K = 0.970; Pantanal box R = 1.85;
-  Amazon arc box R = 2.13; a small Sao Paulo box R = 4.0.
+- Validated values (gate V1, Brazil build of 2026-11-14 with outage months excluded,
+  R window 2012-02..2021-12): Brazil R = 2.516 (95% CI 2.46-2.58, per-month), K = 0.984
+  (0.978-0.991); Pantanal box R = 1.89; Amazon arc box R = 2.22 (annual); a small Sao
+  Paulo box R = 4.07 (annual).
 
 ## 5. Baseline
 
@@ -144,7 +145,8 @@ excluded from R and from the baseline.
 1. Counts are fire-cell-days, not fires or burned area.
 2. Values before VIIRS are estimates scaled to VIIRS-equivalent (MODIS x R). R is
    fit on 2012-2021, when fires were fewer than in 2002-2007; applying it to those
-   larger fire years is an extrapolation.
+   larger fire years is an extrapolation that likely overestimates them (in the overlap
+   R falls as burning rises, from 2.75 in 2013 to 2.01 in 2024).
 3. No confidence filter is applied.
 4. Clouds, smoke and overpass timing hide fires; zero means none detected, not none
    burning.
