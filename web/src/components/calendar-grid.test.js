@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { NODATA } from '../bins.js';
-import { calendarTableModel, cellLabel, cellModel, gridModel, initialPosition, nextPosition } from './calendar-grid.js';
+import { calendarTableModel, cellLabel, cellModel, gridModel, initialPosition, keyIntent, medianRowModel, nextPosition, shortCount } from './calendar-grid.js';
 
 const c = (year, month, value, o = {}) => ({ year, month, value, status: value === null ? 'no-data' : 'observed', estimated: false, ...o });
 
@@ -90,4 +90,31 @@ test('mostlyEstimated flags a range once 60% of the cells with data are estimate
   assert.equal(mostlyEstimated([c(true), c(true), c(true), c(false), c(false)]), true);
   assert.equal(mostlyEstimated([c(true), c(true), c(false), c(false), c(false)]), false);
   assert.equal(mostlyEstimated([c(true), c(false, null), c(false, null)]), true);
+});
+
+test('phone cells show at most three characters', () => {
+  assert.deepEqual([0, 999, 1000, 3117, 12122, 999499, 999500, 1234567].map(shortCount), ['0', '999', '1k', '3k', '12k', '999k', '1M', '1M']);
+  assert.ok([0, 999, 3117, 12122, 999499, 1234567].every((n) => shortCount(n).length <= 4 && shortCount(n).replace('k', '').replace('M', '').length <= 3));
+  assert.equal(cellModel(c(2020, 9, 12450), 10000).short, '12k');
+});
+
+test('keys: Enter and Space open, Escape closes, arrows move and carry the selection when one is open', () => {
+  assert.equal(keyIntent('Enter'), 'open');
+  assert.equal(keyIntent(' '), 'open');
+  assert.equal(keyIntent('Escape', { selected: true }), 'close');
+  assert.equal(keyIntent('ArrowRight'), 'move');
+  assert.equal(keyIntent('ArrowDown', { selected: true }), 'move-select');
+  assert.equal(keyIntent('PageUp', { selected: true }), 'move-select');
+  assert.equal(keyIntent('a', { selected: true }), null);
+});
+
+test('median row: one cell per month from the typical year, null median is not zero', () => {
+  const typical = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, median: i === 1 ? null : (i + 1) * 100, from: 2001, to: 2025 }));
+  const row = medianRowModel(typical, 1000);
+  assert.equal(row.length, 12);
+  assert.equal(row[0].bin, 4, 'median 100 in 1,000 cells is a density of 100: class 64-255');
+  assert.equal(row[1].bin, NODATA);
+  assert.match(row[1].label, /not enough history/);
+  assert.match(row[8].label, /September median 900 fire-cell-days over 2001–2025, preview/);
+  assert.deepEqual(medianRowModel(null, 1000), []);
 });

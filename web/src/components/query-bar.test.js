@@ -24,7 +24,7 @@ test('layer switch appears only when Anomalies is enabled', () => {
   assert.deepEqual(layerChoices(on).map((c) => c.id), ['counts', 'anomaly']);
 });
 
-import { presetPatch, summaryModel } from './query-bar.js';
+import { chipModel, presetPatch } from './query-bar.js';
 
 test('presetPatch sets the bbox and keeps or defaults the dates', () => {
   const p = { bbox: [1, 2, 3, 4] };
@@ -33,14 +33,16 @@ test('presetPatch sets the bbox and keeps or defaults the dates', () => {
   assert.deepEqual(presetPatch(p, { from: null, to: null }, null), { bbox: [1, 2, 3, 4], from: null, to: null });
 });
 
-test('summaryModel words the two phone chips', () => {
-  const m = summaryModel({ bbox: [-58.2, -20.1, -55, -15.3], from: '2000-11', to: '2012-12' });
-  assert.equal(m.area, 'Area: -20.1, -58.2 to -15.3, -55 (15.4 sq deg)');
-  assert.equal(m.range, 'Range: 2000-11 to 2012-12');
+test('chipModel words the area and period chips', () => {
+  const m = chipModel({ bbox: [-59, -19, -52, -12], from: '2001-01', to: '2026-10' });
+  assert.equal(m.area, '19°S–12°S · 59°W–52°W');
+  assert.equal(m.period, 'Jan 2001 – Oct 2026');
+  assert.equal(m.areaLabel, 'Area: 19°S to 12°S, 59°W to 52°W. Change area');
+  assert.equal(m.periodLabel, 'Period: Jan 2001 to Oct 2026. Change period');
 });
 
-test('summaryModel without an area or dates', () => {
-  assert.equal(summaryModel({ bbox: null, from: null, to: null }).area, 'No area chosen');
-  assert.equal(summaryModel({ bbox: null, from: null, to: null }).range, 'Range: all available');
-  assert.equal(summaryModel({ bbox: null, from: null, to: null }, { from: '2000-11', to: '2012-12' }).range, 'Range: 2000-11 to 2012-12');
+test('chipModel without an area or dates', () => {
+  assert.equal(chipModel({ bbox: null, from: null, to: null }).area, 'No area chosen');
+  assert.equal(chipModel({ bbox: null, from: null, to: null }).period, 'All available');
+  assert.equal(chipModel({ bbox: null, from: null, to: null }, { from: '2000-11', to: '2012-12' }).period, 'Nov 2000 – Dec 2012');
 });

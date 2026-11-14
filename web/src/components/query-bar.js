@@ -1,6 +1,8 @@
 import { isEnabledView } from '../views.js';
 import { LAYERS } from '../state.js';
 import { h } from './h.js';
+import { icon } from './icons.js';
+import { bboxText } from './states.js';
 import { trapTab } from './focus-trap.js';
 import * as aoiForm from './aoi-form.js';
 import * as dateRange from './date-range.js';
@@ -21,18 +23,21 @@ export const presetPatch = (preset, state, span = null) => ({
   to: state.to ?? span?.to ?? null,
 });
 
-const sig = (x) => Number(x.toPrecision(3));
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const mon = (m) => `${MON[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`;
 
-// Text of the two phone chips (docs/ux.md 3.2), from the committed state.
-export const summaryModel = (state, span = null) => {
-  let area = 'No area chosen';
-  if (state.bbox) {
-    const [w, s, e, n] = state.bbox;
-    area = `Area: ${s}, ${w} to ${n}, ${e} (${sig((e - w) * (n - s))} sq deg)`;
-  }
+// Text of the area and period chips (docs/ux.md 3.2), from the committed state.
+export const chipModel = (state, span = null) => {
   const from = state.from ?? span?.from;
   const to = state.to ?? span?.to;
-  return { area, range: from && to ? `Range: ${from} to ${to}` : 'Range: all available' };
+  const area = state.bbox ? bboxText(state.bbox) : 'No area chosen';
+  const period = from && to ? `${mon(from)} – ${mon(to)}` : 'All available';
+  return {
+    area,
+    period,
+    areaLabel: `Area: ${area.replace(' · ', ', ').replaceAll('–', ' to ')}. Change area`,
+    periodLabel: `Period: ${period.replace(' – ', ' to ')}. Change period`,
+  };
 };
 
 export const LAYER_LABELS = { counts: 'Counts', anomaly: 'vs median' };
@@ -43,19 +48,19 @@ export const layerChoices = (views) => (isEnabledView('anomalies', views)
   : []);
 
 export const mount = (container, {
-  store, views, span = null, maxAreaDeg2 = Infinity, now, presets,
-  goTo = (patch) => store.set(patch), onAoiInput = () => {}, onDrawMap = null,
+  store, span = null, maxAreaDeg2 = Infinity, now, presets, mapSlot = null,
+  goTo = (patch) => store.set(patch), onAoiInput = () => {}, onDrawMap = null, onMapToggle = null,
 } = {}) => {
   let aoi = { valid: false };
   let dates = { valid: false };
-  const apply = h('button', { type: 'button', class: 'btn-primary', disabled: true }, 'Apply');
+  const apply = h('button', { type: 'button', class: 'btn btn-primary', disabled: true }, 'Apply');
   const sync = () => { apply.disabled = !canApply(aoi, dates); };
 
   const aoiBox = h('div', { class: 'aoi-box' });
   const dateBox = h('div', { class: 'date-box' });
   const s = store.get();
   const aoiCtl = aoiForm.mount(aoiBox, { bbox: s.bbox, maxAreaDeg2, presets, onChange: (v) => { aoi = v; sync(); onAoiInput(v); },
-    onPreset: (p) => goTo(presetPatch(p, store.get(), span)) });
+    onPreset: (p) => { goTo(presetPatch(p, store.get(), span)); closeSheet(); } });
   const dateCtl = dateRange.mount(dateBox, { span, from: s.from ?? '', to: s.to ?? '', now, onChange: (v) => { dates = v; sync(); } });
 
   const commit = () => {
@@ -66,63 +71,65 @@ export const mount = (container, {
   };
   apply.addEventListener('click', commit);
 
-  const choices = layerChoices(views);
-  const layerBox = choices.length
-    ? h('fieldset', { class: 'layer' }, h('legend', {}, 'Layer'),
-      choices.map((c) => h('label', {},
-        h('input', { type: 'radio', name: 'layer', value: c.id, checked: store.get().layer === c.id, onchange: () => store.set({ layer: c.id }) }), c.label)))
-    : null;
-
-  // The full-screen map opens over the sheet, so the sheet stops being modal until focus is back.
-  const drawBtn = onDrawMap ? h('button', { type: 'button', class: 'chip draw-map', onclick: () => { setModal(false); onDrawMap(); } }, 'Draw on map') : null;
-  const closeBtn = h('button', { type: 'button', class: 'sheet-close' }, 'Close');
+  // On phone the map opens full screen over the sheet, so the sheet stops being modal until focus is back.
+  const drawBtn = onDrawMap ? h('button', { type: 'button', class: 'btn draw-map', onclick: () => { setModal(false); onDrawMap(); } }, icon('area'), 'Draw on map') : null;
+  const closeBtn = h('button', { type: 'button', class: 'icon-btn sheet-close', 'aria-label': 'Close area and period' }, icon('close'));
   const actions = h('div', { class: 'actions' }, apply);
-  const form = h('form', { class: 'query-form', 'aria-label': 'Query' },
-    h('div', { class: 'sheet-head' }, h('strong', {}, 'Area and range'), closeBtn),
-    aoiBox, drawBtn, dateBox, layerBox, actions);
+  const form = h('form', { class: 'query-form', 'aria-labelledby': 'query-title' },
+    h('div', { class: 'sheet-head' }, h('strong', { id: 'query-title', text: 'Area and period' }), closeBtn),
+    mapSlot, aoiBox, drawBtn, dateBox, actions);
   form.addEventListener('submit', (e) => { e.preventDefault(); commit(); });
 
-  // Phone: the form lives in a sheet opened from two summary chips. The sheet state is a
-  // class on the container; desktop CSS ignores it and always shows the form.
+  // The form is a popover under the chips on desktop and a sheet on phone. Its open state is a
+  // class on the container.
   let opener = null;
   const isSheetOpen = () => container.classList.contains('sheet-open');
   const setModal = (on) => {
     if (on) { form.setAttribute('role', 'dialog'); form.setAttribute('aria-modal', 'true'); }
     else { form.removeAttribute('role'); form.removeAttribute('aria-modal'); }
   };
+  const chip = (cls, ic) => h('button', { type: 'button', class: `chip summary-chip ${cls}`, 'aria-haspopup': 'dialog', 'aria-expanded': 'false' }, icon(ic));
+  const areaChip = chip('area-chip', 'area');
+  const rangeChip = chip('range-chip', 'calendar');
+  const setExpanded = (on) => [areaChip, rangeChip].forEach((c) => c.setAttribute('aria-expanded', String(on && c === opener)));
   const openSheet = (from, focusEl) => {
     opener = from;
     container.classList.add('sheet-open');
+    document.documentElement.classList.add('query-open');
     setModal(true);
+    setExpanded(true);
     focusEl?.focus();
   };
   const closeSheet = () => {
     if (!isSheetOpen()) return;
     container.classList.remove('sheet-open');
+    document.documentElement.classList.remove('query-open');
     setModal(false);
+    setExpanded(false);
     opener?.focus();
   };
-  const chip = (cls) => h('button', { type: 'button', class: `summary-chip ${cls}` });
-  const areaChip = chip('area-chip');
-  const rangeChip = chip('range-chip');
-  const summary = h('div', { class: 'query-summary' }, areaChip, rangeChip);
+  const summary = h('div', { class: 'query-summary chips' }, areaChip, rangeChip);
   const paintSummary = (st) => {
-    const m = summaryModel(st, span);
-    areaChip.replaceChildren(h('span', { class: 'chip-text', text: m.area }), h('span', { class: 'chip-change', 'aria-hidden': 'true', text: 'Change' }));
-    rangeChip.replaceChildren(h('span', { class: 'chip-text', text: m.range }), h('span', { class: 'chip-change', 'aria-hidden': 'true', text: 'Change' }));
-    areaChip.setAttribute('aria-label', `${m.area}. Change area`);
-    rangeChip.setAttribute('aria-label', `${m.range}. Change range`);
+    const m = chipModel(st, span);
+    areaChip.replaceChildren(icon('area'), h('span', { class: 'chip-text mono', text: m.area }), icon('pencil', 'chip-edit'));
+    rangeChip.replaceChildren(icon('calendar'), h('span', { class: 'chip-text', text: m.period }), icon('chevron', 'chip-edit'));
+    areaChip.setAttribute('aria-label', m.areaLabel);
+    rangeChip.setAttribute('aria-label', m.periodLabel);
   };
   paintSummary(store.get());
-  areaChip.addEventListener('click', () => openSheet(areaChip, form.querySelector('#aoi-south')));
-  rangeChip.addEventListener('click', () => openSheet(rangeChip, form.querySelector('#date-from')));
+  areaChip.addEventListener('click', () => (isSheetOpen() && opener === areaChip ? closeSheet() : openSheet(areaChip, form.querySelector('#aoi-south'))));
+  rangeChip.addEventListener('click', () => (isSheetOpen() && opener === rangeChip ? closeSheet() : openSheet(rangeChip, form.querySelector('#date-from'))));
   closeBtn.addEventListener('click', closeSheet);
   form.addEventListener('keydown', (e) => {
     if (!isSheetOpen()) return;
-    if (e.key === 'Escape') closeSheet();
-    else trapTab(e, form);
+    if (e.key === 'Escape') { e.stopPropagation(); closeSheet(); } else trapTab(e, form);
   });
   form.addEventListener('focusin', () => { if (isSheetOpen()) setModal(true); });
+  const onOutside = (e) => {
+    if (!isSheetOpen() || container.contains(e.target) || e.target.closest?.('.map-panel.is-full')) return;
+    closeSheet();
+  };
+  document.addEventListener('pointerdown', onOutside);
   container.append(summary, form);
 
   // Store changes from the hash or from presets in the empty state refill the form.
@@ -133,5 +140,16 @@ export const mount = (container, {
     last = st;
     paintSummary(st);
   });
-  return { aoi: aoiCtl, dates: dateCtl, actions };
+  return {
+    aoi: aoiCtl,
+    dates: dateCtl,
+    actions,
+    /** Opens the form from a trigger outside the chips: 'area' focuses South, 'map' also opens the map. */
+    open: (target, from) => {
+      openSheet(from ?? areaChip, target === 'period' ? form.querySelector('#date-from') : form.querySelector('#aoi-south'));
+      opener = from ?? areaChip;
+      if (target === 'map') onMapToggle?.();
+    },
+    close: closeSheet,
+  };
 };

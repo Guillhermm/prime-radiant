@@ -1,5 +1,6 @@
-import { seriesForAoi, harmonize, toCalendar, kpis } from '../../core/index.js';
+import { seriesForAoi, harmonize, baseline, toCalendar, kpis } from '../../core/index.js';
 import { aoiCellCount } from './bins.js';
+import { typicalYear } from './stats.js';
 
 /** The mock-data tool marks its manifest with a "synthetic-" dataVersion prefix. */
 export const isSyntheticManifest = (manifest) => /^synthetic/i.test(manifest?.dataVersion ?? '');
@@ -27,11 +28,15 @@ export const sliceSeries = (series, from, to) => {
 export const buildResult = ({ bbox, from, to, manifest, tiles }) => {
   const sensors = seriesForAoi(bbox, tiles, manifest);
   const harmonized = harmonize(sensors);
-  const cells = sliceCells(toCalendar(harmonized), from, to);
+  // The baseline runs on the whole record so a month's median does not depend on the range shown.
+  const allCells = toCalendar(harmonized, baseline(harmonized));
+  const cells = sliceCells(allCells, from, to);
   return {
     bbox, from, to, manifest, sensors,
     series: sliceSeries(harmonized, from, to),
     cells,
+    allCells,
+    typical: typicalYear(harmonized),
     kpis: kpis(cells),
     aoiCells: aoiCellCount(bbox, manifest.grid.res),
   };

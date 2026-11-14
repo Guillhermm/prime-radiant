@@ -6,7 +6,7 @@ burning-activity calendar per area. Built for the NASA Space Apps Challenge 2026
 
 ## Status
 
-Web app (Guilherme's track) built and QA-approved on fixture data: calendar, area and period selection, map, cell detail, caveats, method drawer, CSV export, plus the anomaly layer and live view behind `?preview=1`. The science in `core/` (Kaue's track) is still stubbed, so numbers are placeholders. Not deployed yet.
+Web app (Guilherme's track) built on fixture and synthetic demo data, redesigned to design 3 (not yet re-validated by QA): first-run screen with example areas, latest-month verdict with the Radiant (a polar year-by-month view), calendar grid with year totals and a median row, selected-month panel (docked on desktop, sheet on phone), area and period chips, caveats, method drawer, one-click CSV export, plus the anomaly layer and live view behind `?preview=1`. Comparisons with the median carry a Preview tag until the science gate passes. The science in `core/` (Kaue's track) is still stubbed, so numbers are placeholders. Not deployed yet.
 [docs/roadmap.md](docs/roadmap.md).
 
 | Product line | Status |

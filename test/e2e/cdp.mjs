@@ -92,7 +92,7 @@ export const launch = async (chromePath) => {
       if (!box) throw new Error(`missing element: ${sel}`);
       for (const type of ['mousePressed', 'mouseReleased']) await cmd('Input.dispatchMouseEvent', { type, x: box[0], y: box[1], button: 'left', clickCount: 1 });
     };
-    const keys = { Escape: 27, Enter: 13, Tab: 9 };
+    const keys = { Escape: 27, Enter: 13, Tab: 9, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40 };
     const press = async (key) => {
       for (const type of ['keyDown', 'keyUp']) await cmd('Input.dispatchKeyEvent', { type, key, code: key, windowsVirtualKeyCode: keys[key] });
     };

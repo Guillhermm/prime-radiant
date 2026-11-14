@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { FOOTER, GROUP_IDS, heroModel, tabsModel, nextTabIndex, viewTitle } from './app-shell.js';
+import { FOOTER, GROUP_IDS, VIEW_ICONS, heroModel, tabsModel, nextTabIndex, viewTitle } from './app-shell.js';
+import { ICON_NAMES } from './icons.js';
 import { VIEWS } from '../views.js';
 
 test('disabled views are absent from the tabs', () => {
@@ -44,4 +45,10 @@ test('footer names the authors with accents, the Apache-2.0 notice and the three
   assert.doesNotMatch(JSON.stringify(FOOTER), /all rights reserved/i);
   assert.equal(FOOTER.attributions.length, 3);
   assert.ok(FOOTER.attributions.some((a) => a.includes('OpenStreetMap contributors')));
+});
+
+test('every view has a bottom-bar icon and the footer links are https', () => {
+  assert.ok(VIEWS.every((v) => ICON_NAMES.includes(VIEW_ICONS[v.id])));
+  assert.ok(FOOTER.links.every((l) => l.href.startsWith('https://')));
+  assert.match(FOOTER.tagline, /MODIS since 2000 and VIIRS since 2012/);
 });

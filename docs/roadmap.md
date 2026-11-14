@@ -284,6 +284,7 @@ Sync point **S0 (contract freeze)**: both review schema, fixtures, stubs, QueryS
 
 **M1-G8 KPI strip** · S · depends: M1-G1, M0-K3
 - Deliverable: `kpi-strip.js` from `core.kpis`: current month vs median (number and years used), total in range, sensor era; swipe cards on phone.
+- Status: replaced in design 3 by `verdict-row.js` (latest month vs median, peak month, busiest year, total in range).
 - Acceptance: median shown with n years; null shows "not enough history", not 0.
 - Tests: unit on formatting.
 - Files: `web/src/components/kpi-strip.js`.
@@ -295,7 +296,7 @@ Sync point **S0 (contract freeze)**: both review schema, fixtures, stubs, QueryS
 - Files: `web/src/components/caveat-strip.js`, `method-drawer.js`, `states.js`.
 
 **M1-G10 Data table and export menu** · S · depends: M1-G1, M0-K3
-- Deliverable: `data-table.js` (generic accessible table used by the calendar table view and the sensors view), `export-menu.js` (calls `core.toCsv`, downloads via Blob with a dated filename).
+- Deliverable: `data-table.js` (generic accessible table used by the calendar table view and the sensors view), `export-menu.js` (calls `core.toCsv`, downloads via Blob with a filename named after the selected range).
 - Acceptance: table headers scoped; export file equals `core.toCsv` output byte for byte.
 - Tests: unit on filename and table model.
 - Files: `web/src/components/data-table.js`, `export-menu.js`.

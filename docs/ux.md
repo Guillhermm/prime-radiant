@@ -1,116 +1,122 @@
 # UX spec
 
-Status: D0 passed with conditions (M0-G5, see section 10). Tokens: `web/styles/tokens.css`. Audience: emergency managers who must read an area's fire history in seconds, often on a phone in the field. Contract names (QueryState, VIEWS, CalendarCell, caveat ids) come from `docs/roadmap.md`.
+Status: D0 passed with conditions (M0-G5, see section 10); layout and components follow the humans-approved design 3. Tokens: `web/styles/tokens.css`. Audience: emergency managers who must read an area's fire history in seconds, often on a phone in the field. Contract names (QueryState, VIEWS, CalendarCell, caveat ids) come from `docs/roadmap.md`.
 
 ## 1. Flow
 
-1. First screen: the Query bar (area, dates, layer) over an empty state with example-area chips. Nothing else competes.
-2. Pick an area (form first, map optional) and press Apply (both widths; see open items on auto-apply).
-3. The Calendar tab fills: KPI strip (current month vs median), then the year x month grid. Caveats are visible the whole time.
-4. Tap or focus a cell to see its value, source and caveats. Export gives the CSV of what is on screen.
-5. Everything on screen is encoded in the URL hash (`#aoi=bbox:w,s,e,n&from=&to=&view=&layer=`), so a view can be shared by link.
+1. First screen (no area yet): a hero that asks "When does this place burn?", a large Radiant of an example area, the record dates (MODIS from Nov 2000, VIIRS from Jan 2012, latest month) and two example cards with a typical-year ribbon. Primary action "Draw an area on the map", secondary "Enter coordinates". Export is hidden: there is nothing to export yet.
+2. Pick an area from the area chip (popover on desktop, bottom sheet on phone): coordinates, examples, map, period, Apply.
+3. The Calendar view fills. The answer comes first (verdict row): the latest month against its median, the Radiant, and three facts in range. Then the caveat line, then the year x month grid. Caveats are visible the whole time.
+4. Click, tap or press Enter on a cell to open the selected-month panel: docked on the right at 64rem and wider, a modal bottom sheet below that. Arrow keys move the selection and the panel follows.
+5. Export CSV downloads the aggregates on screen in one click and confirms in a toast.
+6. Everything on screen is encoded in the URL hash (`#aoi=bbox:w,s,e,n&from=&to=&view=&layer=`), so a view can be shared by link. "Copy link" in the desktop panel copies it; on phone the sheet has no Copy link yet (planned: a menu on the area chip).
 
 ## 2. Information architecture
 
 | Element | Role | Present from |
 |---|---|---|
-| Top bar | Product name, tabs, Method button, Export menu | M1 |
-| Tabs: Calendar \| Sensors \| Anomalies \| Live | One `VIEWS` entry each. Disabled views are not rendered (no greyed tab). Calendar and Sensors ship in M1 (slots A and B); Anomalies is slot C (M2); Live is slot D (M3). The Anomalies tab holds the vs-median grid and the flagged-periods list; the Calendar's Layer switch shows the same grid in place (one `layer` state, one component) | M1 |
-| Query bar | Area (lat/lon fields, presets, map), date range, layer (Counts \| vs median once C exists) | M1 |
-| Caveat strip | Persistent, not dismissible, one line plus "Read more" opening the Method drawer. Shows "Preliminary" while the science gate flag is set | M1 |
-| Main view | Output of the active tab | M1 |
-| Cell detail | Desktop: side panel. Phone: bottom sheet | M1 |
-| Method drawer | Right drawer (desktop), full-height sheet (phone). Focus trapped, Escape closes, focus returns to the trigger | M1 |
-| Export menu | CSV of aggregates (H12), dated filename, plus "Copy link" | M1 |
+| Synthetic band | Orange band above everything while the data is the synthetic demo set (`manifest.synthetic`), with an About link to the Method drawer's data section, plus a thin frame around the viewport. Never removable while the data is synthetic | M1 |
+| Top bar | Brand mark, view tabs (icon plus label), theme radiogroup (Light, Dark, System), Method, Export CSV. On phone: brand, Method (info icon) and Export (icon), and the tabs move to a bottom bar | M1 |
+| Views: Calendar \| Sensors \| Anomalies \| Live | One `VIEWS` entry each. Disabled views are not rendered. Calendar and Sensors ship in M1; Anomalies (slot C) and Live (slot D) only behind `?preview=1`, tagged Preview | M1 |
+| Context row | Eyebrow (view name), area title, area chip, period chip. Chips wrap on phone, never truncate | M1 |
+| Verdict row | Latest-month hero card, Radiant card, facts card (peak month, busiest year, total in range) | M1 |
+| Caveat line | Persistent, not dismissible, one line plus "How this is made" opening the Method drawer. Shows "Preliminary" while the science gate flag is set | M1 |
+| Calendar card | Title, stepped legend bar, layer switch (preview only), Grid \| Table, the grid with a year-total column and a median row | M1 |
+| Selected-month panel | Docked region (desktop) or modal sheet (phone) | M1 |
+| Method drawer | Floating right drawer (desktop), bottom sheet (phone): satellite timeline, flame key, three method steps, status, data credits, theme control on phone | M1 |
+| Footer | Brand, tagline, authors, data credits, license, data version, Install app (when the browser offers it), theme control | M1 |
 
-Slots C and D are drawn in every wireframe below as dashed boxes so the layout does not move when they ship.
+## 3. Layout
 
-## 3. Wireframes
+Screenshots of the built app at 1440 and 400 wide, both themes, are the reference; the ASCII below gives the structure only.
 
-### 3.1 Desktop, 1440 wide, Calendar tab
-
-```
-+----------------------------------------------------------------------------------+
-| Prime Radiant   [Calendar] [Sensors] [Anomalies*] [Live*]      [Method] [Export v]|
-+----------------------------------------------------------------------------------+
-| Area  S [-20.1] W [-58.2] N [-15.3] E [-55.0]  [Presets v] [Map v]               |
-| From [2000-11] To [2026-10]  [All][10 y][This year]     Layer (o)Counts ( )*vs med|
-+----------------------------------------------------------------------------------+
-| ! Hotspot counts, not burned area. MODIS to VIIRS values are estimated.  Read more|
-|   Preliminary                                                                    |
-+----------------------------------------------------------------------------------+
-| [ Oct 2026 vs median ] [ Total in range ] [ Sensor era ]   [ Table view ]        |
-|   1,204  (+38%)           58,210            MODIS+VIIRS                          |
-|   median of 22 yrs                                                               |
-+---------------------------------------------------------------+------------------+
-|      Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec          | Cell detail      |
-| 2026 [] [] [] [] [] [] [] [] [] [] .. ..                      | Sep 2020         |
-| 2025 [] [] [] [] [] [] [] [] [] [] [] []                      | 12,450 fire-     |
-| 2024 ...                                                      | cell-days        |
-| ...                                                           | Observed, MODIS  |
-| 2000 ... (hatched until MODIS starts 2000-11)                 | Median 3,100 (n=|
-|                                                               | 22 yrs)          |
-| Legend: [0][1-3][4-15][16-63][64-255][256-1023][1024+]  ///no data  Color = density |
-+---------------------------------------------------------------+------------------+
-* Anomalies (slot C, M2) and Live (slot D, M3) appear only when enabled in VIEWS. Until core delivers them, `?preview=1` enables both with placeholder numbers from `web/src/preview-stubs.js`, labeled on screen as not validated; the flagged-periods list is planned, not built.
-  C adds the "vs median" layer, a flag marker on cells and a flagged-periods list under the grid.
-  D adds a live season line over a historical band, and a provisional overlay on the current month.
-```
-
-### 3.2 Phone, 400 wide, Calendar tab
+### 3.1 Desktop, 1440 wide, Calendar view
 
 ```
-+------------------------------+
-| Prime Radiant     [Method][Ex]|
-| View [ Calendar          v ]  |   native select (tabs would overflow once C and D exist)
-+------------------------------+
-| Area: -20.1,-58.2 to -15.3,   |
-| -55.0 (2.3 deg2)   [Change]   |   Change opens the Area sheet (fields, presets, map full screen)
-| 2000-11 to 2026-10 [Change]   |
-+------------------------------+
-| ! Counts, not area. Estimated |
-|   values marked. Preliminary  |
-|   Read more                   |
-+------------------------------+
-| < Oct 2026 vs median       > |   KPI cards, swipe or arrows
-|   1,204   +38%   n=22 yrs     |
-+------------------------------+
-|     J F M A M J J A S O N D   |   1.6rem cells, year column sticky
-| 26  . . . . . . . . . . - -   |
-| 25  . . . . . . . . . . . .   |
-| ... grid scrolls vertically   |
-+------------------------------+
-| Legend [0][1-3][4-15][16-63]  |   wraps in two rows
-| [64-255][256-1023][1024+] //  |
-| [Table view]                  |
-+------------------------------+
-| (cell tap -> bottom sheet)    |
-+------------------------------+
-Slots C and D: Anomalies and Live are further options in the View select, plus a Layer switch
-under the KPI cards when C is enabled.
++------------------------------------------------------------------------------------+
+| SYNTHETIC DEMO DATA  Generated by the team ... not real fire detections.     About |
++------------------------------------------------------------------------------------+
+| [mark] PRIME RADIANT  (Calendar)(Sensors)        (sun|moon|system)  Method  [Export]|
++------------------------------------------------------------------------------------+
+| BURNING ACTIVITY CALENDAR                                                          |
+| Custom area   [19 S-12 S . 59 W-52 W  edit]  [Jan 2001 - Oct 2026 v]               |
+| +--------------------+ +--------------------------+ +------------------------+     |
+| | OCT 2026 . LATEST  | |  (Radiant)  THE RADIANT  | | Peak month  PREVIEW Sep|     |
+| | 3,117 fire-cell-d. | |             rings=years  | | Busiest year      2024 |     |
+| | +5% vs Oct median  | |             slices=months| | Total in range 394,078 |     |
+| | PREVIEW, rank line | |                          | |                        |     |
+| +--------------------+ +--------------------------+ +------------------------+     |
+| ! Hotspot counts, not burned area. MODIS to VIIRS estimated. Preliminary  How this |
+| +--------------------------------------------------------------------------------+ |
+| | Fire-cell-days by month          [ramp 0 1 4 16 64 256 1024+]   (Grid|Table)   | |
+| |      Jan Feb ... Dec   Year total                                             | |
+| | 2026 [45][12] ...      ==== 12,576*                                           | |
+| | ...                                                                           | |
+| | Median [..] PREVIEW                                                           | |
+| +--------------------------------------------------------------------------------+ |
++------------------------------------------------------------------------------------+
 ```
 
-### 3.3 Area sheet (phone) and map
+With a cell selected, the panel docks on the right (`--panel-w`) and the main column narrows. Below a 72rem main column (container query) the Radiant card is dropped and the small Radiant moves into the hero card, so no row is left half empty.
 
-Fields first (lat/lon, presets), the map in a "Draw on map" section that opens full screen with Done and Cancel. The form is always a complete path; the map is an accelerator. Map base: see section 8.
+### 3.2 Phone, 400 wide, Calendar view
+
+```
++------------------------------+
+| SYNTHETIC DEMO DATA ...About |
+| [mark] PRIME RADIANT  (i)(v) |   info opens Method, arrow-down icon exports
++------------------------------+
+| BURNING ACTIVITY CALENDAR    |
+| Custom area                  |
+| [19 S-12 S . 59 W-52 W edit] |   chips stack, full width
+| [Jan 2001 - Oct 2026 v]      |
+| +--------------------------+ |
+| | OCT 2026 . LATEST  (Rad.)| |   hero card with the mini Radiant
+| | 3,117   +5% PREVIEW      | |
+| +--------------------------+ |
+| ! Hotspot counts ... How this|
+| +--------------------------+ |
+| | ramp, Grid|Table          | |
+| | J F M A M J J A S O N D  | |   12 columns fit, numbers abbreviated (3k)
+| +--------------------------+ |
+| footer                       |
++------------------------------+
+| (Calendar)      (Sensors)    |   fixed bottom bar
++------------------------------+
+```
+
+A cell tap opens the panel as a bottom sheet (`role="dialog"`, `aria-modal`), the page scrolls so the cell stays visible above the sheet (2.4.11), Back closes it (history entry).
+
+### 3.3 Area and period (popover and sheet) and map
+
+Desktop: a popover under the chips. Phone: a bottom sheet. Coordinates first, then example areas, the map ("Draw on map": inline on desktop, full screen with Done and Cancel on phone), the period with All, Last 10 years and This year, and Apply. The form is always a complete path; the map is an accelerator. Map base: see section 8.
 
 ## 4. Components
 
 | Component | Behavior | Notes |
 |---|---|---|
-| Tabs | `role="tablist"`, arrow keys move, Enter/Space activate, hash updates, Back works | Desktop only; select on phone |
-| Query bar | Plain form; inline validation message per field via `aria-describedby`; Apply disabled while invalid (phone shows an explicit Apply) | Area cap message states the limit and the nearest valid size |
-| KPI strip | Current month vs median with n years; "not enough history" instead of 0 when null | Swipe cards on phone, with prev/next buttons |
-| Calendar grid | `role="grid"`, roving tabindex, arrows/Home/End/PageUp/PageDown, Enter opens detail, Escape closes. Cell label: "September 2020, 12,450 fire-cell-days, density 38 per 1,000 cells, observed, MODIS" | Sticky year column on desktop. Number inside the cell only if it fits (it will not at 1.6rem on phone, and rarely at 2rem; abbreviate as 12k or enlarge the desktop cell, see open items). Color is always paired with the number on hover, focus and tap |
-| Cell marks | Estimated: triangle in the top-right corner. Partial month: dotted bottom edge. Flag (C): filled dot top-left plus a heavy inset frame. All use the cell's own text token, so contrast equals the text pair | Marks never rely on color |
-| Legend | Seven classes plus no-data hatch plus the density unit sentence (5.1); for C, the diverging ramp with the center labeled "median" | Always visible next to the grid |
-| Table view | Same data as an accessible table, toggled from the grid; this is the text alternative of the chart | Years as rows, months as columns, scoped headers |
-| Sensor chart (B) | Three lines: MODIS, VIIRS, harmonized, with different dash patterns and direct labels, era lines at 2012-01-20 and 2026-11-02, per-series toggles, data table alternative | Series tokens `--series-*` |
-| Caveat strip | Non-dismissible | Text from `core/caveats.js` |
-| Method drawer | Method text, citation, version, R and level | Focus trap |
-| Cell detail | Value, status, source sensor, R if estimated, median and years used, relevant caveats; opened from the anomaly layer, also percentile rank and flag | Focus returns to the cell on close |
-| Export menu | "CSV (aggregates)", "Copy link" | Output equals `core.toCsv` |
-| Live (D) | "Provisional" badge, `fetched_at`, never added to harmonized totals; Table view toggle as the text alternative (one row per period, live value next to median and quartiles) | Badge tokens; live line `--series-live` (Okabe-Ito vermillion #D55E00, both themes), band and median `--series-era-line` |
+| Tabs | `role="tablist"`, arrow keys move, Enter/Space activate, hash updates, Back works | Icon plus label; bottom bar on phone |
+| Theme control | `role="radiogroup"` Light, Dark, System; arrows move, choice stored as `pr-theme`; switch animated with a View Transition when supported and motion is allowed | In the top bar (desktop), footer and Method drawer (phone) |
+| Area and period chips | Open the form as a popover (desktop) or sheet (phone) with `aria-modal`, focus trapped, Escape and the close button return focus to the chip | Chips wrap; no ellipsis at 400px |
+| Verdict: hero | Latest month value; delta against the same month's median (core `baseline`), "2.7x" when the ratio is 2 or more or under 0.5, else a signed percent; rank among the same months; years behind the median. "Not enough history for a median" when there is none. All comparisons carry Preview | Median rule mirrors the core stub until M1-K7 |
+| Verdict: facts | Peak month of the typical year (Preview), busiest year (plain sum, partial year named), total in range | |
+| Radiant | Polar calendar: rings are years (oldest inside), slices are months, January at 12 o'clock, clockwise, one 0.01 rad gap per month boundary. The small Radiant (8.5rem, in the hero card) drops the ring hairlines and narrows the gap to 0.004 rad to avoid moiré. The selection is a 3.5-unit `--color-focus` outline over a `--color-surface` halo, so it stays visible on yellow cells. Overview only: no number of its own, not in the tab order; hovering a slice shows a tooltip and highlights the cell, clicking selects it. The grid stays the keyboard path | `role="img"` with a label naming the first and last ring |
+| Calendar grid | `role="grid"`, roving tabindex, arrows/Home/End/PageUp/PageDown, Enter opens the panel, arrows move the selection while it is open, Escape closes. Cell label: "September 2024, 12,122 fire-cell-days, density 2,474 per 1,000 cells, harmonized, estimated". Year-total column (busiest year highlighted, partial year starred; hidden below a viewport of 80rem, kept when the panel is open at wider sizes) and a median row tagged Preview | Numbers abbreviated (12k) where the full count does not fit |
+| Cell marks | Estimated: triangle in the top-right corner. Partial month: dotted bottom edge. Flag (C): dot plus a heavy inset frame | Marks never rely on color |
+| Legend | Stepped ramp bar with tick values; the bins as a visually hidden list; the density unit sentence under the grid | |
+| Table view | Same data as an accessible table, toggled from Grid \| Table; "Show in table" in the panel jumps to the year | Scoped headers |
+| Selected-month panel | Month, value with its swatch, density and provenance chips, comparison with the median named by its years ("vs the median of the 23 earlier Septembers (2001–2023)", Preview), a bar strip of the same month in every year with the dashed "median of earlier years" line (the selected value sits 0.25rem above the higher of its bar and the line, never within 0.375rem of the line), rank sentence (Preview), satellites in orbit that month (from the manifest), estimation note, caveats, Copy link (both widths), Show in table and key hints (desktop) | Desktop: `role="region"`, focus stays in the grid. Phone: modal sheet, focus moves to the title and returns to the cell |
+| Caveat line | Non-dismissible | Text from `core/caveats.js` |
+| Method drawer | Timeline of the four satellites (redrawn at its rendered width so labels stay 0.75rem and the axis 0.6875rem), flame key, three steps, status line, data section | Focus trap, Escape closes, focus returns to the trigger |
+| Export CSV | One button; downloads `prime-radiant-<first month>-<last month>.csv` (for example `prime-radiant-2001-01-2026-10.csv`) and confirms with "CSV saved: <file>" in a status toast. With synthetic data the first line of the file says so | Output equals `core.toCsv` behind the CSV formula guard |
+| Sensor chart (B) | Three lines: MODIS, VIIRS, harmonized, with different dash patterns and direct labels, era lines, per-series toggles, data table alternative | Series tokens `--series-*` |
+| Live (D) | "Provisional" badge, `fetched_at`, never added to harmonized totals; Table view toggle | Preview only |
+
+### 4.1 Motion
+
+Entrances animate `transform` and `opacity` (the cell ignite adds a brief brightness filter), with `--dur-*` and `--ease-*` tokens: cells ignite in a short stagger on first reveal, the Radiant grows in, the panel slides in from the right, sheets rise from the bottom, the drawer slides in. With `prefers-reduced-motion: reduce` every entrance becomes a short fade or nothing, and no View Transition runs.
+
+Known issue: while a view switch's View Transition runs, Chrome sends every click to `<html>`, so a click in that window is lost (`pointer-events: none` on `::view-transition` does not change this). The whole transition is capped at `--dur-2` (160ms), about 210ms from click to end measured in headless Chrome, down from about 290ms.
 
 ## 5. Color
 
@@ -150,7 +156,7 @@ MODIS `#0072B2` (light) or `#56B4E9` (dark), VIIRS `#B36B00` (light, darkened fr
 
 ### 5.5 Themes
 
-Dark is the default (a deep navy ground with a soft blue glow and a faint CSS star field). Light follows `prefers-color-scheme: light`, and `data-theme="light|dark"` on the root overrides the system either way. Both palettes are token sets in `web/styles/tokens.css`; components only use tokens. The top bar has its own `--topbar-*` tokens (transparent in dark, solid navy in light) and its buttons and focus ring are scoped to the bar, so light-theme white text never reaches the detail panel or other buttons.
+Dark is the base palette (a deep navy ground with a soft glow). The theme control offers Light, Dark and System (the default, stored as `pr-theme`); System follows `prefers-color-scheme`, and `data-theme="light|dark"` on the root overrides it either way. Both palettes are token sets in `web/styles/tokens.css`; components only use tokens. The top bar has its own `--topbar-*` tokens (near-black `#0c0d17` in dark, pale `#eef1f8` in light) and its focus ring is scoped to the bar. Fire-related accents (the above-median pill, the busiest-year bar) use `--color-fire` (`#ff7a33` dark, `#ad3a00` light, darkened from `#b83d00` so it reaches 4.5:1 on `--color-fire-soft`).
 
 Palette direction (checked on spaceappschallenge.org on 2026-11-14): deep navy `#151622`, electric blue `#2491ff` for selection and links, one yellow `#e7f434` primary button in dark (blue `#0050d8` in light), orange `#ff7a33` or `#b83c00` for warn. No logo and no "NASA" wordmark are used.
 
@@ -175,21 +181,23 @@ Source: `@fontsource/fira-sans@5.3.0` and `@fontsource/fira-code@5.3.0` from the
 | `OFL-fira-sans.txt` | `18aabf190848725e2576eefb5c29ba06aac1029d02132252a7f312eac2e50cf3` |
 | `OFL-fira-code.txt` | `126cd7bf732b86f42885f1fbf682e6aeea456672c7fdb99f2d557ec44e468a28` |
 
-D0 judgment, revised for the dark redesign: acceptable in light (the 1px edge is 4.64:1, so 1.4.11 is met by the edge) and a documented partial miss in dark for classes 0 and 1 (see above). The fill is information carried also by the number (hover, focus, tap, table, CSV). Conditions: the edge is never removed, and the number must be reachable without hover (focus and tap), which the phone cells (no inline number) depend on.
+D0 judgment, revised for the dark redesign: acceptable in light (the 1px edge is 4.64:1, so 1.4.11 is met by the edge) and a documented partial miss in dark for classes 0 and 1 (see above). The fill is information carried also by the number (hover, focus, tap, table, CSV). Conditions: the edge is never removed, and the number must be reachable without hover (focus and tap) (phone cells show the number abbreviated, 3k).
 
 ## 6. States
 
 | State | Where | What the user sees |
 |---|---|---|
-| Empty (no area) | Main view | One sentence "Choose an area to see its fire history", example-area chips (demo presets), "Enter coordinates" focus link. No empty grid |
-| Zero detections | Grid, KPI, chart | Grid shows class 0 cells; KPI reads "0 fire-cell-days in range", and a line says "No hotspots detected, sensors were operating". Never confused with no data |
-| No data | Cells before MODIS (2000-11) or outside coverage | Hatch plus "No data" in label |
-| Loading | Grid and KPI | Skeleton with `aria-busy="true"` and a polite status "Loading tiles"; Query bar stays usable; no spinner-only state |
-| Error | Main view | Inline message: what failed, what to do, Retry button; the Query bar keeps its values. `role="alert"` once |
-| Live unavailable (D) | Live tab and overlay | "Live data unavailable. Last update <fetched_at>" (older than 48 h counts as unavailable); the calendar keeps working; no fake zeros |
-| Not enough history | KPI | "Not enough history for a median" instead of a number |
-| Area too large | Query bar | Message with the cap and a suggested size; Apply disabled |
-| Preliminary | Caveat strip | "Preliminary" label until the science gate passes |
+| First run (no area) | Main view | Hero with the example Radiant, record dates, two actions and two example cards. No empty grid, no Export |
+| Zero detections | Grid, hero | Class 0 cells; the hero reads "0" and "No hotspots detected; the sensors were operating." Never confused with no data |
+| No data | Cells before MODIS (2000-11) or outside coverage | Hatch plus "No data" in label; the hero says "No data", never 0 |
+| Loading | Grid and verdict | Skeleton cards and grid with `aria-busy="true"` and a polite status; the chips stay usable |
+| Error | Main view | "Could not load fire data", what to do, "Try again"; the form keeps its values. `role="alert"` once |
+| Live unavailable (D) | Live view | "Live data unavailable. Last update <fetched_at>"; the calendar keeps working; no fake zeros |
+| Not enough history | Hero, panel | "Not enough history for a median" instead of a number |
+| Area too large | Area form | Message with the cap and a suggested size; Apply disabled |
+| Preliminary | Caveat line, Method drawer | "Preliminary" badge until the science gate passes |
+| Preview | Every comparison (delta, ratio, rank, median row, peak month, typical year) | A dashed "Preview" tag until the Second Foundation validates the median method |
+| Synthetic | Whole app | Orange band, viewport frame, "Synthetic" in the title, a line at the top of the CSV |
 
 ## 7. Accessibility checklist (WCAG 2.2 AA)
 
@@ -235,30 +243,39 @@ Summary: every required pair passes in both themes. Rows marked "information onl
 
 | Pair (foreground on background) | Use | Min | Dark | Light |
 |---|---|---|---|---|
-| `color-text` on `color-bg` | body text on page | 4.5:1 | 16.35 pass | 16.6 pass |
-| `color-text` on `color-surface` | text on panels | 4.5:1 | 15.17 pass | 17.95 pass |
-| `color-text` on `color-surface-2` | text in inputs | 4.5:1 | 13.53 pass | 15.88 pass |
+| `color-text` on `color-bg` | body text on page | 4.5:1 | 17.11 pass | 15.88 pass |
+| `color-text` on `color-surface` | text on panels | 4.5:1 | 15.88 pass | 17.95 pass |
+| `color-text` on `color-surface-2` | text in inputs | 4.5:1 | 14.16 pass | 16.46 pass |
 | `color-text-muted` on `color-surface` | secondary text on panels | 4.5:1 | 8 pass | 8.38 pass |
-| `color-text-muted` on `color-bg` | secondary text on page | 4.5:1 | 8.62 pass | 7.75 pass |
-| `color-text-muted` on `color-surface-2` | secondary text on inputs | 4.5:1 | 7.13 pass | 7.41 pass |
+| `color-text-muted` on `color-bg` | secondary text on page | 4.5:1 | 8.62 pass | 7.41 pass |
+| `color-text-muted` on `color-surface-2` | secondary text on inputs | 4.5:1 | 7.13 pass | 7.68 pass |
 | `color-accent` on `color-surface` | links on panels | 4.5:1 | 5.62 pass | 6.69 pass |
-| `color-accent` on `color-bg` | links on page | 4.5:1 | 6.05 pass | 6.19 pass |
+| `color-accent` on `color-bg` | links on page | 4.5:1 | 6.05 pass | 5.92 pass |
 | `color-accent-text` on `color-accent` | selected control text | 4.5:1 | 6.05 pass | 6.69 pass |
 | `color-cta-text` on `color-cta` | primary button text | 4.5:1 | 16.02 pass | 6.69 pass |
 | `color-focus` on `color-surface` | focus ring on panels | 3:1 | 14.86 pass | 6.69 pass |
-| `color-focus` on `color-bg` | focus ring on page | 3:1 | 16.02 pass | 6.19 pass |
-| `topbar-focus` on `topbar-bg` | focus ring in the top bar | 3:1 | 16.02 pass | 14.86 pass |
-| `topbar-text` on `topbar-bg` | top bar text | 4.5:1 | 16.35 pass | 17.95 pass |
-| `topbar-muted` on `topbar-bg` | top bar inactive tabs | 4.5:1 | 8.62 pass | 10.21 pass |
-| `topbar-border` on `topbar-bg` | top bar button borders | 3:1 | 3.3 pass | 3.87 pass |
+| `color-focus` on `color-bg` | focus ring on page | 3:1 | 16.02 pass | 5.92 pass |
+| `topbar-focus` on `topbar-bg` | focus ring in the top bar | 3:1 | 16.02 pass | 5.92 pass |
+| `topbar-text` on `topbar-bg` | top bar text | 4.5:1 | 17.11 pass | 15.88 pass |
+| `topbar-muted` on `topbar-bg` | top bar inactive tabs | 4.5:1 | 8.62 pass | 7.41 pass |
+| `topbar-border` on `topbar-bg` | top bar button borders | 3:1 | 3.3 pass | 4.1 pass |
 | `color-border-strong` on `color-surface` | control borders on panels | 3:1 | 3.06 pass | 4.64 pass |
-| `color-border-strong` on `color-bg` | control borders on page | 3:1 | 3.3 pass | 4.29 pass |
-| `color-warn` on `color-surface` | delta and flagged text | 4.5:1 | 6.91 pass | 5.7 pass |
+| `color-border-strong` on `color-bg` | control borders on page | 3:1 | 3.3 pass | 4.1 pass |
+| `color-warn` on `color-surface` | delta and flagged text | 4.5:1 | 6.91 pass | 6.21 pass |
 | `color-error` on `color-surface` | error text | 4.5:1 | 6.41 pass | 7.75 pass |
 | `color-error` on `color-error-bg` | error text on error box | 4.5:1 | 6.19 pass | 6.79 pass |
-| `color-caveat-text` on `color-caveat-bg` | caveat strip text | 4.5:1 | 13.09 pass | 11.69 pass |
-| `color-caveat-border` on `color-bg` | caveat strip edge | 3:1 | 7.45 pass | 5.27 pass |
-| `color-badge-text` on `color-badge-bg` | preliminary badge | 4.5:1 | 16.35 pass | 17.95 pass |
+| `color-caveat-text` on `color-caveat-bg` | caveat strip text | 4.5:1 | 14.31 pass | 14.24 pass |
+| `color-caveat-border` on `color-bg` | caveat strip edge | 3:1 | 7.45 pass | 5.49 pass |
+| `color-badge-text` on `color-badge-bg` | preliminary badge | 4.5:1 | 17.11 pass | 17.95 pass |
+| `color-fire` on `color-fire-soft` | above-median delta pill | 4.5:1 | 6.23 pass | 4.93 pass |
+| `color-accent` on `color-accent-soft` | below-median delta pill | 4.5:1 | 4.99 pass | 5.08 pass |
+| `color-synth-text` on `color-synth` | synthetic band text | 4.5:1 | 6.13 pass | 6.13 pass |
+| `color-text` on `color-raised` | selected segment text | 4.5:1 | 13.08 pass | 17.95 pass |
+| `current` on `color-surface` | selected month and year labels | 4.5:1 | 14.86 pass | 6.69 pass |
+| `bar-sel` on `color-surface` | selected year bar | 3:1 | 14.86 pass | 6.69 pass |
+| `sensor-modis` on `color-surface` | MODIS bar and dot | 3:1 | 5.62 pass | 6.69 pass |
+| `sensor-viirs` on `color-surface` | VIIRS bar and dot | 3:1 | 6.91 pass | 5.01 pass |
+| `sensor-harm` on `color-surface` | harmonized core | 3:1 | 14.86 pass | 17.95 pass |
 | `bin-0-text` on `bin-0` | cell text, bin-0 | 4.5:1 | 10.58 pass | 15.24 pass |
 | `bin-1-text` on `bin-1` | cell text, bin-1 | 4.5:1 | 6.9 pass | 9.73 pass |
 | `bin-2-text` on `bin-2` | cell text, bin-2 | 4.5:1 | 4.65 pass | 6 pass |
@@ -318,9 +335,9 @@ Summary: every required pair passes in both themes. Rows marked "information onl
 ## 10. Open items
 
 - D0 review done (see its report). Wireframes are ASCII and untested with users.
-- Cell number fit: 2rem desktop and 1.6rem phone cells cannot show 4 to 5 digit counts. Decide at D1: abbreviate (12k), enlarge desktop cells to about 3rem x 2rem, or show no inline number and rely on focus and tap.
 - Desktop auto-apply while typing risks 3.2.2 and screen-reader noise: prefer Apply at both widths, or apply on blur and Enter only.
-- 27 year rows at 2rem is about 54rem tall: the KPI strip plus grid exceed one laptop screen. Consider newest years first with a sticky month header (already newest first) and a compact row height.
 - Density denominator (grid cells in AOI) needs Second Foundation confirmation and a line in the Method drawer.
 - Class edges (section 5.1) and the diverging classing (5.3) need science-gate confirmation.
 - Map base: section 8.
+- Design 3, not built yet (planned): offline chip, Radiant anomaly ramp, copy-link menu on the area chip, iOS install hint, freshness dot on Live, tick ring on the first-run Radiant.
+- The Radiant starts January at 12 o'clock, as in the mockup; the design spec text says "centered". The designer confirms.

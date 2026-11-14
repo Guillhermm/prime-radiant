@@ -48,7 +48,7 @@ const ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">Op
  * cancels a half-drawn box. `onChange(bbox)` fires only for user edits, so a form `setBbox`
  * never loops back. Desktop: collapsible panel. Phone: hidden until `openFull()`, then full
  * screen with Done and Cancel (Cancel restores the area from when it opened).
- * Returns {setBbox(bbox), openFull(), destroy()}.
+ * Returns {setBbox(bbox), show(), openFull(), closeFull(), destroy()}.
  */
 export const mount = (container, { bbox = null, onChange = () => {}, skipTo = '#main-view' } = {}) => {
   let L = null;
@@ -192,6 +192,10 @@ export const mount = (container, { bbox = null, onChange = () => {}, skipTo = '#
       drawRect(b);
       if (b && map) map.fitBounds(bboxToBounds(b), { maxZoom: 8, padding: [16, 16] });
     },
+    show() {
+      if (toggle.getAttribute('aria-expanded') !== 'true') toggle.click();
+      draw.focus();
+    },
     openFull() {
       opener = document.activeElement;
       saved = current;
@@ -199,6 +203,12 @@ export const mount = (container, { bbox = null, onChange = () => {}, skipTo = '#
       document.body.classList.add('map-open');
       init().then(fit);
       draw.focus();
+    },
+    /** Leaves full screen keeping the area drawn so far, without moving focus (another overlay takes it). */
+    closeFull() {
+      if (!panel.classList.contains('is-full')) return;
+      opener = null;
+      closeFull(false);
     },
     destroy: () => { map?.remove(); container.replaceChildren(); },
   };

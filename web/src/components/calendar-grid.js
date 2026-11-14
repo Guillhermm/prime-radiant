@@ -1,9 +1,17 @@
 import { NODATA, binClass, density } from '../bins.js';
 import { MONTH_ABBR, MONTH_NAMES, abbreviateCount, formatCount, formatDensity, monthLabel } from '../format.js';
+import { partialNote, yearTotals } from '../stats.js';
 import { h } from './h.js';
 import { mount as mountTable, tableModel } from './data-table.js';
 
 const STATUS_TEXT = { observed: 'observed', harmonized: 'harmonized', partial: 'partial month' };
+
+/** At most three characters for a phone cell: 999, 3k, 12k, 1M. */
+export const shortCount = (n) => {
+  if (n < 1000) return String(n);
+  if (n < 999500) return `${Math.round(n / 1000)}k`;
+  return `${Math.round(n / 1e6)}M`;
+};
 
 /** Screen reader and hover text for one cell, with the full (unabbreviated) value. */
 export const cellLabel = (cell, aoiCells) => {
@@ -24,6 +32,7 @@ export const cellModel = (cell, aoiCells) => ({
   bin: binClass(cell.value, aoiCells),
   label: cellLabel(cell, aoiCells),
   text: cell.value === null ? '' : abbreviateCount(cell.value),
+  short: cell.value === null ? '' : shortCount(cell.value),
   estimated: cell.estimated === true,
   partial: cell.status === 'partial',
 });
@@ -120,68 +129,132 @@ export const calendarTableModel = (cells) => {
 
 const NAV_KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'];
 
+/**
+ * What a key does in the grid. With a month selected (the panel open), moving also moves the
+ * selection, so the panel follows. Returns 'open', 'close', 'move', 'move-select' or null.
+ */
+export const keyIntent = (key, { selected = false } = {}) => {
+  if (key === 'Enter' || key === ' ') return 'open';
+  if (key === 'Escape') return 'close';
+  if (NAV_KEYS.includes(key)) return selected ? 'move-select' : 'move';
+  return null;
+};
+
 /** True when at least `threshold` of the cells with data are estimated: per-cell marks then carry no information. */
 export const mostlyEstimated = (cells, threshold = 0.6) => {
   const withData = cells.filter((c) => c.value !== null);
   return withData.length > 0 && withData.filter((c) => c.estimated).length / withData.length >= threshold;
 };
 
+/**
+ * The median row under the grid: core.baseline's typical year (view-data), classed by density.
+ * Shown with the Preview tag until the median is validated.
+ */
+export const medianRowModel = (typical, aoiCells) => (typical ?? []).map((t) => (t.median === null
+  ? { month: t.month, bin: NODATA, text: '', short: '', label: `${MONTH_NAMES[t.month - 1]} median: not enough history` }
+  : {
+    month: t.month,
+    bin: binClass(Math.round(t.median), aoiCells),
+    text: abbreviateCount(Math.round(t.median)),
+    short: shortCount(Math.round(t.median)),
+    label: `${MONTH_NAMES[t.month - 1]} median ${formatCount(t.median)} fire-cell-days over ${t.from}–${t.to}, preview`,
+  }));
+
 const cellClass = (m) => ['cal-cell', `bin-${m.bin}`, m.bin === NODATA && 'nodata', m.estimated && 'is-estimated', m.partial && 'is-partial'].filter(Boolean).join(' ');
 
+const numSpans = (text, short) => [h('span', { class: 'cal-num num-l', 'aria-hidden': 'true', text }), h('span', { class: 'cal-num num-s', 'aria-hidden': 'true', text: short })];
+
 /**
- * mount(container, {cells, aoiCells, onSelect, onClose}). `onSelect(cell)` fires on click,
- * Enter and Space; `onClose()` on Escape. Returns {update({cells, aoiCells}), focus(), destroy()}.
+ * mount(container, {cells, aoiCells, typical, onSelect(cell), onClose()}). `onSelect` fires on
+ * click, Enter, Space, and on every arrow move while a month is selected. Returns
+ * {update(next), focus(), select({year, month}|null), link({year, month}|null), step(key),
+ * setTable(on), showYear(year), destroy()}.
  */
 export const mount = (container, deps) => {
-  let { cells, aoiCells } = deps;
+  let { cells, aoiCells, typical } = deps;
   let model;
   let pos = null;
+  let selected = null;
   let tableOn = false;
+  let linked = null;
+  let revealTimer = 0;
   const nodes = new Map();
 
-  const toggle = h('button', { type: 'button', class: 'cal-toggle', 'aria-pressed': 'false', text: 'Table view' });
   const readout = h('p', { class: 'cal-readout', 'aria-hidden': 'true' });
   const gridHost = h('div', { class: 'cal-scroll' });
   const tableHost = h('div', { class: 'cal-table', hidden: true });
-  const root = h('div', { class: 'calendar' }, h('div', { class: 'cal-bar' }, h('h2', { class: 'cal-title', text: 'Fire-cell-days by month' }), toggle), gridHost, readout, tableHost);
-  container.replaceChildren(root);
+  const notes = h('p', { class: 'cal-notes' });
+  container.replaceChildren(h('div', { class: 'calendar' }, gridHost, readout, tableHost, notes));
   let table = null;
+  let grid = null;
 
   const key = (r, c) => `${r}:${c}`;
+  const nodeAt = (p) => (p ? nodes.get(key(p.row, p.col)) : null);
+  const posFor = ({ year, month }) => {
+    const row = model.rows.findIndex((r) => r.year === year);
+    return row >= 0 && model.rows[row].cells[month - 1] ? { row, col: month - 1 } : null;
+  };
   const activate = (next, { focus = false } = {}) => {
     if (!next) return;
-    const prev = nodes.get(key(pos.row, pos.col));
+    const prev = nodeAt(pos);
     if (prev) prev.tabIndex = -1;
     pos = next;
-    const node = nodes.get(key(pos.row, pos.col));
+    const node = nodeAt(pos);
     node.tabIndex = 0;
     if (focus) node.focus();
   };
 
   const posOf = (node) => ({ row: Number(node.dataset.row), col: Number(node.dataset.col) });
 
-  const buildGrid = () => {
+  const paintSelection = () => {
+    if (!grid) return;
+    grid.querySelectorAll('.is-selected, .is-current').forEach((n) => n.classList.remove('is-selected', 'is-current'));
+    const p = selected && posFor(selected);
+    if (!p) return;
+    nodeAt(p)?.classList.add('is-selected');
+    grid.querySelectorAll(`[data-colhead="${p.col}"], [data-year="${model.rows[p.row].year}"]`).forEach((n) => n.classList.add('is-current'));
+  };
+
+  const buildGrid = ({ reveal = false } = {}) => {
     nodes.clear();
     model = gridModel(cells, { aoiCells });
     const start = initialPosition(model);
-    const prevKey = pos && model.rows[pos.row]?.cells[pos.col] ? pos : null;
-    pos = prevKey ?? start;
+    const keep = pos && model.rows[pos.row]?.cells[pos.col] ? pos : null;
+    pos = keep ?? start;
+    const totals = new Map(yearTotals(cells).map((y) => [y.year, y]));
     const header = h('div', { role: 'row', class: 'cal-row cal-head' },
       h('div', { role: 'columnheader', class: 'cal-year', 'aria-label': 'Year' }),
-      model.columns.map((name, i) => h('div', { role: 'columnheader', class: 'cal-colhead', 'aria-label': name },
-        h('span', { class: 'long', text: MONTH_ABBR[i] }), h('span', { class: 'short', text: name[0] }))));
-    const rows = model.rows.map((row, r) => h('div', { role: 'row', class: 'cal-row' },
-      h('div', { role: 'rowheader', class: 'cal-year', text: String(row.year) }),
-      row.cells.map((m, c) => {
-        if (m === null) return h('div', { role: 'gridcell', class: 'cal-cell is-empty', 'aria-disabled': 'true', 'aria-label': `${MONTH_NAMES[c]} ${row.year}, outside the selected range` });
-        const node = h('div', {
-          role: 'gridcell', class: cellClass(m), tabindex: pos && pos.row === r && pos.col === c ? '0' : '-1',
-          'aria-label': m.label, 'data-row': r, 'data-col': c,
-        }, h('span', { class: 'cal-num', 'aria-hidden': 'true', text: m.text }));
-        nodes.set(key(r, c), node);
-        return node;
-      })));
-    const grid = h('div', { role: 'grid', class: 'cal-grid', 'aria-label': 'Fire-cell-days by month and year', 'aria-rowcount': rows.length + 1, 'aria-colcount': 13 }, header, rows);
+      model.columns.map((name, i) => h('div', { role: 'columnheader', class: 'cal-colhead', 'aria-label': name, 'data-colhead': i },
+        h('span', { class: 'long', text: MONTH_ABBR[i] }), h('span', { class: 'short', text: name[0] }))),
+      h('div', { role: 'columnheader', class: 'cal-total cal-total-head', text: 'Year total' }));
+    const rows = model.rows.map((row, r) => {
+      const t = totals.get(row.year);
+      const bar = h('span', { class: 'cal-total-bar' });
+      bar.style.setProperty('--w', String(t?.share ?? 0));
+      return h('div', { role: 'row', class: 'cal-row cal-year-row' },
+        h('div', { role: 'rowheader', class: 'cal-year', 'data-year': row.year, text: String(row.year) }),
+        row.cells.map((m, c) => {
+          if (m === null) return h('div', { role: 'gridcell', class: 'cal-cell is-empty', 'aria-disabled': 'true', 'aria-label': `${MONTH_NAMES[c]} ${row.year}, outside the selected range` });
+          const node = h('div', {
+            role: 'gridcell', class: cellClass(m), tabindex: pos && pos.row === r && pos.col === c ? '0' : '-1',
+            'aria-label': m.label, 'data-row': r, 'data-col': c,
+          }, numSpans(m.text, m.short));
+          node.style.setProperty('--i', String(r + c));
+          nodes.set(key(r, c), node);
+          return node;
+        }),
+        h('div', { role: 'gridcell', class: `cal-total${t?.busiest ? ' is-busiest' : ''}`, 'aria-label': t?.total === null ? `${row.year} total: no data` : `${row.year} total ${formatCount(t.total)} fire-cell-days${t.partial ? `, ${partialNote(t)}` : ''}${t.busiest ? ', busiest year' : ''}` },
+          bar, h('span', { class: 'cal-total-n', 'aria-hidden': 'true', text: t?.total === null ? 'No data' : `${formatCount(t.total)}${t.partial ? '*' : ''}` })));
+    });
+    const median = medianRowModel(typical, aoiCells);
+    const medianRow = median.length ? h('div', { role: 'row', class: 'cal-row cal-median' },
+      h('div', { role: 'rowheader', class: 'cal-year cal-median-label' }, h('span', { class: 'long', text: 'Median' }), h('span', { class: 'short', text: 'Med' })),
+      median.map((m) => h('div', { role: 'gridcell', class: `cal-cell is-median bin-${m.bin}${m.bin === NODATA ? ' nodata' : ''}`, 'aria-label': m.label }, numSpans(m.text, m.short))),
+      h('div', { role: 'gridcell', class: 'cal-total' }, h('span', { class: 'tag', text: 'Preview' }))) : null;
+    grid = h('div', {
+      role: 'grid', class: `cal-grid${reveal ? ' is-revealing' : ''}`, 'aria-label': 'Fire-cell-days by month and year',
+      'aria-rowcount': rows.length + 1 + (medianRow ? 1 : 0), 'aria-colcount': 14,
+    }, header, rows, medianRow);
     gridHost.replaceChildren(grid);
     const all = mostlyEstimated(cells);
     grid.classList.toggle('all-estimated', all);
@@ -191,6 +264,12 @@ export const mount = (container, deps) => {
     grid.addEventListener('focusin', onFocusIn);
     grid.addEventListener('mouseover', onHover);
     grid.addEventListener('mouseleave', clearReadout);
+    clearTimeout(revealTimer);
+    if (reveal) revealTimer = setTimeout(() => grid.classList.remove('is-revealing'), 1600);
+    const partial = [...totals.values()].filter((y) => y.partial).map(partialNote);
+    notes.textContent = partial.length ? `* ${partial.join('; ')}.` : '';
+    paintSelection();
+    paintLink();
   };
 
   const buildTable = () => {
@@ -203,6 +282,12 @@ export const mount = (container, deps) => {
   const showReadout = (node) => { const m = node && modelAt(node); readout.textContent = m ? m.label : ''; };
   const clearReadout = () => { readout.textContent = ''; };
   const cellOf = (target) => target.closest?.('[data-row]');
+
+  const choose = (m) => {
+    selected = { year: m.year, month: m.month };
+    paintSelection();
+    deps.onSelect?.(m.cell);
+  };
 
   const onFocusIn = (ev) => {
     const node = cellOf(ev.target);
@@ -218,44 +303,64 @@ export const mount = (container, deps) => {
     const node = cellOf(ev.target);
     if (!node) return;
     activate(posOf(node), { focus: true });
-    deps.onSelect?.(modelAt(node).cell);
+    choose(modelAt(node));
+  };
+  const move = (from, k, { ctrl = false, focus = true } = {}) => {
+    const next = nextPosition(model, from, k, { ctrl });
+    activate(next, { focus });
+    if (selected) choose(model.rows[next.row].cells[next.col]);
   };
   const onKeydown = (ev) => {
     const node = cellOf(ev.target);
     if (!node) return;
-    if (ev.key === 'Enter' || ev.key === ' ') {
-      ev.preventDefault();
-      deps.onSelect?.(modelAt(node).cell);
-      return;
-    }
-    if (ev.key === 'Escape') {
-      clearReadout();
-      deps.onClose?.();
-      return;
-    }
-    if (!NAV_KEYS.includes(ev.key)) return;
+    const intent = keyIntent(ev.key, { selected: selected !== null });
+    if (intent === 'open') { ev.preventDefault(); choose(modelAt(node)); return; }
+    if (intent === 'close') { clearReadout(); deps.onClose?.(); return; }
+    if (!intent) return;
     ev.preventDefault();
-    activate(nextPosition(model, posOf(node), ev.key, { ctrl: ev.ctrlKey || ev.metaKey }), { focus: true });
+    move(posOf(node), ev.key, { ctrl: ev.ctrlKey || ev.metaKey });
   };
 
-  toggle.addEventListener('click', () => {
-    tableOn = !tableOn;
-    toggle.setAttribute('aria-pressed', String(tableOn));
-    toggle.textContent = tableOn ? 'Grid view' : 'Table view';
-    gridHost.hidden = tableOn;
-    readout.hidden = tableOn;
-    tableHost.hidden = !tableOn;
-    if (tableOn) buildTable();
-  });
+  const paintLink = () => {
+    grid?.querySelector('.is-linked')?.classList.remove('is-linked');
+    const p = linked && posFor(linked);
+    if (p) nodeAt(p)?.classList.add('is-linked');
+  };
 
-  buildGrid();
+  const setTable = (on) => {
+    tableOn = on;
+    gridHost.hidden = on;
+    readout.hidden = on;
+    tableHost.hidden = !on;
+    if (on) buildTable();
+  };
+
+  buildGrid({ reveal: true });
   return {
     update: (next) => {
-      ({ cells, aoiCells } = { cells, aoiCells, ...next });
-      buildGrid();
+      const fresh = next.cells !== cells;
+      ({ cells, aoiCells, typical } = { cells, aoiCells, typical, ...next });
+      if (fresh) selected = null;
+      buildGrid({ reveal: fresh });
       if (tableOn) buildTable();
     },
-    focus: () => pos && nodes.get(key(pos.row, pos.col))?.focus(),
-    destroy: () => container.replaceChildren(),
+    focus: () => nodeAt(pos)?.focus(),
+    select: (sel) => {
+      selected = sel;
+      const p = sel && posFor(sel);
+      if (p) activate(p);
+      paintSelection();
+    },
+    link: (sel) => { linked = sel; paintLink(); },
+    step: (k) => { if (pos) move(pos, k, { focus: false }); },
+    setTable,
+    showYear: (year) => {
+      setTable(true);
+      const th = [...tableHost.querySelectorAll('tbody th')].find((n) => n.textContent === String(year));
+      th?.scrollIntoView({ block: 'center' });
+      tableHost.querySelector('.data-table-scroll')?.focus({ preventScroll: true });
+    },
+    isTable: () => tableOn,
+    destroy: () => { clearTimeout(revealTimer); container.replaceChildren(); },
   };
 };

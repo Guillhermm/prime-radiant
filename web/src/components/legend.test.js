@@ -22,3 +22,9 @@ test('anomaly legend has 11 ramp bins centered on the median and a flag entry', 
   assert.equal(m.marks[0].id, 'flagged');
   assert.match(m.unit, /percentile rank/);
 });
+
+test('stepped bar ticks are the lower class edges, one per density class', async () => {
+  const { RAMP_TICKS } = await import('./legend.js');
+  assert.deepEqual(RAMP_TICKS, ['0', '1', '4', '16', '64', '256', '1024+']);
+  assert.equal(RAMP_TICKS.length, legendModel().bins.length);
+});

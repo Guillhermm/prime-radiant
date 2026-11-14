@@ -1,11 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { errorState, liveStatus, screenState, stateModel } from './states.js';
+import { bboxText, errorState, liveStatus, recordDates, ribbonModel, screenState, stateModel } from './states.js';
 
 test('empty offers one chip per example area', () => {
   const m = stateModel({ kind: 'empty' }, { presets: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] });
   assert.deepEqual(m.chips, [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }]);
-  assert.match(m.lines[0], /Choose an area/);
+  assert.equal(m.title, 'When does this place burn?');
+  assert.match(m.lines[0], /Pick an area/);
 });
 
 test('zero detections says sensors were operating', () => {
@@ -23,7 +24,8 @@ test('loading is busy with a polite status', () => {
 test('error is an alert with Retry and says what failed', () => {
   const m = stateModel({ kind: 'error', what: 'tile x12y7' });
   assert.equal(m.role, 'alert');
-  assert.equal(m.action.label, 'Retry');
+  assert.equal(m.action.label, 'Try again');
+  assert.equal(m.title, 'Could not load fire data');
   assert.match(m.lines[0], /tile x12y7/);
 });
 
@@ -58,4 +60,21 @@ test('zero needs every month to be a real 0, never null', () => {
 test('errorState tells a validation failure from a connection failure', () => {
   assert.match(stateModel(errorState({ kind: 'invalid' })).lines[0], /failed validation/);
   assert.match(stateModel(errorState({ kind: 'network' })).lines[1], /Check your connection/);
+});
+
+test('first-run record dates come from the manifest, missing ones are skipped', () => {
+  const d = recordDates({ coverage: { modis: ['2000-11', '2026-10'], viirs: ['2012-01', '2026-10'] }, last_month: '2026-10' });
+  assert.deepEqual(d, [{ v: 'Nov 2000', k: 'MODIS record starts' }, { v: 'Jan 2012', k: 'VIIRS record starts' }, { v: 'Oct 2026', k: 'latest month' }]);
+  assert.deepEqual(recordDates(null), []);
+});
+
+test('bboxText names hemispheres and drops trailing zeros', () => {
+  assert.equal(bboxText([-59, -19, -52, -12]), '19°S–12°S · 59°W–52°W');
+  assert.equal(bboxText([-58.2, -20.1, -55, -15.3]), '20.1°S–15.3°S · 58.2°W–55°W');
+  assert.equal(bboxText([10, -5, 20, 3]), '5°S–3°N · 10°E–20°E');
+});
+
+test('example ribbon: density class of each month median, no median is no data', () => {
+  const r = ribbonModel([{ month: 1, median: null }, { month: 2, median: 100 }], 1000);
+  assert.deepEqual(r.map((x) => x.bin), ['nodata', 4]);
 });

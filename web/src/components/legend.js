@@ -31,25 +31,41 @@ export const anomalyLegendModel = () => ({
   unit: ANOMALY_UNIT_SENTENCE,
 });
 
+// Lower edge of each density class, printed under the stepped bar (Datawrapper style: one bar,
+// ticks at the class edges).
+export const RAMP_TICKS = ['0', '1', '4', '16', '64', '256', '1024+'];
+
+/** The stepped color bar for the grid header; aria-hidden, the foot carries the words. */
+export const ramp = (layer = 'counts') => {
+  if (layer === 'anomaly') {
+    const m = anomalyLegendModel();
+    return h('div', { class: 'ramp ramp-div', 'aria-hidden': 'true' },
+      h('div', { class: 'ramp-bar' }, m.bins.map((b) => h('i', { class: `div-${b.id}` }))),
+      h('div', { class: 'ramp-ends' }, h('span', { text: 'Below median' }), h('span', { text: 'Median' }), h('span', { text: 'Above' })));
+  }
+  return h('div', { class: 'ramp', 'aria-hidden': 'true' },
+    h('div', { class: 'ramp-bar' }, BINS.map((b) => h('i', { class: `bin-${b.id}` }))),
+    h('div', { class: 'ramp-ticks' }, RAMP_TICKS.map((t) => h('span', { text: t }))));
+};
+
 const countsLegend = () => {
   const m = legendModel();
-  const bins = m.bins.map((b) => h('li', { class: 'legend-item' }, h('span', { class: `swatch bin-${b.id}`, 'aria-hidden': 'true' }), h('span', { text: b.label, title: b.text })));
-  const extras = [
+  const bins = h('ul', { class: 'legend-list legend-bins sr-only' }, m.bins.map((b) => h('li', { class: 'legend-item' }, h('span', { class: `swatch bin-${b.id}`, 'aria-hidden': 'true' }), h('span', { text: b.text }))));
+  const extras = h('ul', { class: 'legend-list' },
     h('li', { class: 'legend-item' }, h('span', { class: 'swatch nodata', 'aria-hidden': 'true' }), h('span', { text: 'No data' })),
-    ...m.marks.map((k) => h('li', { class: 'legend-item' }, h('span', { class: `swatch mark-${k.id}`, 'aria-hidden': 'true' }), h('span', { text: k.label }))),
-  ];
-  return [h('ul', { class: 'legend-list' }, bins, extras), h('p', { class: 'legend-unit legend-estimated-note', text: ESTIMATED_NOTE }), h('p', { class: 'legend-unit', text: m.unit })];
+    ...m.marks.map((k) => h('li', { class: 'legend-item' }, h('span', { class: `swatch mark-${k.id}`, 'aria-hidden': 'true' }), h('span', { text: k.label }))));
+  return [bins, extras, h('p', { class: 'legend-unit legend-estimated-note', text: ESTIMATED_NOTE }), h('p', { class: 'legend-unit', text: m.unit })];
 };
 
 const anomalyLegend = () => {
   const m = anomalyLegendModel();
-  const ramp = h('ul', { class: 'legend-ramp' }, m.bins.map((b) => h('li', { class: `swatch div-${b.id}`, title: b.text, 'aria-label': b.text })));
+  const list = h('ul', { class: 'legend-ramp' }, m.bins.map((b) => h('li', { class: `swatch div-${b.id}`, title: b.text, 'aria-label': b.text })));
   const ends = h('p', { class: 'legend-ends', 'aria-hidden': 'true' }, h('span', { text: m.ends.low }), h('span', { text: m.ends.center }), h('span', { text: m.ends.high }));
   const extras = h('ul', { class: 'legend-list' },
     h('li', { class: 'legend-item' }, h('span', { class: 'swatch mark-flagged', 'aria-hidden': 'true' }), h('span', { text: m.marks[0].label })),
     h('li', { class: 'legend-item' }, h('span', { class: 'swatch div-norank', 'aria-hidden': 'true' }), h('span', { text: m.norank })),
     h('li', { class: 'legend-item' }, h('span', { class: 'swatch nodata', 'aria-hidden': 'true' }), h('span', { text: 'No data' })));
-  return [ramp, ends, extras, h('p', { class: 'legend-unit', text: m.unit })];
+  return [list, ends, extras, h('p', { class: 'legend-unit', text: m.unit })];
 };
 
 /** mount(container, {layer}). Returns {update({layer}), destroy()}. */

@@ -51,3 +51,11 @@ test('a synthetic-* dataVersion marks the manifest synthetic', () => {
   assert.equal(isSyntheticManifest(manifest), false);
   assert.equal(isSyntheticManifest(null), false);
 });
+
+test('cells carry core.baseline medians: the KPI median is no longer missing with years of history', () => {
+  const r = buildResult({ bbox: [-60, -20, -50, -10], from: '2012-01', to: '2012-12', manifest, tiles });
+  assert.equal(r.allCells.length, 156);
+  const sep = r.cells.find((c) => c.month === 9);
+  assert.equal(typeof sep.median, 'number', 'September 2012 has earlier Septembers, so it has a median');
+  assert.equal(r.typical.length, 12);
+});
