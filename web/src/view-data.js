@@ -1,6 +1,9 @@
 import { seriesForAoi, harmonize, toCalendar, kpis } from '../../core/index.js';
 import { aoiCellCount } from './bins.js';
 
+/** The mock-data tool marks its manifest with a "synthetic-" dataVersion prefix. */
+export const isSyntheticManifest = (manifest) => /^synthetic/i.test(manifest?.dataVersion ?? '');
+
 const pad = (n) => String(n).padStart(2, '0');
 const cellMonth = (c) => `${c.year}-${pad(c.month)}`;
 const monthIdx = (m) => Number(m.slice(0, 4)) * 12 + Number(m.slice(5, 7)) - 1;

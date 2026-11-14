@@ -18,3 +18,10 @@ test('strip is not dismissible and offers Read more', () => {
 test('catalog has C1 to C8 with unique ids', () => {
   assert.deepEqual(CAVEATS.map((c) => c.id), ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8']);
 });
+
+test('synthetic manifests show a Synthetic demo data badge that cannot be dismissed', () => {
+  const m = stripModel({ synthetic: true });
+  assert.equal(m.syntheticBadge, 'Synthetic demo data');
+  assert.equal('dismiss' in m, false);
+  assert.equal(stripModel().syntheticBadge, null);
+});

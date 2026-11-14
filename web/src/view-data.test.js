@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { buildResult, sliceCells, sliceSeries, csvMeta } from './view-data.js';
+import { buildResult, sliceCells, sliceSeries, csvMeta, isSyntheticManifest } from './view-data.js';
 
 const fx = (p) => JSON.parse(readFileSync(new URL(`../../fixtures/${p}`, import.meta.url), 'utf8'));
 const manifest = fx('manifest.json');
@@ -44,4 +44,10 @@ test('csv meta names region, range and data version', () => {
   assert.match(m.region, /-60,-20,-50,-10/);
   assert.equal(m.range, '2000-01 to 2012-12');
   assert.equal(m.dataVersion, 'fixture-1');
+});
+
+test('a synthetic-* dataVersion marks the manifest synthetic', () => {
+  assert.equal(isSyntheticManifest({ dataVersion: 'synthetic-20261114' }), true);
+  assert.equal(isSyntheticManifest(manifest), false);
+  assert.equal(isSyntheticManifest(null), false);
 });

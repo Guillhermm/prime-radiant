@@ -16,6 +16,16 @@ Web app (Guilherme's track) built and QA-approved on fixture data: calendar, are
 | C. Anomalies against a multi-year baseline | UI built behind `?preview=1`; science planned (M2) |
 | D. Live season from near-real-time data | UI and keyed proxy built; live data pipeline planned (M3) |
 
+## Run
+
+Requires Node.js 22 or later. No real data exists yet, so generate synthetic demo data first (written to the gitignored `data/`, about 17 MB, labeled "Synthetic demo data" in the app):
+
+```sh
+npm run mock && npm run serve
+```
+
+Then open `/web/` on the address `serve` prints. `/web/?fixtures=1` loads the tiny test fixtures instead.
+
 ## Run the tests
 
 Requires Node.js 22 or later. There is nothing to install.
