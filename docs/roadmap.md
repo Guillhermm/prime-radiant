@@ -87,7 +87,7 @@ Gate rules:
 ### Kaue
 
 **M0-K1 Request FIRMS archive data (day 1, first thing)** · S · depends: none
-- Deliverable: requests submitted in the FIRMS Archive Download Tool (Earthdata login, delivered by email): (a) global, one full year (2023 default), MODIS C6.1 standard + VIIRS S-NPP standard, for the spike; (b) demo region (H3 default) full span, MODIS from 2000-11-01, VIIRS S-NPP 2012-01-20 to 2026-11-02; (c) global full span per sensor (requested now because of email lag; used only if the spike passes). NOAA-20 standard from 2018-04-01 requested for the demo region only, for the later factor question.
+- Deliverable: requests submitted in the FIRMS Archive Download Tool (Earthdata login, delivered by email): (a) global, one full year (2023 default), MODIS C6.1 standard + VIIRS S-NPP standard, for the spike; (b) demo region (H3 default) full span, MODIS from 2000-11-01, VIIRS S-NPP 2012-01-20 to 2026-11-02; (c) global full span per sensor (requested now because of email lag; used only if the spike passes). NOAA-20 standard from 2018-04-01 requested for the demo region, and globally with (c), for the factor K (H11).
 - Acceptance: request confirmations saved (ids only, no credentials) in `docs/data.md` with request date, product, version, region, span; download location `raw/` is gitignored.
 - Tests: none (no code). Docs: `docs/data.md`.
 - Files: `docs/data.md`, `.gitignore`.
@@ -116,7 +116,7 @@ Gate rules:
 - Tests: none. Files: `docs/method.md`.
 
 **M0-K6 Vercel project, domain and headers** · S · depends: M0-G1
-- Deliverable: repository under Kaue's personal GitHub (H6: Vercel Hobby cannot connect an org-owned repo), Guilherme as collaborator; Vercel Hobby project serving `web/` with a placeholder page; `vercel.json` with CSP (`default-src 'self'`, `connect-src` including the tile host and map tile host once chosen), HSTS, `X-Content-Type-Options`, `Referrer-Policy`, `frame-ancestors 'none'`; domain bought only after M1 deploys on `*.vercel.app` (H7).
+- Deliverable: repository stays under Guilherme's personal GitHub (`Guillhermm/prime-radiant`, H6: Vercel Hobby cannot connect an org-owned repo), Kaue as collaborator; Guilherme creates the Vercel Hobby project on his account (the account owner) serving `web/` with a placeholder page; Kaue writes `vercel.json` with CSP (`default-src 'self'`, `connect-src` including the tile host and map tile host once chosen), HSTS, `X-Content-Type-Options`, `Referrer-Policy`, `frame-ancestors 'none'`; domain bought only after M1 deploys on `*.vercel.app` (H7).
 - Acceptance: placeholder reachable on the preview URL; headers verified with `curl -I` and recorded in `docs/deploy.md`.
 - Tests: `test/integration/headers.test.js` asserts `vercel.json` contains each required header.
 - Files: `vercel.json`, `docs/deploy.md`.
@@ -178,8 +178,8 @@ Sync point **S0 (contract freeze)**: both review schema, fixtures, stubs, QueryS
 - Files: `pipeline/read.js`.
 
 **M1-K2 Binning and dedupe** · M · depends: M1-K1
-- Deliverable: `pipeline/bin.js` + `dedupe.js`: cell via `core/grid.js`; one fire-cell-day per (sensor family, cell, UTC day): Terra and Aqua merged into `modis` from 2002-07 (Terra-only era kept separate per the method note, default: excluded from R, shown as MODIS Terra-only in B), S-NPP only into `viirs` (NOAA-20/21 excluded until V-question answered); monthly aggregation; one year at a time in memory.
-- Acceptance: Terra+Aqua same cell/day counted once; points on a cell edge go to the east/north cell; lon +180 equals -180; NOAA-20 rows do not reach `viirs`.
+- Deliverable: `pipeline/bin.js` + `dedupe.js`: cell via `core/grid.js`; one fire-cell-day per (sensor family, cell, UTC day): Terra and Aqua merged into `modis` from 2002-07 (Terra-only era kept separate per the method note, default: excluded from R, shown as MODIS Terra-only in B), S-NPP only into `viirs`, NOAA-20 into its own `noaa20` family for K (H11), NOAA-21 excluded; monthly aggregation; one year at a time in memory.
+- Acceptance: Terra+Aqua same cell/day counted once; points on a cell edge go to the east/north cell; lon +180 equals -180; NOAA-20 rows reach `noaa20`, never `viirs`.
 - Tests: unit `pipeline/bin.test.js`, `pipeline/dedupe.test.js`.
 - Files: `pipeline/bin.js`, `pipeline/dedupe.js`.
 
@@ -412,7 +412,7 @@ Sync **S4**: anomaly stub replaced by real core; V2, D2, Q2; deploy.
 - Files: `web/src/components/live-view.js`, `data-source.js`.
 
 **M3-G2 Keyed proxy api/live (cuttable)** · M · depends: M3-G1, H10
-- Deliverable: `api/live.js` Vercel function: `MAP_KEY` from env (set in the Vercel dashboard by the account owner, Kaue), bbox validated and snapped to 0.5 deg, days 1-2, whitelisted sources, `Cache-Control: s-maxage=900, stale-while-revalidate`, `fetch` injected for tests, errors never echo the upstream URL (it contains the key); WAF rate-limit rule if Hobby allows it (unverified).
+- Deliverable: `api/live.js` Vercel function: `MAP_KEY` from env (set in the Vercel dashboard by the account owner, Guilherme), bbox validated and snapped to 0.5 deg, days 1-2, whitelisted sources, `Cache-Control: s-maxage=900, stale-while-revalidate`, `fetch` injected for tests, errors never echo the upstream URL (it contains the key); WAF rate-limit rule if Hobby allows it (unverified).
 - Acceptance: key never in response, logs or client bundle (grep of built site and a response capture); invalid bbox 400.
 - Tests: unit with stubbed fetch, including an upstream error containing the key.
 - Files: `api/live.js`, `vercel.json`.
@@ -430,7 +430,7 @@ Load: K 2+2+1 = 5, G 2+2+1 = 5.
 | M3-K2 daily Action | M3-G2 keyed proxy (if not cut) |
 | M3-K3 comparison model, V3 | M3-G3 release |
 
-Sync **S5**: first real Action run feeds the preview; V3, D3, Q3; integration owner Kaue (owner of the Action and the Vercel account).
+Sync **S5**: first real Action run feeds the preview; V3, D3, Q3; integration owner Kaue (owner of the Action); Guilherme, as Vercel account owner, runs the production deploy.
 
 ## 8. Whole-project load
 
@@ -457,7 +457,7 @@ Off the critical path thanks to the contract: the whole web track (runs on fixtu
 | V1 rejects harmonization or R too unstable | B's main line cannot ship | Raw-only toggle + MODIS-only units for A (mathematician's simple route); A+B still complete |
 | Small or zero ratio in sparse AOIs | Absurd harmonized numbers | Threshold + parent-region fallback; sparse chip; CI shown |
 | null vs 0 confusion at era edges | Wrong numbers on screen | Hard rule in schema; tests at S-NPP start and end; distinct no-data hatch |
-| S-NPP ended 2026-11-02 | VIIRS series stops; current months have no VIIRS | Post-S-NPP months use MODIS x R (estimated mark); NOAA-20 factor deferred to physicist (H11) |
+| S-NPP ended 2026-11-02 | VIIRS series stops; current months have no VIIRS | Post-S-NPP months use NOAA-20 x K (estimated mark, H11); K needs NOAA-20 archive data for every extent served |
 | Archive standard product lags NRT by weeks to months (unverified) | "Current month" in A is not the calendar month | Manifest `last_month` drives the label "latest archived month"; D fills the gap |
 | Two humans editing shared files | Merge conflicts | Directory ownership (section 1); shared files (`package.json`, `README.md`, `core/schema.js`, `vercel.json`) changed only in small dedicated commits |
 | Map tile policy or library advisory | Map picker blocked | H8 check in M0; SVG fallback; form path always complete |
@@ -488,12 +488,12 @@ Never cut: AOI by form and map, calendar with accessible ramp and no-data distin
 | H3 | Grid extent and demo region | Global if the spike fits H5 limits, else South America (Brazil: Pantanal 2020 and 2024, Amazon arc) first |
 | H4 | Max AOI size | 0.1 deg for AOI up to 20,000 cells, coarse 1 deg above, hard cap at continent scale (exact number after spike) |
 | H5 | Where tiles live | Cloudflare R2 public bucket if tiles exceed Vercel limits or if the live cron must publish without a redeploy; else deployed with the site via `vercel deploy` (tiles stay out of git) |
-| H6 | Repository owner | Kaue's personal GitHub (Vercel Hobby cannot connect org repos), Guilherme collaborator |
+| H6 | Repository owner | Decided 2026-11-14: Guilherme's personal GitHub (`Guillhermm/prime-radiant`), Vercel project on Guilherme's Hobby account, Kaue collaborator |
 | H7 | Domain | Bought after M1 is live on `*.vercel.app`; name to choose |
 | H8 | Map base | Vendored Leaflet + OSM if policy and advisory checks pass, else SVG Natural Earth outline |
 | H9 | e2e tool | Playwright as a dev-only dependency after audit; fallback: integration tests only |
 | H10 | D scope | Cron path only; keyed proxy built only with slack |
-| H11 | Post-S-NPP VIIRS | VIIRS series ends 2026-11-02; later months MODIS x R, marked estimated; NOAA-20 factor deferred |
+| H11 | Post-S-NPP VIIRS | Decided 2026-11-14: after 2026-11-02 VIIRS continues as NOAA-20 x K, K = sum(S-NPP)/sum(NOAA-20) per AOI over full months 2018-04 to 2026-10 (`docs/method.md` 4.4), marked estimated; needs NOAA-20 binned as its own family in M1-K2 and gate V1 |
 | H12 | CSV export content | AOI aggregates, not raw detection rows |
 | H13 | Harmonization route | R per AOI with fallback; MODIS-only route kept as the V1 fallback |
 
@@ -501,5 +501,5 @@ Never cut: AOI by form and map, calendar with accessible ramp and no-data distin
 
 - The first plan had the live cron writing `data/live` tiles and redeploying. Tiles are generated files and cannot be committed, so a git-triggered redeploy cannot see them. H5 resolves this: R2 (Action uploads, no redeploy) or a CLI deploy from the Action that rebuilds history tiles too, which needs the raw archive in CI. R2 is the simpler of the two for D.
 - "Parent region" for the fallback was undefined during planning. Default in M0-K5: enclosing 10 x 10 deg tile, then a continent box; the Second Foundation decides.
-- Vercel Hobby is single-user: account-dashboard actions (env vars, domain) sit with the account owner (Kaue under H6), which is why M0-K6 and the M3 `MAP_KEY` setup belong to that account owner.
+- Vercel Hobby is single-user: account-dashboard actions (env vars, domain) sit with the account owner (Guilherme under H6), so the Vercel project creation in M0-K6 and the M3 `MAP_KEY` setup are done by Guilherme; Kaue keeps `vercel.json` and the headers test.
 - Each human drives their own Foundation sessions on their track; the dev master reviews both, and the senior-dev seats are briefed per slice from this document.
