@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "dataVersion": "fixture-1",
+  "generated_at": "2026-11-14T00:00:00Z",
+  "base_url": "fixtures/",
+  "grid": { "res": 0.1, "tile_deg": 10, "coarse_res": 1 },
+  "month0": "2023-01",
+  "last_month": "2023-06",
+  "granularity": "month",
+  "coverage": { "modis": ["2023-01", "2023-06"], "viirs": ["2023-03", "2023-06"] },
+  "satellites": { "modis": ["Terra", "Aqua"], "viirs": ["S-NPP"] },
+  "tiles": ["x0y15", "x17y13"],
+  "citation": "Fixture data, hand-built for tests. Not real detections.",
+  "caveats": ["fixture-data"]
+}
