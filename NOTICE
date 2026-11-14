@@ -1,0 +1,26 @@
+Prime Radiant
+Copyright 2026 Guilherme Almeida Zeni and Kauê Melo
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product includes or uses the following third-party material.
+
+NASA FIRMS active fire data
+  We acknowledge the use of data and/or imagery from NASA's Fire Information
+  for Resource Management System (FIRMS), part of NASA's Land, Atmosphere Near
+  real-time Capability for Earth observations (LANCE) and NASA's Earth Science
+  Data and Information System (ESDIS). The data are provided "as is".
+  https://www.earthdata.nasa.gov/data/tools/firms
+
+Leaflet 1.9.4 (web/vendor/leaflet/)
+  Copyright (c) 2010-2023, Volodymyr Agafonkin
+  Copyright (c) 2010-2011, CloudMade
+  BSD 2-Clause License, full text in web/vendor/leaflet/LICENSE.
+
+Fira Sans and Fira Code (web/fonts/)
+  SIL Open Font License, Version 1.1, full texts in web/fonts/OFL-fira-sans.txt
+  and web/fonts/OFL-fira-code.txt.
+
+OpenStreetMap map tiles
+  Map data © OpenStreetMap contributors, available under the Open Database
+  License (ODbL). https://www.openstreetmap.org/copyright
