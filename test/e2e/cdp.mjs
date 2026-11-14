@@ -102,6 +102,7 @@ export const launch = async (chromePath) => {
       // Headless Chrome enforces a minimum window size, so clip to the page size asked for.
       screenshot: async () => Buffer.from((await cmd('Page.captureScreenshot', { format: 'png', fromSurface: true, clip: { x: 0, y: 0, width, height, scale: 1 } })).data, 'base64'),
       goto: (url) => cmd('Page.navigate', { url }),
+      moveMouse: (x, y) => cmd('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y }),
       close: async () => { listeners.delete(onEvent); await send('Target.closeTarget', { targetId }); },
     };
   };

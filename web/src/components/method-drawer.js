@@ -132,7 +132,7 @@ export const mount = (container, deps) => {
       m.sensors.length > 0 && section('Sensor dates', h('ul', {}, m.sensors.map((s) => h('li', {}, h('strong', { text: `${s.label} ` }), s.text)))),
       section('Caveats', h('ul', {}, m.caveats.map((c) => h('li', { text: `${c.id}: ${c.text} (${c.status})` })))),
       section('Data', m.version && h('p', { class: 'mono', text: `Data version: ${m.version}` }), m.citation && h('p', { text: m.citation }), h('p', { text: m.acknowledgment }),
-        m.synthetic && h('p', { class: 'synth-note', id: 'method-synthetic', text: `${m.synthetic.label}. ${m.synthetic.sentence}` })),
+        m.synthetic && h('p', { class: 'synth-note', text: `${m.synthetic.label}. ${m.synthetic.sentence}` })),
       section('Theme', theme));
     panel.addEventListener('keydown', onKeydown);
     deps.themeMount?.(theme);
@@ -152,7 +152,7 @@ export const mount = (container, deps) => {
     if (t && w !== TIMELINE.width) svg.replaceWith(timelineSvg(t));
   };
 
-  const open = (from, { section } = {}) => {
+  const open = (from) => {
     if (isOpen) return;
     deps.beforeOpen?.();
     isOpen = true;
@@ -162,7 +162,6 @@ export const mount = (container, deps) => {
     document.documentElement.classList.add('drawer-open');
     fitTimeline();
     container.querySelector('#drawer-title').focus();
-    if (section === 'data') container.querySelector('#method-synthetic')?.scrollIntoView({ block: 'center' });
   };
   const close = () => {
     if (!isOpen) return;

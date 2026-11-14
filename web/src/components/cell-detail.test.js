@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { NOT_AVAILABLE, NO_MEDIAN, barStripModel, detailModel, medianLead, provenanceText, satellitesInOrbit, scrollForSheet, valueLabelY } from './cell-detail.js';
+import { NOT_AVAILABLE, NO_MEDIAN, barStripModel, detailModel, panelEyebrow, medianLead, provenanceText, satellitesInOrbit, scrollForSheet, valueLabelY } from './cell-detail.js';
 
 const obs = { year: 2012, month: 9, value: 1204, status: 'observed', estimated: false };
 const sept = (year, value, o = {}) => ({ year, month: 9, value, status: 'harmonized', estimated: true, ...o });
@@ -110,4 +110,13 @@ test('regression: the selected bar value never touches the dashed median line', 
   assert.equal(valueLabelY(90, 40), 32, '0.375rem above a line that sits above the bar');
   assert.equal(valueLabelY(30, 90), 26, '0.25rem above a bar that rises above the line');
   assert.equal(valueLabelY(30, null), 26);
+});
+
+test('the panel eyebrow names synthetic data, since the sheet covers the top bar on phone', () => {
+  assert.equal(panelEyebrow({ dataVersion: 'synthetic-20261114' }), 'Selected month · Synthetic data');
+  assert.equal(panelEyebrow({ dataVersion: 'fixture-1' }), 'Selected month');
+  assert.equal(panelEyebrow(null), 'Selected month');
+  const cell = { year: 2005, month: 9, value: 12, status: 'observed', estimated: false };
+  assert.equal(detailModel(cell, { aoiCells: 10, manifest: { dataVersion: 'synthetic-1' } }).eyebrow, 'Selected month · Synthetic data');
+  assert.equal(detailModel({ ...cell, value: null }, { aoiCells: 10, manifest: { dataVersion: 'synthetic-1' } }).eyebrow, 'Selected month · Synthetic data');
 });

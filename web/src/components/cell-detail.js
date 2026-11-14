@@ -3,9 +3,11 @@ import { caveatsForCell } from '../caveat-catalog.js';
 import { MONTH_ABBR, MONTH_NAMES, formatCount, formatDensity, monthLabel } from '../format.js';
 import { compareToMedian, medianYears, rankSentence, sameMonth, ymOf } from '../stats.js';
 import { rankText } from './anomaly-layer.js';
+import { isSyntheticManifest } from '../view-data.js';
 import { h } from './h.js';
 import { icon, mark, svgEl } from './icons.js';
 import { trapTab } from './focus-trap.js';
+import * as toast from './toast.js';
 
 export const NOT_AVAILABLE = 'not available yet';
 export const NO_MEDIAN = 'Not enough history for a median';
@@ -91,12 +93,16 @@ const stripLabel = (cell, strip, rank) => {
  * rank), `allCells` the whole record (for the years behind core's median). Optional cell fields
  * (`median`, `r`) are shown only when present: nothing is computed or guessed here.
  */
+// The sheet covers the top bar on phone, so the panel carries the synthetic label itself.
+export const panelEyebrow = (manifest) => (isSyntheticManifest(manifest) ? 'Selected month · Synthetic data' : 'Selected month');
+
 export const detailModel = (cell, { aoiCells, layer = 'counts', cells = [cell], allCells = cells, manifest = null }) => {
   const title = monthLabel(cell.year, cell.month);
   const caveats = caveatsForCell(cell);
   const satellites = satellitesInOrbit(manifest, ymOf(cell.year, cell.month));
+  const eyebrow = panelEyebrow(manifest);
   if (cell.value === null) {
-    return { title, noData: true, value: 'No data', note: 'The sensors were not operating this month. This is not zero.', bin: NODATA, provenance: 'No data', compare: null, strip: null, rank: null, satellites, estimation: null, extra: [], caveats: caveats.filter((c) => c.id === 'C1') };
+    return { title, eyebrow, noData: true, value: 'No data', note: 'The sensors were not operating this month. This is not zero.', bin: NODATA, provenance: 'No data', compare: null, strip: null, rank: null, satellites, estimation: null, extra: [], caveats: caveats.filter((c) => c.id === 'C1') };
   }
   const d = density(cell.value, aoiCells);
   const same = sameMonth(cells, cell);
@@ -122,6 +128,7 @@ export const detailModel = (cell, { aoiCells, layer = 'counts', cells = [cell], 
   if (rank && next) rankNote += same.rank === 1 ? ` Next: ${next.year} with ${formatCount(next.value)}.` : ` Busiest: ${same.order[0].year} with ${formatCount(same.order[0].value)}.`;
   return {
     title,
+    eyebrow,
     noData: false,
     value: formatCount(cell.value),
     unit: 'fire-cell-days',
@@ -186,7 +193,7 @@ const stripSvg = (m) => {
 const content = (m, { onClose, onCopy, onTable, sheet }) => {
   const heading = h('h2', { class: 'panel-title', id: 'panel-title', tabindex: '-1', text: m.title });
   const nodes = [
-    h('div', { class: 'panel-top' }, h('span', { class: 'eyebrow', text: 'Selected month' }),
+    h('div', { class: 'panel-top' }, h('span', { class: 'eyebrow', text: m.eyebrow }),
       h('button', { type: 'button', class: 'icon-btn panel-close', 'aria-label': 'Close selected month', onclick: () => onClose() }, icon('close'))),
     heading,
     h('div', { class: 'panel-value' }, h('span', { class: `cellchip bin-${m.bin}`, 'aria-hidden': 'true' }),
@@ -215,11 +222,10 @@ const content = (m, { onClose, onCopy, onTable, sheet }) => {
   if (m.estimation) nodes.push(h('p', { class: 'panel-note', text: m.estimation }));
   nodes.push(h('details', { class: 'panel-caveats' }, h('summary', { text: `Caveats (${m.caveats.length})` }),
     h('ul', {}, m.caveats.map((c) => h('li', {}, h('strong', { text: `${c.id} ` }), c.text)))));
-  const status = h('p', { class: 'panel-status', role: 'status' });
   // Copy link on both widths: on phone the sheet is the only place that offers it.
   nodes.push(h('div', { class: 'panel-actions' },
-    h('button', { type: 'button', class: 'btn panel-copy', onclick: () => onCopy(status) }, icon('link'), 'Copy link'),
-    !m.noData && !sheet && h('button', { type: 'button', class: 'btn btn-ghost', onclick: () => onTable() }, icon('table'), 'Show in table')), status);
+    h('button', { type: 'button', class: 'btn panel-copy', onclick: () => onCopy() }, icon('link'), 'Copy link'),
+    !m.noData && !sheet && h('button', { type: 'button', class: 'btn btn-ghost', onclick: () => onTable() }, icon('table'), 'Show in table')));
   if (!sheet) {
     nodes.push(h('p', { class: 'kbd-row', 'aria-hidden': 'true' }, ['←', '→', '↑', '↓'].map((k) => h('kbd', { text: k })), ' move between months ', h('kbd', { text: 'Esc' }), ' close'));
   }
@@ -277,12 +283,13 @@ export const mount = (container, deps) => {
     deps.onClose?.();
   };
 
-  const copy = async (status) => {
+  const notify = deps.notify ?? toast.show;
+  const copy = async () => {
     try {
       await (deps.copy ?? ((t) => navigator.clipboard.writeText(t)))(location.href);
-      status.textContent = 'Link copied';
+      notify('Link copied');
     } catch {
-      status.textContent = 'Could not copy. The address bar has the link.';
+      notify('Could not copy. The address bar has the link.', { kind: 'error' });
     }
   };
 

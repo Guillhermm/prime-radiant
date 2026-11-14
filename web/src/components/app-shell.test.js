@@ -40,7 +40,8 @@ test('hero falls back to a custom area and to a prompt without an area', () => {
 });
 
 test('footer names the authors with accents, the Apache-2.0 notice and the three attributions, never "all rights reserved"', () => {
-  assert.deepEqual(FOOTER.authors, ['Guilherme Almeida Zeni', 'Kauê Melo']);
+  assert.deepEqual(FOOTER.authors.map((a) => a.name), ['Guilherme Almeida Zeni', 'Kauê Melo']);
+  assert.deepEqual(FOOTER.authors.map((a) => a.href), ['https://github.com/Guillhermm', 'https://github.com/kauemelo01']);
   assert.match(FOOTER.rights, /^© 2026 .*Apache-2\.0\.$/);
   assert.doesNotMatch(JSON.stringify(FOOTER), /all rights reserved/i);
   assert.equal(FOOTER.attributions.length, 3);
@@ -51,4 +52,9 @@ test('every view has a bottom-bar icon and the footer links are https', () => {
   assert.ok(VIEWS.every((v) => ICON_NAMES.includes(VIEW_ICONS[v.id])));
   assert.ok(FOOTER.links.every((l) => l.href.startsWith('https://')));
   assert.match(FOOTER.tagline, /MODIS since 2000 and VIIRS since 2012/);
+});
+
+test('one rectangle-with-pencil icon serves the draw button and the area chip', () => {
+  assert.ok(ICON_NAMES.includes('drawArea'));
+  assert.ok(!ICON_NAMES.includes('area'), 'the old pentagon is gone');
 });

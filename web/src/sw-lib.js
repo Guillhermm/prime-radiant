@@ -1,7 +1,7 @@
 // Pure parts of the service worker: what to precache, what to name the caches, how to route a request.
 // Paths are relative to the worker's scope (/web/), so the same list works on localhost and in production.
 // Bump CACHE_VERSION whenever a precached file changes so installed apps refetch the shell atomically.
-export const CACHE_VERSION = 'v3';
+export const CACHE_VERSION = 'v5';
 export const SHELL_CACHE = `pr-shell-${CACHE_VERSION}`;
 export const DATA_CACHE = `pr-data-${CACHE_VERSION}`;
 
@@ -22,7 +22,7 @@ export const SHELL_FILES = [
   'src/components/focus-trap.js', 'src/components/h.js', 'src/components/icons.js',
   'src/components/legend.js', 'src/components/live-view.js', 'src/components/map-picker.js',
   'src/components/method-drawer.js', 'src/components/query-bar.js', 'src/components/radiant.js', 'src/components/states.js',
-  'src/components/synthetic-band.js', 'src/components/theme-control.js', 'src/components/verdict-row.js',
+  'src/components/synthetic-band.js', 'src/components/theme-control.js', 'src/components/toast.js', 'src/components/verdict-row.js',
   '../core/aggregate.js', '../core/baseline.js', '../core/calendar.js', '../core/csv.js', '../core/grid.js',
   '../core/harmonize.js', '../core/index.js', '../core/months.js', '../core/schema.js',
 ];

@@ -72,7 +72,7 @@ export const mount = (container, {
   apply.addEventListener('click', commit);
 
   // On phone the map opens full screen over the sheet, so the sheet stops being modal until focus is back.
-  const drawBtn = onDrawMap ? h('button', { type: 'button', class: 'btn draw-map', onclick: () => { setModal(false); onDrawMap(); } }, icon('area'), 'Draw on map') : null;
+  const drawBtn = onDrawMap ? h('button', { type: 'button', class: 'btn draw-map', onclick: () => { setModal(false); onDrawMap(); } }, icon('drawArea'), 'Draw on map') : null;
   const closeBtn = h('button', { type: 'button', class: 'icon-btn sheet-close', 'aria-label': 'Close area and period' }, icon('close'));
   const actions = h('div', { class: 'actions' }, apply);
   const form = h('form', { class: 'query-form', 'aria-labelledby': 'query-title' },
@@ -89,7 +89,7 @@ export const mount = (container, {
     else { form.removeAttribute('role'); form.removeAttribute('aria-modal'); }
   };
   const chip = (cls, ic) => h('button', { type: 'button', class: `chip summary-chip ${cls}`, 'aria-haspopup': 'dialog', 'aria-expanded': 'false' }, icon(ic));
-  const areaChip = chip('area-chip', 'area');
+  const areaChip = chip('area-chip', 'drawArea');
   const rangeChip = chip('range-chip', 'calendar');
   const setExpanded = (on) => [areaChip, rangeChip].forEach((c) => c.setAttribute('aria-expanded', String(on && c === opener)));
   const openSheet = (from, focusEl) => {
@@ -111,7 +111,7 @@ export const mount = (container, {
   const summary = h('div', { class: 'query-summary chips' }, areaChip, rangeChip);
   const paintSummary = (st) => {
     const m = chipModel(st, span);
-    areaChip.replaceChildren(icon('area'), h('span', { class: 'chip-text mono', text: m.area }), icon('pencil', 'chip-edit'));
+    areaChip.replaceChildren(icon('drawArea'), h('span', { class: 'chip-text mono', text: m.area }), icon('pencil', 'chip-edit'));
     rangeChip.replaceChildren(icon('calendar'), h('span', { class: 'chip-text', text: m.period }), icon('chevron', 'chip-edit'));
     areaChip.setAttribute('aria-label', m.areaLabel);
     rangeChip.setAttribute('aria-label', m.periodLabel);

@@ -125,6 +125,7 @@ export const REQUIRED = [
   ['color-fire', 'color-fire-soft', 4.5, 'above-median delta pill'],
   ['color-accent', 'color-accent-soft', 4.5, 'below-median delta pill'],
   ['color-synth-text', 'color-synth', 4.5, 'synthetic band text'],
+  ['color-highlight', 'color-bg', 3, 'hero accent word (large text)'],
   ['color-text', 'color-raised', 4.5, 'selected segment text'],
   ['current', 'color-surface', 4.5, 'selected month and year labels'],
   ['bar-sel', 'color-surface', 3, 'selected year bar'],

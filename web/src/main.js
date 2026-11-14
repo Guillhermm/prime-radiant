@@ -8,6 +8,7 @@ import { h } from './components/h.js';
 import * as legend from './components/legend.js';
 import * as themeControl from './components/theme-control.js';
 import * as exportMenu from './components/export-menu.js';
+import * as toast from './components/toast.js';
 import * as verdictRow from './components/verdict-row.js';
 import * as calendarGrid from './components/calendar-grid.js';
 import * as mapPicker from './components/map-picker.js';
@@ -25,7 +26,7 @@ import { buildResult, csvMeta, isSyntheticManifest } from './view-data.js';
 import { registerSW } from './pwa.js';
 
 const offerUpdate = (apply) => {
-  const toast = h('div', { class: 'toast update-toast', role: 'status' }, h('span', { text: 'A new version is ready.' }),
+  const toast = h('div', { class: 'update-toast', role: 'status' }, h('span', { text: 'A new version is ready.' }),
     h('button', { type: 'button', class: 'btn btn-primary', text: 'Reload', onclick: apply }));
   document.body.append(toast);
 };
@@ -213,9 +214,11 @@ export const start = async (root = document.getElementById('app')) => {
   const drawer = methodDrawer.mount(slots.drawer, {
     trigger: slots.method, manifest, beforeOpen: () => { map.ctl?.closeFull(); qb.close(); }, themeMount: (el) => themeControl.mount(el),
   });
-  syntheticBand.mount(slots.synthetic, { manifest, onAbout: (btn) => drawer.open(btn, { section: 'data' }) });
+  toast.prepare();
+  syntheticBand.mount(slots.synthetic, {
+    manifest, tagSlot: slots.synthTag, below: [...document.querySelectorAll('.topbar, .page')], onMethod: (btn) => drawer.open(btn),
+  });
   caveatStrip.mount(slots.caveat, { onReadMore: (btn) => drawer.open(btn) });
-  themeControl.mount(slots.theme);
   themeControl.mount(slots.themeFoot);
   mountInstall(slots.install);
   exportMenu.mount(slots.export, {

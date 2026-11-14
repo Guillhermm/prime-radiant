@@ -9,9 +9,13 @@ const ICONS = {
   info: [['circle', { cx: 12, cy: 12, r: 9 }], ['path', { d: 'M12 11v6M12 7.5v.5' }]],
   download: [['path', { d: 'M12 4v11M7 10l5 5 5-5M5 20h14' }]],
   close: [['path', { d: 'M6 6l12 12M18 6L6 18' }]],
+  check: [['path', { d: 'M5 12.5l4.5 4.5L19 7.5' }]],
   calendar: [['rect', { x: 4, y: 5, width: 16, height: 15, rx: 2 }], ['path', { d: 'M4 10h16M9 3v4M15 3v4' }]],
-  area: [['rect', { x: 4, y: 6, width: 16, height: 12, rx: 1.5, 'stroke-dasharray': '3 2' }]],
+  // A drawn polygon with its vertices: reads as "select an area" even at 1rem, where a dashed box looked like a broken image.
+  crosshair: [['circle', { cx: 12, cy: 12, r: 6.5 }], ['circle', { cx: 12, cy: 12, r: 1.25, fill: 'currentColor', stroke: 'none' }], ['path', { d: 'M12 2v4M12 18v4M2 12h4M18 12h4' }]],
   pencil: [['path', { d: 'M14 5l5 5L9 20H4v-5z' }]],
+  // Rounded rectangle open at the lower right, where a pencil crosses the corner.
+  drawArea: [['path', { d: 'M10 16H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v3' }], ['path', { d: 'M20.4 10.9l2.2 2.2-7 7-3.6 1.4 1.4-3.6z' }], ['path', { d: 'M13.4 17.9l2.2 2.2' }]],
   chevron: [['path', { d: 'M6 9l6 6 6-6' }]],
   warning: [['path', { d: 'M12 3l9.5 17h-19z' }], ['path', { d: 'M12 10v4M12 17v.5' }]],
   arrow: [['path', { d: 'M5 12h14M13 6l6 6-6 6' }]],

@@ -46,7 +46,10 @@ export const FOOTER = {
   name: 'Prime Radiant',
   tagline: 'One fire calendar from two satellite records: MODIS since 2000 and VIIRS since 2012, harmonized month by month.',
   event: 'Made for the NASA Space Apps Challenge 2026.',
-  authors: ['Guilherme Almeida Zeni', 'Kauê Melo'],
+  authors: [
+    { name: 'Guilherme Almeida Zeni', href: 'https://github.com/Guillhermm' },
+    { name: 'Kauê Melo', href: 'https://github.com/kauemelo01' },
+  ],
   rights: '© 2026 Guilherme Almeida Zeni and Kauê Melo. Licensed under Apache-2.0.',
   attributions: [
     'Fire data: NASA FIRMS (LANCE, ESDIS), provided as is.',
@@ -65,10 +68,10 @@ const footerEl = (slots) => h('footer', { class: 'site-footer' },
   h('div', { class: 'foot-brand' },
     h('p', { class: 'footer-name' }, mark('mark mark-sm'), FOOTER.name),
     h('p', { text: FOOTER.tagline }), h('p', { text: FOOTER.event })),
-  h('div', {}, h('h2', { class: 'foot-h', text: 'Made by' }), h('ul', { class: 'footer-authors' }, FOOTER.authors.map((a) => h('li', { text: a })))),
+  h('div', {}, h('h2', { class: 'foot-h', text: 'Made by' }), h('ul', { class: 'footer-authors' }, FOOTER.authors.map((a) => h('li', {}, h('a', { href: a.href, rel: 'noopener noreferrer', target: '_blank', text: a.name }))))),
   h('div', {}, h('h2', { class: 'foot-h', text: 'Data and credits' }),
     h('ul', { class: 'footer-attributions' }, FOOTER.attributions.map((a) => h('li', { text: a }))),
-    h('p', { class: 'foot-links' }, FOOTER.links.map((l) => h('a', { href: l.href, rel: 'noopener', target: '_blank', text: l.text })))),
+    h('p', { class: 'foot-links' }, FOOTER.links.map((l) => h('a', { href: l.href, rel: 'noopener noreferrer', target: '_blank', text: l.text })))),
   h('div', { class: 'foot-bottom' },
     h('p', { class: 'footer-rights', text: FOOTER.rights }), slots.version, slots.install, slots.themeFoot));
 
@@ -97,9 +100,9 @@ export const mount = (container, { views, activeView, onView, previewIds = [], s
   const slot = (name, tag = 'div', attrs = {}) => h(tag, { 'data-slot': name, ...attrs });
   const slots = {
     synthetic: slot('synthetic'),
+    synthTag: slot('synth-tag', 'span'),
     method: slot('method', 'span'),
     export: slot('export', 'span'),
-    theme: slot('theme', 'span', { class: 'desk-only' }),
     themeFoot: slot('theme-foot', 'span'),
     install: slot('install', 'span'),
     version: slot('version', 'p', { class: 'foot-version mono' }),
@@ -127,8 +130,9 @@ export const mount = (container, { views, activeView, onView, previewIds = [], s
     h('a', { class: 'skip-link', href: '#main-view' }, 'Skip to main view'),
     slots.synthetic,
     h('header', { class: 'topbar' },
-      h('div', { class: 'brand' }, mark('mark brand-mark'), h('span', { text: 'Prime Radiant' })), tablist,
-      h('div', { class: 'topbar-actions' }, slots.theme, slots.method, slots.export)),
+      // An empty hash is the first-run view: the hashchange listener clears the area.
+      h('a', { class: 'brand', href: '#', 'aria-label': 'Prime Radiant, home' }, mark('mark brand-mark'), h('span', { text: 'Prime Radiant' })), tablist,
+      h('div', { class: 'topbar-actions' }, slots.synthTag, slots.method, slots.export)),
     h('div', { class: 'page' },
       h('div', { class: 'main-col' }, context, slots.verdict, slots.caveat, main, footerEl(slots)),
       slots.detail),
@@ -150,7 +154,7 @@ export const mount = (container, { views, activeView, onView, previewIds = [], s
         el.tabIndex = on ? 0 : -1;
       });
       main.setAttribute('aria-labelledby', `tab-${view}`);
-      context.hidden = !hasArea;
+      // The context stays rendered on first run: it holds the area form the hero buttons open. CSS hides its title and chips.
       slots.empty.hidden = hasArea;
       for (const [id, el] of Object.entries(groups)) el.hidden = !hasArea || view !== id;
       document.title = (synthetic ? 'Synthetic data: ' : '') + viewTitle(views, view);

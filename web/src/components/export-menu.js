@@ -1,6 +1,7 @@
 import { toCsv } from '../../../core/index.js';
 import { h } from './h.js';
 import { icon } from './icons.js';
+import * as toast from './toast.js';
 
 const addMonths = (ym, n) => {
   const i = Number(ym.slice(0, 4)) * 12 + Number(ym.slice(5, 7)) - 1 + n;
@@ -44,8 +45,6 @@ export const withSyntheticNote = (text, synthetic) => (synthetic ? `${SYNTHETIC_
 
 export const savedMessage = (filename) => `CSV saved: ${filename}`;
 
-export const TOAST_MS = 4000;
-
 const browserDownload = ({ filename, mime, text }) => {
   const url = URL.createObjectURL(new Blob([text], { type: mime }));
   const a = h('a', { href: url, download: filename });
@@ -59,32 +58,26 @@ const browserDownload = ({ filename, mime, text }) => {
 /**
  * mount(container, deps). One primary button that downloads the CSV of what is on screen.
  * deps: `getSeries()` returns the Series or null, `getMeta()` extra CSV header lines,
- * `isSynthetic()`; optional `download(file)` for tests. A toast (role status) reports
- * the result for four seconds. Returns {destroy()}.
+ * `isSynthetic()`; optional `download(file)` and `notify(message, {kind})` for tests. The result
+ * is reported in a toast. Returns {destroy()}.
  */
 export const mount = (container, deps) => {
   const download = deps.download ?? browserDownload;
+  const notify = deps.notify ?? toast.show;
   const button = h('button', { type: 'button', class: 'btn btn-primary export-button', 'aria-label': 'Export CSV' },
     icon('download'), h('span', { class: 'btn-label', text: 'Export CSV' }));
-  const status = h('p', { class: 'toast export-status', role: 'status' });
-  container.replaceChildren(button, status);
-  let timer = 0;
-  const say = (msg) => {
-    status.textContent = msg;
-    clearTimeout(timer);
-    timer = setTimeout(() => { status.textContent = ''; }, TOAST_MS);
-  };
+  container.replaceChildren(button);
   button.addEventListener('click', () => {
     try {
       const series = deps.getSeries();
-      if (!series) return say('Nothing to export yet. Choose an area first.');
+      if (!series) return notify('Nothing to export yet. Choose an area first.', { kind: 'error' });
       const file = csvExport(series, deps.getMeta?.() ?? {});
       file.text = withSyntheticNote(file.text, deps.isSynthetic?.() ?? false);
       download(file);
-      return say(savedMessage(file.filename));
+      return notify(savedMessage(file.filename));
     } catch (err) {
-      return say(`Export failed: ${err.message}`);
+      return notify(`Export failed: ${err.message}`, { kind: 'error' });
     }
   });
-  return { destroy: () => { clearTimeout(timer); container.replaceChildren(); } };
+  return { destroy: () => container.replaceChildren() };
 };
