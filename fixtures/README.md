@@ -42,8 +42,12 @@ MODIS: `latitude,longitude,brightness,scan,track,acq_date,acq_time,satellite,ins
 VIIRS: `latitude,longitude,bright_ti4,scan,track,acq_date,acq_time,satellite,instrument,confidence,version,bright_ti5,frp,daynight,type`
 
 Verification: the attribute NAMES were checked online against the FIRMS attribute page
-(earthdata.nasa.gov, MODIS and VIIRS active fire attributes), which lists Latitude, Longitude,
-Brightness/Bright_ti4, Scan, Track, Acq_Date, Acq_Time, Satellite, Confidence, Version,
-Bright_T31/Bright_ti5, FRP, Type (MODIS standard only), DayNight. NOT verified: the exact header
-row of a real archive download (column order, lower-case spelling, the `instrument` column, and
-`type` for VIIRS). Those come from memory; confirm against the first real download (M0-K1/K4).
+(earthdata.nasa.gov). The MODIS header above was checked on 2026-11-14 against real
+country CSV files (`modis_*_Brazil.csv`): identical, `satellite` is Terra/Aqua, `type` 0/2/3.
+The VIIRS S-NPP header and `satellite` = `N` were reported by the humans from real files;
+the NOAA-20 CSV satellite code `N20` was verified by the humans on 2026-11-14.
+
+The pipeline also reads the dBase `.dbf` attribute table of FIRMS archive Shapefiles
+(upper-case field names, `ACQ_DATE` as YYYYMMDD; satellite codes Terra, Aqua, SNPP, N20, N21,
+checked on real files 2026-11-14). NRT `.dbf` files have no `TYPE` field. Tests build a tiny
+DBF in code (`pipeline/read.test.js`); no binary fixture is committed.
