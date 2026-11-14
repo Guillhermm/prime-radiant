@@ -3,42 +3,64 @@ import { createStore, parseHash, serializeHash } from './state.js';
 import { findPreset } from './presets.js';
 import * as appShell from './components/app-shell.js';
 import * as queryBar from './components/query-bar.js';
-import { mountPresets } from './components/aoi-form.js';
 import { spanFromManifest } from './components/date-range.js';
 import { h } from './components/h.js';
 import * as legend from './components/legend.js';
 import * as exportMenu from './components/export-menu.js';
+import * as kpiStrip from './components/kpi-strip.js';
+import * as calendarGrid from './components/calendar-grid.js';
+import * as mapPicker from './components/map-picker.js';
+import * as caveatStrip from './components/caveat-strip.js';
+import * as cellDetail from './components/cell-detail.js';
+import * as methodDrawer from './components/method-drawer.js';
+import * as states from './components/states.js';
+import { createDataSource, dataSourceConfig } from './data-source.js';
+import { buildResult, csvMeta } from './view-data.js';
 
 // Mount slots. Each is a no-op until its owner replaces it (task in the comment). They all
-// receive the slot element and { store, slots }, and may return nothing.
+// receive the slot element and { store, slots, span, data, onSelect, onClose }, and may return nothing. `data` is a
+// store of { status: 'idle' | 'loading' | 'ready' | 'error', result, error }: `result` is
+// view-data.buildResult (cells, kpis, series, aoiCells, manifest...) for the committed query.
 const noop = () => {};
 export const MOUNTS = {
-  method: noop, // M1-G9: Method button
-  // The CSV item reports "nothing to export" until M1-G5 provides the series on screen.
-  export: (el) => exportMenu.mount(el, { getSeries: () => null, getLink: () => location.href }),
-  caveat: noop, // M1-G9: caveat strip
-  kpi: noop, // M1-G8 built; mounts once M1-G5 loads the cells
-  calendar: noop, // M1-G6 built; mounts once M1-G5 loads the cells
+  method: noop, // the Method button is mounted by the drawer, which owns it
+  export: (el, { data }) => exportMenu.mount(el, {
+    getSeries: () => data.get().result?.series ?? null,
+    getMeta: () => (data.get().result ? csvMeta(data.get().result) : {}),
+    getLink: () => location.href,
+  }),
+  kpi: (el, { data }) => mountResults(data, (r) => ({ cells: r.cells, kpis: r.kpis, coverage: r.manifest.coverage }), kpiStrip, el),
+  calendar: (el, { data, onSelect, onClose }) => mountResults(data, (r) => ({ cells: r.cells, aoiCells: r.aoiCells, onSelect, onClose }), calendarGrid, el),
   legend: (el) => legend.mount(el),
-  table: noop, // M1-G10: the calendar's own table toggle uses data-table
-  detail: noop, // M1-G6: cell detail panel / bottom sheet
-  drawer: noop, // M1-G9: Method drawer
-  map: noop, // M1-G3: map picker
+  table: noop, // the calendar's own table toggle (data-table) already covers this slot
+  detail: noop, // mounted in start(): the caveat strip and the calendar both talk to it
+  drawer: noop, // mounted in start() with the caveat strip, which opens it
+  caveat: noop,
+  map: noop, // M1-G3: mounted in start(), it needs the query form for the two-way sync
   sensors: noop, // M1-K10: Sensors view
 };
 
-const loadSpan = async (fixtures) => {
-  try {
-    const res = await fetch(fixtures ? '../fixtures/manifest.json' : '../data/manifest.json');
-    return res.ok ? spanFromManifest(await res.json()) : null;
-  } catch {
-    return null;
-  }
+// Mounts a result component on first ready result and updates it on later ones; a new query
+// keeps the previous result on screen until its replacement arrives.
+const mountResults = (data, deps, component, el) => {
+  let ctl = null;
+  let shown = null;
+  // Status-only changes keep the same result; repainting would rebuild the grid and drop focus.
+  const paint = ({ result }) => {
+    if (!result || result === shown) return;
+    shown = result;
+    if (ctl) ctl.update(deps(result));
+    else ctl = component.mount(el, deps(result));
+  };
+  data.subscribe(paint);
+  paint(data.get());
 };
 
 export const start = async (root = document.getElementById('app')) => {
   const fixtures = new URLSearchParams(location.search).get('fixtures') === '1';
-  const span = await loadSpan(fixtures);
+  const source = createDataSource(dataSourceConfig({ fixtures }));
+  const manifest = await source.manifest().catch(() => null);
+  const span = manifest ? spanFromManifest(manifest) : null;
   const { state, errors } = parseHash(location.hash, { span });
   const store = createStore(state);
 
@@ -48,6 +70,9 @@ export const start = async (root = document.getElementById('app')) => {
     onView: (view) => store.set({ view }),
   });
   const { slots } = shell;
+  const data = createStore({ status: 'idle', result: null, error: null });
+  // Everything that changes the query goes through the hash; the hashchange listener feeds the store.
+  const goTo = (patch) => { location.hash = serializeHash({ ...store.get(), ...patch }); };
 
   const status = h('p', { class: 'status', role: 'status' });
   slots.query.append(status);
@@ -55,22 +80,75 @@ export const start = async (root = document.getElementById('app')) => {
     status.textContent = list.length ? `Ignored from the link: ${list.map((e) => `${e.field} (${e.reason})`).join('; ')}` : '';
   };
   showErrors(errors);
-  queryBar.mount(slots.query, { store, views: VIEWS, span });
+  const map = {};
+  const qb = queryBar.mount(slots.query, {
+    store, views: VIEWS, span, goTo,
+    onAoiInput: (v) => { if (v.valid) map.ctl?.setBbox(v.bbox); },
+    onDrawMap: () => map.ctl?.openFull(),
+  });
+  map.ctl = mapPicker.mount(slots.map, { bbox: state.bbox, onChange: (b) => qb.aoi.set(b) });
 
-  slots.empty.append(
-    h('p', {}, 'Choose an area to see its fire history.'),
-    h('p', { class: 'hint' }, 'Example areas (placeholder values):'));
-  mountPresets(slots.empty, {
-    onPick: (p) => store.set({ bbox: findPreset(p.id).bbox, from: store.get().from ?? span?.from ?? null, to: store.get().to ?? span?.to ?? null }),
+  const drawer = methodDrawer.mount(slots.drawer, { trigger: slots.method, manifest });
+  caveatStrip.mount(slots.caveat, { onReadMore: (btn) => drawer.open(btn) });
+  const detail = cellDetail.mount(slots.detail, { aoiCells: 0 });
+
+  // The shell hides slots.empty once an area is set; the loading, error and zero states
+  // reuse it, so it is shown again here, and the result groups hidden while no result is valid.
+  const resultGroups = [slots.kpi.parentElement, slots.sensors.parentElement];
+  const stateView = states.mount(slots.empty, {
+    onPick: (id) => goTo(queryBar.presetPatch(findPreset(id), store.get(), span)),
+    onRetry: () => run(store.get()),
+  });
+  let shownState = null;
+  const paintState = () => {
+    const d = data.get();
+    const screen = states.screenState({ hasArea: store.get().bbox !== null, status: d.status, cells: d.result?.cells });
+    slots.empty.hidden = screen.kind === null;
+    if (!screen.results) resultGroups.forEach((g) => { g.hidden = true; });
+    const next = screen.kind === 'error' ? states.errorState(d.error) : screen.kind && { kind: screen.kind };
+    const key = JSON.stringify(next);
+    if (key === shownState) return;
+    shownState = key;
+    if (next) stateView.show(next);
+    else stateView.clear();
+  };
+
+  data.subscribe(({ status, result }) => {
+    if (status !== 'ready') return;
+    detail.close({ restore: false });
+    detail.update({ aoiCells: result.aoiCells });
+    drawer.update({ manifest: result.manifest });
   });
 
-  for (const [name, mountFn] of Object.entries(MOUNTS)) mountFn(slots[name], { store, slots, span });
+  const ctx = { store, slots, span, data, onSelect: (cell) => detail.open(cell), onClose: () => detail.close() };
+  for (const [name, mountFn] of Object.entries(MOUNTS)) mountFn(slots[name], ctx);
 
-  const render = (s) => shell.update({ view: s.view, hasArea: s.bbox !== null });
+  let seq = 0;
+  const run = async ({ bbox, from, to }) => {
+    const mine = ++seq;
+    if (!bbox) { source.cancel(); data.set({ status: 'idle', result: null, error: null }); return; }
+    data.set({ status: 'loading', error: null });
+    try {
+      const { manifest: m, tiles } = await source.load(bbox);
+      if (mine !== seq) return;
+      data.set({ status: 'ready', result: buildResult({ bbox, from, to, manifest: m, tiles }), error: null });
+    } catch (err) {
+      if (mine !== seq || err?.kind === 'aborted') return;
+      data.set({ status: 'error', error: err });
+    }
+  };
+
+  const render = (s) => { shell.update({ view: s.view, hasArea: s.bbox !== null }); paintState(); };
+  data.subscribe(() => render(store.get()));
+  let lastQuery = state;
   store.subscribe((s) => {
     const next = serializeHash(s);
     if (location.hash !== next) location.hash = next;
     render(s);
+    if (s.bbox !== lastQuery.bbox || s.from !== lastQuery.from || s.to !== lastQuery.to) {
+      lastQuery = s;
+      run(s);
+    }
   });
   window.addEventListener('hashchange', () => {
     const parsed = parseHash(location.hash, { span });
@@ -79,6 +157,7 @@ export const start = async (root = document.getElementById('app')) => {
   });
   if (!location.hash) history.replaceState(null, '', serializeHash(state));
   render(state);
+  run(state);
   return store;
 };
 

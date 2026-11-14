@@ -139,3 +139,37 @@
   outline-offset: var(--focus-offset);
 }
 @media (prefers-reduced-motion: reduce) { .kpi-list { scroll-behavior: auto; } }
+
+.caveat-line { margin: 0; }
+.badge { display: inline-block; padding: 0 var(--space-2); border-radius: var(--radius); background: var(--color-badge-bg); color: var(--color-badge-text); font-weight: 600; }
+.caveat-more, .detail-close, .drawer-close, .method-button, .chip, .state-action { min-block-size: var(--target-min); padding-inline: var(--space-3); }
+.caveat-more { background: none; border: 0; color: inherit; text-decoration: underline; }
+
+.detail-panel { padding: var(--space-4); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); }
+.detail-head, .drawer-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.detail-title:focus { outline: none; }
+.detail-list { margin: 0; }
+.detail-row { display: flex; justify-content: space-between; gap: var(--space-3); padding-block: var(--space-1); border-bottom: 1px solid var(--color-border); }
+.detail-row dt { color: var(--color-text-muted); }
+.detail-row dd { margin: 0; text-align: end; }
+.detail-caveats { padding-inline-start: var(--space-4); }
+@media (max-width: 47.99rem) {
+  .detail:not(:empty) { position: fixed; inset-inline: 0; inset-block-end: 0; z-index: 20; max-block-size: 60vh; overflow-y: auto; }
+  .detail-panel { border-end-start-radius: 0; border-end-end-radius: 0; }
+}
+
+.drawer-backdrop { position: fixed; inset: 0; z-index: 30; display: flex; justify-content: flex-end; background: rgb(0 0 0 / 0.4); }
+.drawer-panel { inline-size: min(30rem, 100%); block-size: 100%; overflow-y: auto; padding: var(--space-4); background: var(--color-surface); color: var(--color-text); }
+.drawer-panel:focus { outline: none; }
+.drawer-section h3 { margin-block: var(--space-3) var(--space-1); }
+
+.chips { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-2) 0; padding: 0; list-style: none; }
+.state-error { color: var(--color-error); font-weight: 600; }
+.skeleton { display: grid; grid-template-columns: repeat(12, 1fr); gap: 0.125rem; max-inline-size: 30rem; }
+.skeleton-cell { aspect-ratio: 1; background: var(--color-border); opacity: 0.35; }
+@media (prefers-reduced-motion: no-preference) { .skeleton-cell { animation: skeleton-pulse 1.4s ease-in-out infinite; } }
+@keyframes skeleton-pulse { 50% { opacity: 0.15; } }
+.caveat-more:focus-visible, .detail-close:focus-visible, .drawer-close:focus-visible, .method-button:focus-visible, .chip:focus-visible, .state-action:focus-visible {
+  outline: var(--focus-width) solid var(--color-focus);
+  outline-offset: var(--focus-offset);
+}

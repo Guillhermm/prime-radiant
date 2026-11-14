@@ -22,7 +22,8 @@ const browserDownload = ({ filename, mime, text }) => {
   document.body.append(a);
   a.click();
   a.remove();
-  URL.revokeObjectURL(url);
+  // Safari can start the download after click() returns; revoking at once cancels it.
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
 };
 
 /**
