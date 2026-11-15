@@ -108,3 +108,9 @@ test('NRT records never count as acquisition days', async () => {
   assert.equal(manifest.acquisition_days.NOAA20['2023-05'], 30);
   assert.deepEqual(manifest.partial_months.noaa20, ['2023-05']);
 });
+test('a build with no full VIIRS year writes no overview.json and says so in its stats', async () => {
+  const out = tmp();
+  const { stats } = await build({ ...opts, outDir: out });
+  assert.equal(stats.overview, null);
+  assert.equal(fs.existsSync(path.join(out, 'overview.json')), false);
+});

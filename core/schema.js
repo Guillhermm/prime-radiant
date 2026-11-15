@@ -275,3 +275,46 @@ export function validateDomain(d) {
   }
   return e;
 }
+
+/**
+ * overview.json (pipeline/overview.js): one VIIRS sensor's fire-cell-days per 1 deg cell over one
+ * full year, and ranked hotspots. cells are [west, south, value] with integer degrees.
+ * @param {unknown} o
+ */
+export function validateOverview(o) {
+  if (!isObj(o)) return [err('NOT_OBJECT', '', 'overview must be an object')];
+  const e = [];
+  if (o.schema !== 1) e.push(err('BAD_SCHEMA', 'schema', 'schema must be 1'));
+  if (typeof o.dataVersion !== 'string' || !o.dataVersion) e.push(err('BAD_FIELD', 'dataVersion', 'dataVersion must be a non-empty string'));
+  if (!['viirs', 'noaa20'].includes(o.sensor)) e.push(err('BAD_FIELD', 'sensor', 'sensor must be viirs or noaa20'));
+  if (!Number.isInteger(o.year) || o.year < 2000) e.push(err('BAD_FIELD', 'year', 'year must be an integer from 2000'));
+  if (o.res !== 1) e.push(err('BAD_FIELD', 'res', 'res must be 1'));
+  if (o.unit !== 'fire-cell-days') e.push(err('BAD_FIELD', 'unit', 'unit must be fire-cell-days'));
+  if (!Array.isArray(o.partial_months) || !o.partial_months.every((m) => !Number.isNaN(monthNum(m)) && m.startsWith(`${o.year}-`))) {
+    e.push(err('BAD_FIELD', 'partial_months', 'partial_months must be YYYY-MM strings of the overview year'));
+  }
+  const isW = (v) => Number.isInteger(v) && v >= -180 && v <= 179;
+  const isS = (v) => Number.isInteger(v) && v >= -90 && v <= 89;
+  if (!Array.isArray(o.cells)) e.push(err('BAD_FIELD', 'cells', 'cells must be an array'));
+  else {
+    const seen = new Set();
+    o.cells.forEach((c, i) => {
+      if (!Array.isArray(c) || c.length !== 3 || !isW(c[0]) || !isS(c[1]) || !isCount(c[2])) {
+        e.push(err('BAD_CELL', `cells[${i}]`, 'a cell must be [west, south, count] with integer degrees and a count >= 0'));
+      } else if (seen.has(`${c[0]},${c[1]}`)) e.push(err('DUPLICATE_CELL', `cells[${i}]`, 'each cell appears once'));
+      else seen.add(`${c[0]},${c[1]}`);
+    });
+  }
+  if (!Array.isArray(o.hotspots)) e.push(err('BAD_FIELD', 'hotspots', 'hotspots must be an array'));
+  else {
+    let prev = Infinity;
+    o.hotspots.forEach((h, i) => {
+      const b = h?.bbox;
+      const ok = isObj(h) && Array.isArray(b) && b.length === 4 && isW(b[0]) && isS(b[1]) && b[2] === b[0] + 1 && b[3] === b[1] + 1 && isCount(h.value) && h.value > 0;
+      if (!ok) e.push(err('BAD_HOTSPOT', `hotspots[${i}]`, 'a hotspot must be {bbox: one 1 deg cell, value > 0}'));
+      else if (h.value > prev) e.push(err('HOTSPOTS_NOT_RANKED', `hotspots[${i}]`, 'hotspots must be sorted by value, highest first'));
+      if (ok) prev = h.value;
+    });
+  }
+  return e;
+}

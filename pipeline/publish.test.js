@@ -109,6 +109,9 @@ test('a build that fails validation aborts before any request', async () => {
   const r2 = fakeR2();
   const bad = makeBuild({ tile: JSON.stringify({ cell: [1], month: [], modis: [], viirs: [], noaa20: [] }) });
   await assert.rejects(publish({ dir: bad, env: ENV, fetchFn: r2.fetchFn, log: () => {} }), /tiles\/0\.1\/x17y13\.json fails validation/);
+  const badOverview = makeBuild();
+  fs.writeFileSync(path.join(badOverview, 'overview.json'), JSON.stringify({ schema: 1 }));
+  await assert.rejects(publish({ dir: badOverview, env: ENV, fetchFn: r2.fetchFn, log: () => {} }), /overview\.json fails validation/);
   const unsafe = makeBuild({ version: '../x' });
   await assert.rejects(publish({ dir: unsafe, env: ENV, fetchFn: r2.fetchFn, log: () => {} }), /dataVersion/);
   assert.equal(r2.calls.length, 0);

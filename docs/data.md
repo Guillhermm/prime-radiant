@@ -108,3 +108,18 @@ files cover (country or global), so a day with zero records in the whole input m
 satellite did not acquire. A real acquisition day with no detection anywhere in the input
 would read as an outage; at country scale and above this does not happen outside outages.
 A build from a small bbox file or a few-day extract marks nearly every month partial.
+
+## Overview for the place picker (overview.json)
+
+`pipeline/build.js` ends by writing `overview.json` (`pipeline/overview.js`; also runnable alone as
+`node pipeline/overview.js --in <build dir>` on an existing build). It holds, for the newest calendar
+year a VIIRS sensor covers in full (S-NPP on a tie, NOAA-20 once it has the newer full year), that
+one sensor's observed fire-cell-days per 1 deg cell (`cells: [west, south, value]`, summed from the
+coarse tiles), the sensor's partial months of that year, and up to 10 hotspots ranked by value and
+kept at least 3 deg apart on one axis (`hotspots: [{bbox, value}]`). No harmonization factor enters
+it. A build with no full VIIRS year writes none, and the app falls back to drawing or typing an area.
+`core/schema.js` `validateOverview` checks it, and `pipeline/publish.js` validates it when present.
+
+First real file (data version `20261115`, 2026-11-15): S-NPP 2025, 793 cells, 274,291
+fire-cell-days, 10.9 KB; top hotspot the cell at 7°S to 6°S, 45°W to 44°W (Maranhão) with 3,391.
+
