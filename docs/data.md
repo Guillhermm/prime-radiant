@@ -258,3 +258,100 @@ provinces and geographic regions of Natural Earth (`pipeline/domain/ne-gazetteer
 a domain every entry is kept. `core/schema.js` `validatePlaces` checks it and the publish validates it
 when present. Brazil build (2026-11-15): 51 entries (27 states, 22 regions, 2 countries), 5.8 KB.
 
+## Data sanity (M1-K4)
+
+Checked 2026-11-15 on the Brazil build in `data/brazil` (dataVersion 20261114, domain `ne10m-brazil` 5.1.2).
+Nothing here is a new method: it recounts the raw rows with the build's own reader, clip and binning and compares
+the result to the published tiles.
+
+**Commands** (from the repository root; `raw/` holds the files of "First Brazil build"):
+
+- `node tools/data-sanity.mjs report --in raw/country --in raw/spike-2026 --data data/brazil --domain pipeline/domain/brazil.geojson` (about 8 minutes) prints the table below and stops with an error if a year does not close.
+- `node tools/data-sanity.mjs cell --in raw/country --data data/brazil --lon=-57.05 --lat=-17.55 --month 2020-09` prints the hand-checked cell.
+- `PR_REAL_DATA=data/brazil node --test test/integration/contract.test.js` runs the contract test on the real manifest, domain and tiles (skipped when the variable is absent).
+
+**Per year and sensor.** Per row, rows read = rejected by reader + clipped by domain + other satellites or bad day + same cell and day as another row + fire-cell-days out (the script checks this identity). "In published tiles" is the sum of the published 0.1 deg tiles for that year and sensor; it equals the recount in every row (no MISMATCH). MODIS out includes the Terra-only months before 2002-07-04.
+
+| Year | Sensor | Rows read | Rejected by reader | Clipped by domain | Other satellites or bad day | Same cell and day as another row | Fire-cell-days out | In published tiles |
+|---|---|---|---|---|---|---|---|---|
+| 2000 | modis | 15,576 | 58 | 0 | 0 | 5,808 | 9,710 | 9,710 |
+| 2001 | modis | 145,721 | 1,212 | 0 | 0 | 64,450 | 80,059 | 80,059 |
+| 2002 | modis | 524,224 | 7,521 | 0 | 0 | 287,036 | 229,667 | 229,667 |
+| 2003 | modis | 548,388 | 15,527 | 0 | 0 | 285,499 | 247,362 | 247,362 |
+| 2004 | modis | 634,507 | 26,597 | 0 | 0 | 343,834 | 264,076 | 264,076 |
+| 2005 | modis | 631,834 | 6,838 | 0 | 0 | 366,335 | 258,661 | 258,661 |
+| 2006 | modis | 406,646 | 3,381 | 0 | 0 | 213,735 | 189,530 | 189,530 |
+| 2007 | modis | 700,531 | 4,650 | 0 | 0 | 419,619 | 276,262 | 276,262 |
+| 2008 | modis | 354,521 | 1,240 | 0 | 0 | 183,347 | 169,934 | 169,934 |
+| 2009 | modis | 250,516 | 536 | 0 | 0 | 115,799 | 134,181 | 134,181 |
+| 2010 | modis | 583,691 | 1,025 | 0 | 0 | 358,681 | 223,985 | 223,985 |
+| 2011 | modis | 271,299 | 1,266 | 0 | 0 | 133,797 | 136,236 | 136,236 |
+| 2012 | modis | 402,205 | 1,685 | 1 | 0 | 222,657 | 177,862 | 177,862 |
+| 2012 | viirs | 1,629,511 | 17,723 | 485 | 0 | 1,170,788 | 440,515 | 440,515 |
+| 2013 | modis | 220,409 | 1,334 | 0 | 0 | 100,462 | 118,613 | 118,613 |
+| 2013 | viirs | 866,922 | 14,940 | 533 | 0 | 525,695 | 325,754 | 325,754 |
+| 2014 | modis | 311,349 | 2,659 | 0 | 0 | 155,840 | 152,850 | 152,850 |
+| 2014 | viirs | 1,245,148 | 18,501 | 496 | 0 | 830,240 | 395,911 | 395,911 |
+| 2015 | modis | 419,826 | 2,701 | 1 | 0 | 225,696 | 191,428 | 191,428 |
+| 2015 | viirs | 1,718,574 | 17,983 | 804 | 0 | 1,217,491 | 482,296 | 482,296 |
+| 2016 | modis | 334,349 | 1,885 | 0 | 0 | 171,420 | 161,044 | 161,044 |
+| 2016 | viirs | 1,303,403 | 17,308 | 1,463 | 0 | 880,273 | 404,359 | 404,359 |
+| 2017 | modis | 389,240 | 2,203 | 0 | 0 | 217,210 | 169,827 | 169,827 |
+| 2017 | viirs | 1,543,270 | 18,251 | 522 | 0 | 1,117,497 | 407,000 | 407,000 |
+| 2018 | modis | 231,849 | 6,259 | 0 | 0 | 109,486 | 116,104 | 116,104 |
+| 2018 | noaa20 | 849,957 | 13,651 | 451 | 0 | 544,781 | 291,074 | 291,074 |
+| 2018 | viirs | 915,584 | 16,612 | 509 | 0 | 590,337 | 308,126 | 308,126 |
+| 2019 | modis | 374,668 | 5,068 | 0 | 0 | 206,733 | 162,867 | 162,867 |
+| 2019 | noaa20 | 1,434,146 | 17,439 | 342 | 0 | 1,017,593 | 398,772 | 398,772 |
+| 2019 | viirs | 1,459,285 | 17,284 | 374 | 0 | 1,047,032 | 394,595 | 394,595 |
+| 2020 | modis | 405,388 | 5,056 | 0 | 0 | 230,409 | 169,923 | 169,923 |
+| 2020 | noaa20 | 1,633,648 | 16,877 | 347 | 0 | 1,192,345 | 424,079 | 424,079 |
+| 2020 | viirs | 1,666,244 | 17,106 | 344 | 0 | 1,231,052 | 417,742 | 417,742 |
+| 2021 | modis | 340,582 | 4,881 | 0 | 0 | 187,322 | 148,379 | 148,379 |
+| 2021 | noaa20 | 1,304,753 | 18,262 | 253 | 0 | 911,207 | 375,031 | 375,031 |
+| 2021 | viirs | 1,333,192 | 18,294 | 224 | 0 | 945,566 | 369,108 | 369,108 |
+| 2022 | modis | 362,785 | 5,224 | 0 | 0 | 191,219 | 166,342 | 166,342 |
+| 2022 | noaa20 | 1,452,881 | 17,178 | 341 | 0 | 1,021,584 | 413,778 | 413,778 |
+| 2022 | viirs | 1,405,383 | 16,295 | 296 | 0 | 997,956 | 390,836 | 390,836 |
+| 2023 | modis | 357,737 | 4,684 | 0 | 0 | 178,588 | 174,465 | 174,465 |
+| 2023 | noaa20 | 1,312,648 | 17,090 | 1,118 | 0 | 869,054 | 425,386 | 425,386 |
+| 2023 | viirs | 1,345,502 | 16,488 | 1,073 | 0 | 908,604 | 419,337 | 419,337 |
+| 2024 | modis | 527,894 | 6,481 | 439 | 0 | 319,512 | 201,462 | 201,462 |
+| 2024 | noaa20 | 1,988,404 | 20,407 | 2,176 | 0 | 1,532,715 | 433,106 | 433,106 |
+| 2024 | viirs | 1,935,740 | 19,464 | 2,085 | 0 | 1,510,368 | 403,823 | 403,823 |
+| 2025 | modis | 236,731 | 4,769 | 40 | 0 | 112,480 | 119,442 | 119,442 |
+| 2025 | noaa20 | 853,909 | 16,042 | 256 | 0 | 553,634 | 283,977 | 283,977 |
+| 2025 | viirs | 861,621 | 15,939 | 279 | 0 | 571,112 | 274,291 | 274,291 |
+| 2026 | noaa20 | 9,559,961 | 824,557 | 8,594,239 | 0 | 77,733 | 63,432 | 63,432 |
+| 2026 | modis | 2,302,480 | 139,022 | 2,089,023 | 0 | 35,699 | 38,736 | 38,736 |
+| 2026 | viirs | 8,859,653 | 756,403 | 7,968,016 | 0 | 76,441 | 58,793 | 58,793 |
+| total | modis | 12,284,946 | 263,762 | 2,089,504 | 0 | 5,442,673 | 4,489,007 | 4,489,007 |
+| total | viirs | 28,089,032 | 998,591 | 7,977,503 | 0 | 13,620,452 | 5,492,486 | 5,492,486 |
+| total | noaa20 | 20,390,307 | 961,503 | 8,599,523 | 0 | 7,720,646 | 3,108,635 | 3,108,635 |
+
+Rejected by reader, by reason: {"type_excluded":2223856}
+Rows from files that are no sensor of the app (landsat and the like): none
+
+**Reading it.**
+
+- Totals out equal the "First Brazil build" table: MODIS 4,384,498 + 104,509 Terra-only = 4,489,007, S-NPP 5,492,486, NOAA-20 3,108,635. Rejected by the reader: 2,223,856, all `type_excluded` (type != 0: not vegetation fire); no row was rejected for coordinates, date, time or columns. Clipped by the domain: 18,666,530 (2,089,504 + 7,977,503 + 8,599,523), almost all in 2026, which comes from the global Shapefiles; the country CSVs of 2000-2025 are already Brazil, so they lose a few hundred rows a year at the border. No satellite other than Terra, Aqua, S-NPP and NOAA-20 appears in these inputs (NOAA-21 is not among the build inputs).
+- "Same cell and day as another row" is the harmonization unit working as designed: many detections of one 0.1 deg cell on one UTC day count once per sensor.
+- Sizes of the published build: fine tiles 62,689,544 bytes raw / 5,171,222 brotli (17 tiles), coarse tiles 3,141,962 / 347,495, `manifest.json` 20,779, `domain.json` 9,691.
+
+**Hand-checked cell.** Cell lon -57.1 to -57.0, lat -17.6 to -17.5 (Pantanal, Mato Grosso; tile x12y7, cell 2429), September 2020. The command above reads the raw country CSVs and groups the rows of that cell by sensor:
+
+| Sensor (files) | Raw rows in September | Distinct UTC days = fire-cell-days | Tile x12y7 value for 2020-09 |
+|---|---|---|---|
+| MODIS (Terra 116 + Aqua 77) | 193 | 26 | modis 26 |
+| S-NPP | 741 | 27 | viirs 27 |
+| NOAA-20 | 874 | 29 | noaa20 29 |
+
+One day in detail, 2020-09-15 (from `awk -F, '$6=="2020-09-15" && $2>=-57.1 && $2<-57.0 && $1>=-17.6 && $1<-17.5' raw/country/<file>_Brazil.csv`; columns lat, lon, date, time, satellite):
+
+- MODIS: 5 rows, all type 0 (`-17.5803,-57.0565` Terra 0258; `-17.5715,-57.0517` Terra 1351; `-17.5585,-57.0634` Terra 1351; `-17.5608,-57.0497` Terra 1351; `-17.5774,-57.0596` Aqua 1816) become 1 fire-cell-day for the day.
+- S-NPP: 32 rows (27 at 0526 UTC and 5 at 1757 UTC) become 1. NOAA-20: 26 rows (23 at 0435 and 3 at 1706) become 1.
+- That day is one of the 26, 27 and 29 days counted above, and the tile row reports exactly those September totals.
+
+For a human to eyeball on the FIRMS map (pan to the Pantanal, set the date to 2020-09-15 and turn on the MODIS C6.1 and VIIRS S-NPP and NOAA-20 layers): https://firms.modaps.eosdis.nasa.gov/map/#d:2020-09-15..2020-09-15;@-57.05,-17.55,12z
+
+**Not done.** The comparison of this cell and day against the FIRMS map was not done by the author; a human has to open the link and confirm that the same hot spots show there. The recount above proves only that the tile is consistent with the raw FIRMS rows we downloaded, not that the download equals what the map shows. The type filter (keep type 0) and the domain clip are decisions of the method, not checked here against any outside source. `npm audit` does not apply: no dependencies.

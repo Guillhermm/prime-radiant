@@ -243,7 +243,7 @@ months, NOAA-20 for NOAA-20 x K months (`core/partial.js`).
   share of a month counted by the end of day d (`core/data/daily-share.json`, 12 x 31, from the
   national S-NPP daily data 2012-2025; gate V3 measured leave-one-year-out bias of at most 4% for
   Brazil). This replaces the earlier d/N scaling, which was 20-28% too high in Jun-Aug.
-- **Low confidence**: K not usable (method 4.2), more than a third of the days so far missing, or an area under 2,000 in-domain 0.1 degree cells (about 20,000 km2, a Foundation choice not
+- **Low confidence**: K not usable (method 4.2), more than a third of the days so far missing, fewer than 7 days so far in the month (about 8% error at p90 with one of 7 days missing), or an area under 2,000 in-domain 0.1 degree cells (about 20,000 km2, a Foundation choice not
   yet validated; the Pantanal was 25-30% off either way).
 - **Type filter**: with the static-source mask (gate G2) published next to the archive tiles, the live
   job drops NRT records in masked cells instead (manifest `static_mask`), and no type scaling is applied.
@@ -267,7 +267,35 @@ months, NOAA-20 for NOAA-20 x K months (`core/partial.js`).
   archive follows after a 2-3 month lag (FIRMS FAQ). Caveat items `live-*` in `core/caveats.js`.
 - Implementation: `core/live.js`.
 
-## 7. Open questions
+## 7. Fire outlook (experimental)
+
+M4-K2, gate V4 passed with caveats after fixes O1-O5 (`docs/gates/V4.md`). Not shown in the web app yet. Code: `core/outlook.js` (features, logistic regression, scores, bootstrap), `pipeline/outlook.js` (CLI), coefficients in `core/data/outlook-model.json`.
+
+- **What it predicts**: per 1 deg cell, the probability that the target month's fire-cell-days are above the cell's baseline median (section 5) for that calendar month. Not ignitions, not fire danger. It uses no rainfall, weather or drought data, so it cannot see rain onset, ENSO or policy changes and misses turning points. For fire danger see INPE Risco de Fogo or GWIS.
+- **Required UI wording (V4)**: "Experimental. Chance that next month's hotspot activity in this 1 deg cell is above its usual (median) level, learned only from past satellite hotspot counts. No rainfall, weather or drought data. Not a fire-danger rating or a count of fires. For fire danger, see INPE Risco de Fogo or GWIS." Add to it: "Less reliable in transition months (Oct-Dec, Feb-Apr), when rain onset or retreat, which this model cannot see, decides the month." and "Issued <issued_at date>, based on data to <based_on_data_to>." In `hindcast` mode name the target month ("the chance that <target_month>'s ...") instead of "next month's". Never "fire risk" or "fire forecast".
+- **Where it is weaker**: persistence is strong in the dry season and weak at the transitions (damped persistence by target month: Jul 0.35, Aug 0.38, Sep 0.39, Nov 0.25, Feb 0.13, Mar 0.17; gate V4 mathematician), so the model is less reliable in Oct-Dec and Feb-Apr.
+- **Series**: VIIRS era only, no MODIS x R. S-NPP as observed; NOAA-20 x K where S-NPP is partial or ended (K = 0.984, one scalar); months partial for the supplying sensor are null. Medians come from `baseline()` (5-year minimum), so the first usable target is 2018-02: **3 training years** (2018-02 to 2020-12).
+- **Latest months (O3)**: after the archive ends, `--live` adds monthly values from the live tiles: NOAA-20 detections of the counted days, summed per 1 deg cell, x K x the calendar month's type-0 share (`core/data/type0-share.json`), divided by the daily-share increments of the counted days (`core/data/daily-share.json`), so a month with skipped partial days is scaled to a whole month, as `core/live.js`. A month with more than a third of its days missing, or not ended before the fetch day, is not usable. The target is the month after the latest complete month. If the newest usable month is older than that, the output is labeled `hindcast` and says which months it covers. Live months are never mixed into the training or test data (all before 2026).
+- **Every output** (manifest, report, each tile) carries `target_month`, `last_observed_month`, `issued_at` (passed in by the CLI, no clock in pure code) and `based_on_data_to` (last day of `last_observed_month`); the manifest also carries `mode` (`forecast` or `hindcast`).
+- **Features** (own data only, standardized): this month's anomaly `log1p(v) - log1p(median)`; mean anomaly of the last 3 months; sin and cos of the target month; `log1p` of the target month's median; the target calendar month's anomaly one year earlier. Missing any input drops the sample.
+- **Model**: logistic regression, full-batch gradient descent, L2 = 1e-3, 400 iterations, lr 0.5, zero start: deterministic, no random seed needed. Trained on cells with median above 0.
+- **No-skill cells (O2)**: cells whose target median is 0 or at most 1 are still given a probability but carry `no_skill = 1` in the tiles; they are not ranked and not counted in the skill below (measured skill there is about zero). On the 2026-11 run 17% of cells are no-skill; in the 2022-2025 test window 26% of cell-months are.
+- **Validation** (no leakage): train on targets up to 2020-12, test on 2022-01..2025-12 (2021 is the gap). Spatial check: 5 folds of whole 10 deg tiles held out. References, both fit on training only: a constant base rate (0.451) and a calibrated persistence, P(above next | above now) = 0.578 and P(above next | not above now) = 0.346 (hard 0/1 persistence is not used). Skill = Brier skill score, BSS = 1 - BS / BS_ref; 95% intervals from a seeded **crossed bootstrap** (1000 draws): the 10 deg tiles and the test years are resampled independently with replacement, and a (tile, year) block enters with the product of its two draw counts. This is wider than resampling tile x year blocks, because neighbors and a bad year are shared. The shrunk climatology of the first version is dropped.
+- **Result, Brazil** (Brier of the constant 0.2492 and of persistence 0.2258 on the first row):
+
+| Samples (2022-2025 test) | n | BSS vs constant (95% CI) | BSS vs calibrated persistence (95% CI) | AUC |
+|---|---|---|---|---|
+| Median above 1 (headline), time split | 25,458 | 0.139 (0.107-0.172) | 0.049 (0.032-0.066) | 0.721 (persistence 0.659) |
+| Median above 1, tile-blocked | 25,458 | 0.136 (0.105-0.169) | 0.046 (0.028-0.066) | 0.717 |
+| All samples (median above 0), time split | 27,832 | 0.124 (0.094-0.156) | 0.040 (0.021-0.059) | 0.707 |
+| All samples, tile-blocked | 27,832 | 0.120 (0.091-0.154) | 0.036 (0.011-0.056) | 0.703 |
+| Median 1 or less alone, time split | 2,374 | -0.031 (-0.085-0.031) | -0.049 (-0.102--0.006) | 0.596 |
+
+  The skill over a calibrated persistence is real but small. The first version's 0.37 was against 0/1 persistence and is withdrawn. The V4 gate's own check (mathematician, all samples, other bootstrap) reported 0.040 (0.027-0.054) vs persistence and 0.124 (0.104-0.146) vs constant. In cells with median 1 or less the model is worse than both references, which is why they are labeled `no-skill`.
+- **Limits**: one region, one split, 3 training years, a base rate that is not stationary; cells are not independent (the bootstrap blocks by tile x year but not neighbors across tiles); the model is trained once and not refit as months arrive. The 2026-08 month could be checked against MODIS only (V4): one month, not a skill test. **Next step**: climate drivers (rainfall, temperature, humidity, fuel dryness).
+- **Run**: `node pipeline/outlook.js --data data/brazil --live data/live --out data/outlook --model-out core/data/outlook-model.json`. Output: `manifest.json`, `report.json`, `tiles/<id>.json` = `{target_month, last_observed_month, issued_at, based_on_data_to, cell[], p[], no_skill[]}`.
+
+## 8. Open questions
 
 | # | Question | Status |
 |---|---|---|

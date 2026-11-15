@@ -20,6 +20,8 @@ export const VIIRS_ERA_START = '2012-02';
  * and Brazil-wide as fine; 2,000 cells is about 20,000 km2. Revisit with the science team.
  */
 export const LIVE_MIN_CELLS = 2000;
+/** Fewer days than this so far in the month make the month to date low confidence (gate V3 final check). */
+export const LIVE_MIN_DAYS = 7;
 /** More than this fraction of the days so far missing (null) makes the comparison low confidence. */
 export const LIVE_MAX_MISSING = 1 / 3;
 /** Days a month must count when its first days were not observed (gate V3 re-check). */
@@ -199,7 +201,8 @@ const inc = (share, month, d) => share[month - 1][d - 1] - (d > 1 ? share[month 
  * days counted, the result is low confidence, and with fewer than LIVE_MIN_COUNTED_DAYS days counted
  * the month is null with a `reason` (gate V3 re-check, 2026-11-15). `daysCounted` and `daysMissing` (day
  * strings) are returned for the month. When more than a third of the days so far are missing the result is
- * low confidence (`lowConfidence`, reason in `lowConfidenceReasons`).
+ * low confidence (`lowConfidence`, reason in `lowConfidenceReasons`), and so is a month with fewer
+ * than 7 days so far.
  * `season`: step 'month', one value per month from the first month fully covered by live data
  * to the current one; a month's value sums its complete days and its band uses the increments of
  * those days (a month with no complete day is null); `daysCounted` and `daysMissing` are parallel
@@ -268,6 +271,7 @@ export function liveComparison({ live, harmonized, share, fetchedAt = null, now 
     out.daysCounted = counted;
     out.daysMissing = missing;
     out.daysNotObserved = unseen;
+    if (ds.length < LIVE_MIN_DAYS) reasons.push(`early in the month (fewer than ${LIVE_MIN_DAYS} days)`);
     if (unseen.length) reasons.push(`${unseen[0]} to ${unseen.at(-1)} not observed (live data starts on ${first})`);
     else if (missing.length > ds.length * LIVE_MAX_MISSING) reasons.push(`${missing.length} of ${ds.length} days so far are missing`);
     // Before the first counted day nothing is compared: null, not a band of 0.

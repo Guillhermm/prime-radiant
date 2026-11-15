@@ -7,7 +7,7 @@ Status: accepted by the team on 2026-11-14 (planning ritual). Open decisions in 
 - Two humans, two tracks, one contract. **Kaue owns data and science** (pipeline, `core/` science, data hosting, live ingestion). **Guilherme owns the web app** (shell, inputs, views, the Vercel function). The axis can be swapped wholesale (decision H1); nothing else depends on who is who.
 - Task ID: `M{milestone}-{K|G}{n}`. K = Kaue, G = Guilherme. Every deliverable task has exactly one owner.
 - "Done" for any task: code + tests in the same commit, `node --test` green, docs that describe it true, reviewed by the other human (or the dev master) before merge.
-- ✅ marks a task whose deliverable is built and tested (checked 2026-11-15, after merging Kaue's data and science work). M2-G1 and M3-G1 run on core stubs until M2-K1 and M3-K3 land. Not marked: M1-K4 (the publish ran on 2026-11-15, by hand and through the `publish-data` workflow; still open: the contract test on a real-tile sample and the cell hand-checked against the FIRMS map), M1-G12 (production serves real data; still open: `docs/demo.md` rewritten for real data).
+- ✅ marks a task whose deliverable is built and tested (checked 2026-11-15 by the dev master against `main` plus the `integrate/data` merge). A task's Status line names what is still open. Not marked: M4-G1 (planned) and M4-K2 (built, not in the app).
 - Size points used for balancing: S = 1, M = 2, L = 3.
 - Gates are not tasks of one person; they are checkpoints a milestone cannot pass without. Each gate names who triggers it.
 
@@ -191,11 +191,12 @@ Sync point **S0 (contract freeze)**: both review schema, fixtures, stubs, QueryS
 - Tests: integration `test/integration/pipeline.test.js` (50-row CSV -> golden tiles).
 - Files: `pipeline/write-tiles.js`, `pipeline/manifest.js`, `pipeline/build.js`, `fixtures/golden/*`.
 
-**M1-K4 Full build, publish, data sanity** · M · depends: M1-K3, M0-K1 (b or c) delivered, H5
+✅ **M1-K4 Full build, publish, data sanity** · M · depends: M1-K3, M0-K1 (b or c) delivered, H5
 - Deliverable: full run on the chosen extent; `pipeline/publish.js` uploads to the host chosen in H5 (credentials from env only, never logged); sanity report in `docs/data.md`: per-year detections in vs fire-cell-days out per sensor, rejected-row counts, sizes, a hand-checked cell compared against FIRMS map for one day.
 - Acceptance: real manifest + sample tiles pass the contract test; Guilherme's app loads real tiles from `base_url`; numbers in the report reproducible from the command recorded.
 - Tests: contract test extended to a real-tile sample (path from env, skipped with a message when absent so CI stays offline).
 - Files: `pipeline/publish.js`, `docs/data.md`, `test/integration/contract.test.js`.
+- Status: done. Brazil published 2026-11-15 (data version `20261115`); sanity report, per-year identity check and the hand-checked Pantanal cell (September 2020) in `docs/data.md`, "Data sanity (M1-K4)", from `tools/data-sanity.mjs`; the real-tile contract checks run with `PR_REAL_DATA` set and skip without it. Still open: a human eyeballing that cell on the FIRMS map (link in `docs/data.md`).
 
 ✅ **M1-K5 Tile reader and AOI aggregation** · M · depends: S0
 - Deliverable: `core/tiles.js` (decode columnar tile into lookups), `core/aggregate.js` `seriesForAoi(bbox, tiles, manifest)`: cells whose centers fall inside bbox, coarse level when AOI exceeds a cell-count threshold (default: > 20,000 fine cells), antimeridian-safe, returns `modis` and `viirs` Series with null outside each sensor's coverage and 0 inside it; `tilesForBbox(bbox, manifest)` so the web loads only what is needed.
@@ -309,11 +310,12 @@ Sync point **S0 (contract freeze)**: both review schema, fixtures, stubs, QueryS
 - Tests: `test/e2e/*.test.js`.
 - Files: `test/e2e/`, `.github/workflows/ci.yml`.
 
-**M1-G12 Deploy, security pass, demo script** · M · depends: M1-K4, M1-G11, gates V1 D1 Q1
+✅ **M1-G12 Deploy, security pass, demo script** · M · depends: M1-K4, M1-G11, gates V1 D1 Q1
 - Deliverable: production deploy on the H5 path, headers rechecked with `curl -I`, `npm audit` (or "no dependencies: nothing to audit" stated with the lockfile shown), secret grep over repo and built site, CSP violations checked in the console, `docs/deploy.md` true, `README.md` true (what is built vs planned), 3-minute demo script in `docs/demo.md`.
 - Acceptance: public URL serves A+B on real data; demo script walks one AOI end to end.
 - Tests: headers integration test green against `vercel.json`.
 - Files: `docs/deploy.md`, `docs/demo.md`, `README.md`.
+- Status: done for Brazil: production at https://primeradiant.zenus.systems serves real data and `docs/demo.md` walks the Pantanal on it. Still open: the demo script predates the global publish (it still says a global publish is planned and points at the "outside Brazil" pill), so it needs a new pass with numbers read from production.
 
 ### M1 load balance
 
@@ -376,7 +378,7 @@ Sync points:
 - Acceptance: gates passed; demo script extended.
 - Tests: `test/e2e/anomalies.test.js`.
 - Files: `web/src/views.js`, `test/e2e/`, `docs/demo.md`, `README.md`.
-- Status: built: Anomalies and the "Counts | vs median" layer are on for real data with core's ranks, no Preview tag, core's anomaly caveats listed; e2e in `test/e2e/app.test.js` (real-data mode). Still open: D2 review, Q2, deploy, `docs/demo.md`.
+- Status: built: Anomalies and the "Counts | vs median" layer are on for real data with core's ranks, no Preview tag, core's anomaly caveats listed; e2e in `test/e2e/app.test.js` (real-data mode). Deployed; `docs/demo.md` mentions the tab. Still open: no D2 or Q2 record in the repository.
 
 Load: K 2+2+1 = 5, G 2+1 = 3. Guilherme absorbs M1 polish from D1/Q1 findings here; if none, Guilherme starts M3-G1.
 
@@ -423,6 +425,7 @@ Sync **S4**: anomaly stub replaced by real core; V2, D2, Q2; deploy.
 - Deliverable: `api/live.js` Vercel function: `MAP_KEY` from env (set in the Vercel dashboard by the account owner, Guilherme), bbox validated and snapped to 0.5 deg, days 1-2, whitelisted sources, `Cache-Control: s-maxage=900, stale-while-revalidate`, `fetch` injected for tests, errors never echo the upstream URL (it contains the key); WAF rate-limit rule if Hobby allows it (unverified).
 - Acceptance: key never in response, logs or client bundle (grep of built site and a response capture); invalid bbox 400.
 - Tests: unit with stubbed fetch, including an upstream error containing the key.
+- Status: deployed without `MAP_KEY` (answers 503) and not used by the app.
 - Open (gate V3): `api/live.js` counts a fire-cell-day from the union of NOAA-20, NOAA-21 and MODIS NRT, which is not comparable to the single-sensor band and includes NOAA-21, which the archive excludes. Align it with `core/live.js` (NOAA-20 x K) before the live view uses the proxy.
 - Files: `api/live.js`, `vercel.json`.
 
@@ -430,6 +433,7 @@ Sync **S4**: anomaly stub replaced by real core; V2, D2, Q2; deploy.
 - Deliverable: enable `live` in VIEWS, e2e on fixture live data, secret scan, audit, D3, Q3, deploy, README and demo true.
 - Tests: `test/e2e/live.test.js`.
 - Files: `web/src/views.js`, `test/e2e/`, `README.md`, `docs/demo.md`.
+- Status: Live is on for real data over Brazil and deployed. Still open: no D3 or Q3 record in the repository. Since the merge of `integrate/data` the month to date is also low confidence before day 7 of the month (`LIVE_MIN_DAYS`), next to the existing rule that a month whose live data starts mid-month is null under 7 counted days (`LIVE_MIN_COUNTED_DAYS`).
 
 Load: K 2+2+1 = 5, G 2+2+1 = 5.
 
@@ -476,8 +480,8 @@ Off the critical path thanks to the contract: the whole web track (runs on fixtu
 
 ## 10a. After M3: global extent
 
-**M4-K1 Chunked pipeline for a global build** · L · depends: M1-K4, H3 changed to global
-- Status (2026-11-15, Guilherme): built, the first global publish is pending. Source: the 48 FIRMS yearly all-countries zips, read without extraction; counts compacted per finished year, tiles written one at a time; `global.json` replaces loading every coarse tile. One global year measured (150 s, 1 GB peak); the Brazil build through the new code is byte-identical. Open: the full run's time and memory on the runner, and the Second Foundation check of the global extent below.
+✅ **M4-K1 Chunked pipeline for a global build** · L · depends: M1-K4, H3 changed to global
+- Status (2026-11-15, Guilherme): built, the first global publish is pending. Source: the 48 FIRMS yearly all-countries zips, read without extraction; counts compacted per finished year, tiles written one at a time; `global.json` replaces loading every coarse tile. One global year measured (150 s, 1 GB peak); the Brazil build through the new code is byte-identical. Checked 2026-11-15 (dev master, local WSL): the Brazil build chunked by year (48 CSVs) and in one pass (same files renamed without a year) gives byte-identical output, peak 674 MB chunked vs 1,485 MB one pass; `test/integration/chunked.test.js` asserts chunked equals one pass on generated two-year data and the golden tiles. One global year measured locally only on the 2026 archive DBFs (MODIS, S-NPP, NOAA-20; January to July/August, 5.1 GB): 95 s, 820 MB peak, 301 tiles, 18 MB out; no multi-year global raw on disk. The workflow downloads all zips before building (9.8 GB after freeing runner disk) rather than one file at a time. Update 2026-11-15 (dev master): the first global publish ran (data version `202611151751`). Gate G1 (`docs/gates/G1.md`) accepted the global extent with caveats and rejected the type filter outside Brazil; gate G2 (`docs/gates/G2.md`) accepted a static-source mask (`pipeline/static-mask.js`, a first pass over the VIIRS files in `pipeline/build.js`) that fixes it; a world-level R in a global build is applied but flagged low confidence. The app tags areas outside Brazil preliminary (`global-extent` caveat). The chunked-equals-one-pass test runs with the mask off, because its generated rows repeat cells the way a flare does; the golden-tile test runs with it on. Still open: the runner's time and memory for the full run are not recorded here.
 - Why: the R2 side is not the limit (global tiles are estimated near 660 MB, two versions kept, against 10 GB free), the build is. Global raw CSVs are estimated near 40 GB, likely more than the free disk of a GitHub-hosted runner, and the Brazil build already peaks near 1 GB of memory.
 - Deliverable: the build processes the input in parts (by year, or by region and year), downloads one file, folds it into the running tile totals and deletes it before the next, so disk holds one raw file at a time and memory stays bounded; `tools/fetch-country.mjs` and the `publish-data` workflow follow the same loop; the global source (all country files or an archive request) chosen and recorded in `docs/data.md`.
 - Acceptance: a chunked build of the Brazil files gives tiles byte-identical to today's one-pass build; peak disk and memory recorded for one global year; the workflow fits in the runner's disk and time limits, or the build moves off Actions with the reason recorded.
@@ -486,17 +490,16 @@ Off the critical path thanks to the contract: the whole web track (runs on fixtu
 - Files: `pipeline/build.js`, `tools/fetch-country.mjs`, `.github/workflows/publish-data.yml`, `docs/data.md`.
 
 **M4-G1 Rank named regions in the place picker** · M/L · depends: place picker step 1, polygon AOIs
-- Status: proposed 2026-11-15, after step 1 (which ranks 1 deg squares labeled with country and state).
+- Status: planned (proposed 2026-11-15). Built so far: step 1, which ranks 1 deg squares labeled with country and state, and `places.json` for area name suggestions. Not built: per-region sums and polygon AOIs (an area is still a bbox).
 - Deliverable: the pipeline sums fire-cell-days per state or province (Natural Earth admin-1, global, public domain) into `overview.json`; the drawer lists the hottest regions by total, with density (per 1,000 cells) as a second column and a later sort toggle; opening a region uses its polygon as the area, not its bounding box (today an area is a bbox, which would pull in the neighbors), so polygon AOIs in `core/` come first. Biomes or ecoregions after that, once a source with a checked license is chosen.
 - Gate: a Second Foundation check of the per-region sums and of density as a ranking.
 
-**M4-K2 Fire outlook (machine learning), proposed, not decided** · L · depends: M2 (C) done, a decision by the humans on scope and stack
-- Status: idea under discussion (2026-11-15), nothing built. To be discussed before it is sliced.
-- What it would predict: not individual ignitions (in Brazil most are human), but expected activity per 0.1 deg cell and per month, for example the chance that next month lands above the cell's median. Shown as an experimental layer on the calendar and the map.
-- Simplest route first: climatology (the calendar's median) is the baseline any model must beat; then logistic regression or gradient-boosted trees (LightGBM or XGBoost) on our lagged fire-cell-days plus free drivers (CHIRPS rainfall, ERA5 temperature and humidity, MODIS NDVI). A spatiotemporal neural network only if the simple model falls short.
-- Cost: money near zero (training fits a laptop; predictions precomputed monthly and published as tiles to R2, so serving stays static). Time: L at least, mostly in aligning the climate data to our grid and in validation without leakage (train on the past, test on the future, spatial blocks).
-- Open for the humans: training needs Python (scikit-learn or LightGBM) outside the app, while the repository is JavaScript with zero dependencies; the browser would only read precomputed tiles.
-- Gate: a Second Foundation gate before anything is shown, with the skill score against climatology visible next to the layer. Check first what INPE (Risco de Fogo) and GWIS already publish.
+**M4-K2 Fire outlook (experimental)** · L · depends: M2 (C) done
+- Status (2026-11-15, Kaue, merged from `integrate/data`): built and validated, not in the app. Gate V4 (`docs/gates/V4.md`) rejected the first version and passed the re-check with caveats after fixes O1-O5.
+- What it predicts: per 1 deg cell, the chance that the target month's fire-cell-days land above the cell's median for that calendar month. Not ignitions, not fire danger.
+- As built (simplest route): logistic regression in JavaScript (`core/outlook.js`, zero dependencies, coefficients in `core/data/outlook-model.json`), features from our own fire history only (no rainfall, weather or drought data), VIIRS era, 3 training years, near-real-time months fed in after the archive ends. Skill over a calibrated persistence is real but small (Brier skill score 0.049, 95% CI 0.032-0.066, median above 1); cells with median 1 or less are labeled `no-skill`. Method: `docs/method.md` section 7.
+- Run: `node pipeline/outlook.js` writes `data/outlook/` (manifest, report, tiles). Not in the `publish-data` workflow, not published to R2.
+- Planned: a layer in the app, shown as experimental with the V4 wording (`docs/method.md` section 7), issued date and data cut-off, never called fire risk or a fire forecast; publishing its tiles; climate drivers (CHIRPS rainfall, ERA5, NDVI) as the next model step. Check what INPE (Risco de Fogo) and GWIS publish before any comparison.
 
 ## 11. Cut list (in order, A and B stay complete)
 
@@ -522,8 +525,8 @@ Never cut: AOI by form and map, calendar with accessible ramp and no-data distin
 | H4 | Max AOI size | 0.1 deg for AOI up to 20,000 cells, coarse 1 deg above, hard cap at continent scale (exact number after spike) |
 | H5 | Where tiles live | Decided 2026-11-15: Cloudflare R2 bucket `prime-radiant-data` behind `data.primeradiantdata.com`, served same-origin through a Vercel rewrite of `/data/`; published by `pipeline/publish.js` from the `publish-data` workflow (`docs/deploy.md`, Data hosting) |
 | H6 | Repository owner | Decided 2026-11-14: Guilherme's personal GitHub (`Guillhermm/prime-radiant`), Vercel project on Guilherme's Hobby account, Kaue collaborator |
-| H7 | Domain | Bought after M1 is live on `*.vercel.app`; name to choose |
-| H8 | Map base | Vendored Leaflet + OSM if policy and advisory checks pass, else SVG Natural Earth outline |
+| H7 | Domain | Decided: https://primeradiant.zenus.systems, set in the Vercel project (`docs/deploy.md`) |
+| H8 | Map base | Decided 2026-11-14: vendored Leaflet 1.9.4 + OpenStreetMap tiles; SVG Natural Earth outline kept as the fallback (`docs/ux.md`) |
 | H9 | e2e tool | Decided: headless Chrome driven over the DevTools Protocol with Node built-ins (no dependency); tests skip when Chrome is absent |
 | H10 | D scope | Cron path only; keyed proxy built only with slack |
 | H11 | Post-S-NPP VIIRS | Decided 2026-11-14: after 2026-11-02 VIIRS continues as NOAA-20 x K, K = sum(S-NPP)/sum(NOAA-20) per AOI over full months 2018-04 to 2026-10 (`docs/method.md` 4.4), marked estimated; needs NOAA-20 binned as its own family in M1-K2 and gate V1 |

@@ -45,7 +45,9 @@ export function createCoverage() {
     },
     acquisition() {
       const out = {};
-      for (const [sat, set] of Object.entries(acq)) {
+      // Fixed satellite order, so the manifest does not depend on the order files are read in.
+      for (const sat of Object.keys(SAT_SENSOR).filter((s) => acq[s])) {
+        const set = acq[sat];
         const m = (out[sat] = {});
         for (const d of [...set].sort()) m[d.slice(0, 7)] = (m[d.slice(0, 7)] ?? 0) + 1;
       }
