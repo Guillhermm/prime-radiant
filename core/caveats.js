@@ -4,7 +4,7 @@
  * 'passed'. Default: every item preliminary until gate V1 (roadmap M1-K11 flips entries).
  */
 
-/** @typedef {{id: string, kind: 'caveat'|'anomaly'|'flag', short: string, long: string, preliminary: boolean}} Caveat */
+/** @typedef {{id: string, kind: 'caveat'|'anomaly'|'flag'|'live', short: string, long: string, preliminary: boolean}} Caveat */
 
 const DEFS = [
   ['unit-fire-cell-days', 'caveat', 'Counts are fire-cell-days.',
@@ -36,6 +36,15 @@ const DEFS = [
     'Where most earlier years had no detections, a single fire-cell-day can flag a month. Flags marked sparse baseline need the most caution.'],
   ['anomaly-archive', 'anomaly', 'Rank is relative to this archive.',
     'The rank is relative to this archive and its years, not a standard climatology; another baseline period would rank months differently. MODIS x R months after 2021 (orbit drift) are estimates.'],
+  // live data caveats (M3-K3), kind 'live' so the drawer's count of 9 caveats stays
+  ['live-nrt', 'live', 'Near-real-time data.',
+    'Live detections are near-real-time (FIRMS NRT): they can be revised or replaced by the archive later, and are not the archive.'],
+  ['live-not-harmonized', 'live', 'Live is not harmonized.',
+    'Live detections are not harmonized: no MODIS x R or VIIRS scaling is applied, and they are never added to the harmonized totals or baseline.'],
+  ['live-unfiltered', 'live', 'Live is unfiltered by type.',
+    'Near-real-time detections carry no detection type, so static sources and offshore detections are not removed as in the archive.'],
+  ['live-provisional', 'live', 'Current period is provisional.',
+    'The current month is still open. Its band is the archive month scaled by the fraction of the month observed, an assumption for V3, not a daily climatology.'],
   // flag explanations
   ['viirs-era-record', 'anomaly', 'Record since 2012',
     'Highest or near-highest for this month in the VIIRS era (2012 on); not a record against 2002-2011, which are scaled MODIS estimates.'],
@@ -72,7 +81,7 @@ export const NO_GATES = Object.freeze(Object.fromEntries(CAVEAT_IDS.map((id) => 
  * passed except near-real-time data (gate V3) and the anomaly items (gate V2 re-check).
  */
 // Gates V1 and V2 passed (docs/gates/V1.md, V2.md); near-real-time data waits for V3.
-const PRELIMINARY = new Set(['nrt-unfiltered']);
+const PRELIMINARY = new Set(['nrt-unfiltered', 'live-nrt', 'live-not-harmonized', 'live-unfiltered', 'live-provisional']);
 export const DEFAULT_GATES = Object.freeze(Object.fromEntries(
   CAVEAT_IDS.map((id) => [id, PRELIMINARY.has(id) ? 'preliminary' : 'passed'])));
 

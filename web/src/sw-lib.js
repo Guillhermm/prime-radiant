@@ -1,7 +1,7 @@
 // Pure parts of the service worker: what to precache, what to name the caches, how to route a request.
 // Paths are relative to the worker's scope (/web/), so the same list works on localhost and in production.
 // Bump CACHE_VERSION whenever a precached file changes so installed apps refetch the shell atomically.
-export const CACHE_VERSION = 'v12';
+export const CACHE_VERSION = 'v13';
 export const SHELL_CACHE = `pr-shell-${CACHE_VERSION}`;
 export const DATA_CACHE = `pr-data-${CACHE_VERSION}`;
 
@@ -24,7 +24,7 @@ export const SHELL_FILES = [
   'src/components/method-drawer.js', 'src/components/query-bar.js', 'src/components/radiant.js', 'src/components/states.js',
   'src/components/synthetic-band.js', 'src/components/theme-control.js', 'src/components/toast.js', 'src/components/popover.js', 'src/components/share-menu.js', 'src/components/offline-chip.js', 'src/components/verdict-row.js',
   '../core/aggregate.js', '../core/anomaly.js', '../core/baseline.js', '../core/calendar.js', '../core/caveats.js', '../core/csv.js', '../core/domain.js',
-  '../core/grid.js', '../core/harmonize.js', '../core/index.js', '../core/months.js', '../core/partial.js', '../core/schema.js', '../core/series.js', '../core/tiles.js',
+  '../core/grid.js', '../core/harmonize.js', '../core/index.js', '../core/live.js', '../core/months.js', '../core/partial.js', '../core/periods.js', '../core/schema.js', '../core/series.js', '../core/tiles.js',
 ];
 
 export const shellUrls = (scope) => SHELL_FILES.map((p) => new URL(p, scope).href);

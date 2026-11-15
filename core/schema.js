@@ -289,3 +289,106 @@ export function validateDomain(d) {
   }
   return e;
 }
+
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Days since 1970-01-01 of a real "YYYY-MM-DD", or NaN. */
+function dayNum(s) {
+  if (typeof s !== 'string' || !DAY_RE.test(s)) return NaN;
+  const t = Date.parse(`${s}T00:00:00Z`);
+  return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === s ? t / 864e5 : NaN;
+}
+
+/** Number of days in a live manifest span, or NaN. */
+function liveSpan(m) {
+  if (!isObj(m)) return NaN;
+  const n = dayNum(m.last_day) - dayNum(m.day0) + 1;
+  return n >= 1 ? n : NaN;
+}
+
+/**
+ * Live manifest (data/live/manifest.json, docs/roadmap.md M3-K1): daily, per-sensor day coverage,
+ * fetch time and source files.
+ * @param {unknown} m @returns {{code:string,path:string,message:string}[]}
+ */
+export function validateLiveManifest(m) {
+  const e = [];
+  if (!isObj(m)) return [err('NOT_OBJECT', '', 'live manifest must be an object')];
+  if (m.schema !== 1) e.push(err('BAD_SCHEMA_VERSION', 'schema', 'schema must be 1'));
+  if (m.kind !== 'live') e.push(err('BAD_KIND', 'kind', 'kind must be "live"'));
+  if (m.granularity !== 'day') e.push(err('BAD_GRANULARITY', 'granularity', 'granularity must be "day"'));
+  for (const k of ['base_url', 'citation']) {
+    if (typeof m[k] !== 'string' || m[k] === '') e.push(err('BAD_STRING', k, `${k} must be a non-empty string`));
+  }
+  if (typeof m.fetched_at !== 'string' || !/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(m.fetched_at) || Number.isNaN(Date.parse(m.fetched_at))) {
+    e.push(err('BAD_FETCHED_AT', 'fetched_at', 'fetched_at must be an ISO 8601 UTC time ending in Z'));
+  }
+  if (!isObj(m.grid) || m.grid.res !== 0.1 || m.grid.tile_deg !== 10) e.push(err('BAD_GRID', 'grid', 'grid must be {res: 0.1, tile_deg: 10}'));
+  const [d0, d1] = [dayNum(m.day0), dayNum(m.last_day)];
+  if (Number.isNaN(d0)) e.push(err('BAD_DAY', 'day0', 'day0 must be a real YYYY-MM-DD'));
+  if (Number.isNaN(d1)) e.push(err('BAD_DAY', 'last_day', 'last_day must be a real YYYY-MM-DD'));
+  if (!Number.isNaN(d0) && !Number.isNaN(d1) && d1 < d0) e.push(err('DAY_ORDER', 'last_day', 'last_day must not precede day0'));
+  const inSpan = (d) => !Number.isNaN(d0) && !Number.isNaN(d1) && d >= d0 && d <= d1;
+  if (!isObj(m.coverage)) e.push(err('NOT_OBJECT', 'coverage', 'coverage must be an object'));
+  else {
+    for (const s of SENSORS) {
+      const c = m.coverage[s];
+      if (c === null) continue;
+      const [a, b] = Array.isArray(c) ? c.map(dayNum) : [NaN, NaN];
+      if (!Array.isArray(c) || c.length !== 2 || Number.isNaN(a) || Number.isNaN(b) || a > b) {
+        e.push(err('BAD_COVERAGE', `coverage.${s}`, 'coverage must be null or [first, last] days'));
+      } else if (!inSpan(a) || !inSpan(b)) e.push(err('COVERAGE_OUT_OF_SPAN', `coverage.${s}`, 'coverage must lie within day0..last_day'));
+    }
+  }
+  if (!isObj(m.partial_days)) e.push(err('NOT_OBJECT', 'partial_days', 'partial_days must be an object'));
+  else {
+    for (const s of SENSORS) {
+      const p = m.partial_days[s];
+      if (!Array.isArray(p) || p.some((d) => !inSpan(dayNum(d)))) e.push(err('BAD_PARTIAL_DAYS', `partial_days.${s}`, 'partial_days must list days within day0..last_day'));
+    }
+  }
+  if (!Array.isArray(m.sources) || m.sources.length === 0 || m.sources.some((s) => !isObj(s) || typeof s.file !== 'string' || s.file === '')) {
+    e.push(err('BAD_SOURCES', 'sources', 'sources must be a non-empty list of {file, ...}'));
+  }
+  if (!Array.isArray(m.tiles) || m.tiles.some((t) => !isTileId(t))) e.push(err('BAD_TILES', 'tiles', 'tiles must be a list of tile ids'));
+  return e;
+}
+
+/**
+ * Live tile {cell[], day[], modis[], viirs[], noaa20[]}; `day` counts from the manifest day0.
+ * Same null rule as the archive: null outside a sensor's day coverage, a count inside it.
+ * @param {unknown} t @param {{manifest?: object}} [opts]
+ */
+export function validateLiveTile(t, { manifest } = {}) {
+  const e = [];
+  if (!isObj(t)) return [err('NOT_OBJECT', '', 'tile must be an object')];
+  const cols = ['cell', 'day', ...SENSORS];
+  for (const k of cols) if (!Array.isArray(t[k])) e.push(err('NOT_ARRAY', k, `${k} must be an array`));
+  if (e.length) return e;
+  if (new Set(cols.map((k) => t[k].length)).size > 1) e.push(err('COLUMN_LENGTH_MISMATCH', '', 'cell, day, modis, viirs and noaa20 must have the same length'));
+  const per = cellsPerSide(0.1);
+  const span = liveSpan(manifest);
+  const seen = new Set();
+  t.cell.forEach((c, i) => {
+    if (!Number.isInteger(c) || c < 0 || c >= per * per) e.push(err('CELL_OUT_OF_RANGE', `cell[${i}]`, `cell must be an integer in 0..${per * per - 1}`));
+    const d = t.day[i];
+    if (!Number.isInteger(d) || d < 0) e.push(err('BAD_DAY_INDEX', `day[${i}]`, 'day must be an integer index >= 0'));
+    else if (!Number.isNaN(span) && d >= span) e.push(err('DAY_OUT_OF_RANGE', `day[${i}]`, `day ${d} is outside the manifest span 0..${span - 1}`));
+    if (seen.has(`${c}:${d}`)) e.push(err('DUPLICATE_ROW', `cell[${i}]`, `cell ${c} day ${d} appears twice`));
+    seen.add(`${c}:${d}`);
+  });
+  const d0 = Number.isNaN(span) ? NaN : dayNum(manifest.day0);
+  for (const k of SENSORS) {
+    const c = Number.isNaN(d0) || !isObj(manifest.coverage) ? undefined : manifest.coverage[k];
+    const cov = c === null ? [1, 0] : Array.isArray(c) ? c.map((x) => dayNum(x) - d0) : null;
+    t[k].forEach((v, i) => {
+      if (v !== null && !isCount(v)) { e.push(err('BAD_COUNT', `${k}[${i}]`, `${k} must be an integer >= 0 or null, got ${v}`)); return; }
+      const d = t.day[i];
+      if (!cov || !Number.isInteger(d) || d < 0 || d >= span || cov.some(Number.isNaN)) return;
+      const inside = d >= cov[0] && d <= cov[1];
+      if (inside && v === null) e.push(err('NULL_INSIDE_COVERAGE', `${k}[${i}]`, `${k} is null on day ${d} inside its coverage; use 0 for none detected`));
+      else if (!inside && v !== null) e.push(err('COUNT_OUTSIDE_COVERAGE', `${k}[${i}]`, `${k} has a count on day ${d} outside its coverage; must be null`));
+    });
+  }
+  return e;
+}
