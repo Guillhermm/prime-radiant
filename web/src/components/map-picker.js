@@ -1,4 +1,5 @@
 import { h } from './h.js';
+import { icon } from './icons.js';
 
 export const MAP_DEFAULT = { center: [-15, -55], zoom: 3 };
 const PRECISION = 4;
@@ -24,6 +25,12 @@ export const isTooSmall = (bbox) => bbox[2] - bbox[0] < MIN_SIDE || bbox[3] - bb
 export const bboxToBounds = ([w, s, e, n]) => [[s, w], [n, e]];
 export const boundsToBbox = ([[s, w], [n, e]]) => [w, s, e, n];
 
+const deg = (v, pos, neg) => `${Math.abs(v).toFixed(1)}°${v < 0 ? neg : pos}`;
+/** "Area set: 8.0°S to 12.5°S, 45.0°W to 50.0°W." for [west, south, east, north]: north then south, east then west. */
+export const areaSetText = ([w, s, e, n]) => `Area set: ${deg(n, 'N', 'S')} to ${deg(s, 'N', 'S')}, ${deg(e, 'E', 'W')} to ${deg(w, 'E', 'W')}.`;
+
+export const ARM_TEXT = 'Click two opposite corners.';
+
 const vendorUrl = (name) => new URL(`../../vendor/leaflet/${name}`, import.meta.url).href;
 
 let loading = null;
@@ -46,8 +53,9 @@ const ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">Op
 /**
  * mount(container, {bbox, onChange, skipTo}). Draw by clicking two opposite corners; Escape
  * cancels a half-drawn box. `onChange(bbox)` fires only for user edits, so a form `setBbox`
- * never loops back. Desktop: collapsible panel. Phone: hidden until `openFull()`, then full
- * screen with Done and Cancel (Cancel restores the area from when it opened).
+ * never loops back. Desktop: a toolbar (Draw, Clear, Map) over a collapsible map. Phone: hidden
+ * until `openFull()`, then full screen with Done and Cancel (Cancel restores the area from when it
+ * opened). show() and openFull() arm Draw.
  * Returns {setBbox(bbox), show(), openFull(), closeFull(), destroy()}.
  */
 export const mount = (container, { bbox = null, onChange = () => {}, skipTo = '#main-view' } = {}) => {
@@ -60,31 +68,37 @@ export const mount = (container, { bbox = null, onChange = () => {}, skipTo = '#
   let saved = null;
 
   const status = h('p', { class: 'map-status', role: 'status' });
-  const phone = Boolean(globalThis.matchMedia?.('(max-width: 40rem)').matches);
-  const toggle = h('button', { type: 'button', class: 'map-toggle', 'aria-expanded': String(phone), 'aria-controls': 'map-body' }, phone ? 'Hide map' : 'Draw on map');
-  const draw = h('button', { type: 'button', class: 'map-draw', 'aria-pressed': 'false' }, 'Draw rectangle');
-  const clear = h('button', { type: 'button', class: 'map-clear' }, 'Clear');
-  const done = h('button', { type: 'button', class: 'map-done btn-primary' }, 'Done');
-  const cancel = h('button', { type: 'button', class: 'map-cancel' }, 'Cancel');
+  const tool = (cls, ic, label, attrs) => h('button', { type: 'button', class: `icon-btn map-tool ${cls}`, 'aria-label': label, 'data-tip': label, ...attrs }, icon(ic));
+  const draw = tool('map-draw', 'drawArea', 'Draw a rectangle', { 'aria-pressed': 'false' });
+  const clear = tool('map-clear', 'close', 'Clear area', {});
+  const toggle = tool('map-toggle', 'map', 'Show map', { 'aria-expanded': 'false', 'aria-controls': 'map-body' });
+  const done = h('button', { type: 'button', class: 'btn btn-primary map-done' }, 'Done');
+  const cancel = h('button', { type: 'button', class: 'btn btn-ghost map-cancel' }, 'Cancel');
   const skip = h('a', { class: 'skip-link', href: skipTo }, 'Skip map');
   const canvas = h('div', {
     class: 'map-canvas', role: 'group',
     'aria-label': 'Map for drawing an area. Optional: the Area fields hold the same values',
   });
-  const body = h('div', { class: 'map-body', id: 'map-body' },
-    h('div', { class: 'map-tools' }, draw, clear, h('span', { class: 'map-hint' }, 'Click two opposite corners of the area.')),
-    canvas, status);
-  const full = h('div', { class: 'map-full-bar' }, cancel, done);
-  const panel = h('section', { class: 'map-panel', 'aria-label': 'Map picker' }, skip, h('div', { class: 'map-head' }, toggle), full, body);
+  const body = h('div', { class: 'map-body is-collapsed', id: 'map-body', inert: '' }, h('div', { class: 'map-body-inner' }, canvas, status));
+  const bar = h('div', { class: 'map-bar' }, h('span', { class: 'map-label', text: 'Map' }), h('div', { class: 'map-tools' }, draw, clear, toggle));
+  const full = h('div', { class: 'map-full-bar' }, cancel, h('h2', { class: 'map-full-title', text: 'Draw an area' }), done);
+  const panel = h('section', { class: 'map-panel', 'aria-label': 'Map picker' }, skip, full, bar, body);
   container.replaceChildren(panel);
 
   const say = (msg) => { status.textContent = msg; };
+  const paintClear = () => {
+    if (current) clear.removeAttribute('aria-disabled');
+    else clear.setAttribute('aria-disabled', 'true');
+  };
+  paintClear();
 
+  const accent = () => getComputedStyle(panel).getPropertyValue('--color-accent').trim();
   const drawRect = (b) => {
     if (!map) return;
     if (!b) { rect?.remove(); rect = null; return; }
-    if (rect) rect.setBounds(bboxToBounds(b));
-    else rect = L.rectangle(bboxToBounds(b), { color: '#0b5cad', weight: 2, fillOpacity: 0.15, interactive: false }).addTo(map);
+    const style = { color: accent(), weight: 2, fillOpacity: 0.15, interactive: false };
+    if (rect) rect.setBounds(bboxToBounds(b)).setStyle(style);
+    else rect = L.rectangle(bboxToBounds(b), style).addTo(map);
   };
 
   const stopDrawing = () => {
@@ -94,13 +108,21 @@ export const mount = (container, { bbox = null, onChange = () => {}, skipTo = '#
     canvas.classList.remove('is-drawing');
     drawRect(current);
   };
+  const arm = () => {
+    drawing = true;
+    first = null;
+    draw.setAttribute('aria-pressed', 'true');
+    canvas.classList.add('is-drawing');
+    say(ARM_TEXT);
+  };
 
   const finish = (b) => {
     stopDrawing();
     if (!b || isTooSmall(b)) { say('That area is too small. Click two corners at least 0.1 degrees apart.'); return; }
     current = b;
     drawRect(b);
-    say(`Area set: west ${b[0]}, south ${b[1]}, east ${b[2]}, north ${b[3]}.`);
+    paintClear();
+    say(areaSetText(b));
     onChange(b);
   };
 
@@ -115,15 +137,15 @@ export const mount = (container, { bbox = null, onChange = () => {}, skipTo = '#
 
   draw.addEventListener('click', () => {
     if (drawing) { stopDrawing(); say('Drawing canceled.'); return; }
-    drawing = true;
-    draw.setAttribute('aria-pressed', 'true');
-    canvas.classList.add('is-drawing');
-    say('Click the first corner.');
+    if (!isOpen()) setOpen(true);
+    arm();
   });
   clear.addEventListener('click', () => {
+    if (!current) return;
     stopDrawing();
     current = null;
     drawRect(null);
+    paintClear();
     say('Area cleared.');
     onChange(null);
   });
@@ -151,6 +173,8 @@ export const mount = (container, { bbox = null, onChange = () => {}, skipTo = '#
       center: MAP_DEFAULT.center, zoom: MAP_DEFAULT.zoom, minZoom: 2, maxBounds: [[-90, -180], [90, 180]], maxBoundsViscosity: 1,
       worldCopyJump: false,
     });
+    // Leaflet's own prefix carries a flag icon; it is credited in the footer instead. OSM's credit stays.
+    map.attributionControl.setPrefix(false);
     L.tileLayer(OSM, { attribution: ATTRIBUTION, maxZoom: 18, noWrap: true }).addTo(map);
     map.on('click', onClick);
     map.on('mousemove', onMove);
@@ -158,13 +182,20 @@ export const mount = (container, { bbox = null, onChange = () => {}, skipTo = '#
     fit();
   };
 
-  toggle.addEventListener('click', () => {
-    const open = toggle.getAttribute('aria-expanded') !== 'true';
+  // The body collapses by height (CSS); while collapsed it is inert, so nothing inside takes focus.
+  const isOpen = () => toggle.getAttribute('aria-expanded') === 'true';
+  const setOpen = (open) => {
     toggle.setAttribute('aria-expanded', String(open));
-    toggle.textContent = open ? 'Hide map' : 'Draw on map';
-    body.hidden = !open;
-    if (open) { init().then(fit); }
-  });
+    const label = open ? 'Hide map' : 'Show map';
+    toggle.setAttribute('aria-label', label);
+    toggle.dataset.tip = label;
+    body.classList.toggle('is-collapsed', !open);
+    body.inert = !open;
+    if (open) init().then(fit);
+    else if (drawing) { stopDrawing(); say(''); }
+  };
+  body.addEventListener('transitionend', (ev) => { if (ev.target === body && isOpen()) fit(); });
+  toggle.addEventListener('click', () => setOpen(!isOpen()));
 
   let opener = null;
   const closeFull = (revert) => {
@@ -174,6 +205,7 @@ export const mount = (container, { bbox = null, onChange = () => {}, skipTo = '#
     if (revert) {
       current = saved;
       drawRect(current);
+      paintClear();
       onChange(current);
     }
     opener?.focus?.();
@@ -181,19 +213,17 @@ export const mount = (container, { bbox = null, onChange = () => {}, skipTo = '#
   done.addEventListener('click', () => closeFull(false));
   cancel.addEventListener('click', () => closeFull(true));
 
-  // Closed until asked on both widths: the calendar, not the map, is what the first screen is for, and
-  // Leaflet and the tiles are not fetched for nothing.
-  body.hidden = !phone;
-
   return {
     setBbox(b) {
       if (sameBbox(b, current)) return;
       current = b;
       drawRect(b);
+      paintClear();
       if (b && map) map.fitBounds(bboxToBounds(b), { maxZoom: 8, padding: [16, 16] });
     },
     show() {
-      if (toggle.getAttribute('aria-expanded') !== 'true') toggle.click();
+      if (!isOpen()) setOpen(true);
+      arm();
       draw.focus();
     },
     openFull() {
@@ -201,7 +231,8 @@ export const mount = (container, { bbox = null, onChange = () => {}, skipTo = '#
       saved = current;
       panel.classList.add('is-full');
       document.body.classList.add('map-open');
-      init().then(fit);
+      setOpen(true);
+      arm();
       draw.focus();
     },
     /** Leaves full screen keeping the area drawn so far, without moving focus (another overlay takes it). */

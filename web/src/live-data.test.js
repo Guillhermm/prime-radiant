@@ -88,7 +88,8 @@ test('a global live build: inside the share region, month to date; outside, whol
   // A share region far away (one cell row near the South Pole): the area is not in it.
   const far = { rows: { 5: [[0, 9]] } };
   const away = liveInput({ result: result(), live: { manifest: g, domain: null, shareDomain: far, tiles: { x17y13: tile } }, share, type0, now });
-  assert.equal(away.reason, LIVE_REASONS.wholeMonths);
+  assert.equal(away.reason, LIVE_REASONS.wholeMonths(g.coverage.noaa20?.[0] ?? g.day0));
+  assert.match(away.reason, /^Live data covers the whole world since \d{4}-\d{2}-\d{2}\. Outside Brazil/);
   // Live from 2026-10-01 to 11-12: October is whole and compared, November is left out.
   const long = { ...g, day0: '2026-10-01', coverage: { ...g.coverage, noaa20: ['2026-10-01', '2026-11-12'] } };
   const t = { cell: Array(43).fill(0), day: [...Array(43).keys()], modis: Array(43).fill(null), viirs: Array(43).fill(null), noaa20: Array(43).fill(10) };

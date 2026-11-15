@@ -16,7 +16,6 @@ import { flagRuleText } from '../../core/periods.js';
 import { periodModel, periodsInRange, yearRankModel } from '../../web/src/components/anomaly-summary.js';
 import { parseHash } from '../../web/src/state.js';
 import { spanFromManifest } from '../../web/src/components/date-range.js';
-import { recordFacts } from '../../web/src/components/states.js';
 import { countriesOf } from '../../pipeline/overview.js';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
@@ -185,6 +184,66 @@ test('first run, phone: Draw an area opens the map full screen, Enter coordinate
   } finally { await page.close(); }
 });
 
+test('draw modal: Draw an area arms Draw; one toolbar row reached by keyboard; a draw sets the fields; the map collapses inert', { skip }, async () => {
+  const page = await open(1280);
+  try {
+    await page.until(`document.querySelector('.cta .btn')`, 'first-run buttons');
+    await settle(page);
+    await page.click('.cta .btn-primary');
+    await page.until(`document.querySelector('.map-canvas .leaflet-pane') && document.querySelector('.map-canvas').getBoundingClientRect().height > 100`, 'the map opens');
+    await settle(page);
+    const tools = `[...document.querySelectorAll('.map-bar .map-tool')]`;
+    assert.deepEqual(await page.evaluate(`${tools}.map((b) => [b.getAttribute('aria-label'), b.getAttribute('aria-pressed') ?? b.getAttribute('aria-expanded') ?? b.getAttribute('aria-disabled')])`),
+      [['Draw a rectangle', 'true'], ['Clear area', 'true'], ['Hide map', 'true']], 'armed: Draw pressed, nothing to clear, map open');
+    assert.equal(await page.evaluate(`document.querySelector('.map-status').textContent`), 'Click two opposite corners.');
+    assert.equal(await page.evaluate(`document.activeElement.classList.contains('map-draw')`), true);
+    const row = await page.evaluate(`(() => { const r = [document.querySelector('.map-label'), ...${tools}].map((e) => e.getBoundingClientRect()); return { tops: new Set(r.slice(1).map((x) => Math.round(x.top))).size, size: r.slice(1).map((x) => x.width), labelMid: Math.round(r[0].top + r[0].height / 2) - Math.round(r[1].top + r[1].height / 2) }; })()`);
+    assert.deepEqual([row.tops, row.size, Math.abs(row.labelMid) <= 1], [1, [44, 44, 44], true], 'label and three 2.75rem buttons on one row');
+    await page.press('Tab');
+    await page.press('Tab');
+    assert.deepEqual(await page.evaluate(`[document.activeElement.classList.contains('map-toggle'), getComputedStyle(document.activeElement).outlineStyle !== 'none']`), [true, true], 'Tab reaches Clear then Map, with a visible focus ring');
+
+    // Two clicks on the map: a synthetic click carries the coordinates Leaflet reads.
+    await page.evaluate(`(() => { const c = document.querySelector('.map-canvas'); const r = c.getBoundingClientRect(); for (const [fx, fy] of [[0.4, 0.4], [0.6, 0.6]]) c.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.x + r.width * fx, clientY: r.y + r.height * fy })); })()`);
+    await page.until(`document.querySelector('.map-status').textContent.startsWith('Area set: ')`, 'the area is set');
+    assert.match(await page.evaluate(`document.querySelector('.map-status').textContent`), /^Area set: \d+\.\d°[NS] to \d+\.\d°[NS], \d+\.\d°[EW] to \d+\.\d°[EW]\.$/);
+    assert.equal(await page.evaluate(`document.querySelector('#aoi-south').value !== '' && !document.querySelector('.map-clear').hasAttribute('aria-disabled') && document.querySelector('.map-draw').getAttribute('aria-pressed')`), 'false');
+    assert.equal(await page.evaluate(`(() => { const p = document.querySelector('.map-canvas svg path'); const probe = document.createElement('i'); probe.style.color = getComputedStyle(document.documentElement).getPropertyValue('--color-accent'); document.body.append(probe); const want = getComputedStyle(probe).color; probe.style.color = p.getAttribute('stroke'); const got = getComputedStyle(probe).color; probe.remove(); return got === want; })()`), true, 'the rectangle is drawn in the accent');
+
+    await page.click('.map-toggle');
+    await page.until(`document.querySelector('.map-body').getBoundingClientRect().height < 1`, 'the map collapses');
+    assert.deepEqual(await page.evaluate(`[document.querySelector('.map-body').inert, document.querySelector('.map-toggle').getAttribute('aria-label'), document.querySelector('.map-toggle').getAttribute('aria-expanded')]`), [true, 'Show map', 'false']);
+    assert.deepEqual(page.problems, []);
+  } finally { await page.close(); }
+});
+
+test('draw modal on phone: Cancel, the title and Done on top; Draw and Clear float over the map; the status pill sits above the credit', { skip }, async () => {
+  const page = await open(400);
+  try {
+    await page.until(`document.querySelector('.cta .btn')`, 'first-run buttons');
+    await settle(page);
+    await page.click('.cta .btn-primary');
+    await page.until(`document.querySelector('.map-panel.is-full .map-canvas .leaflet-control-attribution')`, 'full map');
+    const m = await page.evaluate(`(() => {
+      const r = (s) => document.querySelector(s).getBoundingClientRect();
+      const shown = [...document.querySelectorAll('.map-bar .map-tool')].filter((b) => b.offsetParent);
+      return {
+        bar: [...document.querySelectorAll('.map-full-bar > *')].map((e) => e.textContent),
+        tools: shown.map((b) => b.getAttribute('aria-label')),
+        row: new Set(shown.map((b) => Math.round(b.getBoundingClientRect().top))).size,
+        over: r('.map-bar').top >= r('.map-canvas').top && r('.map-bar').right <= r('.map-canvas').right && r('.map-bar').right > r('.map-canvas').right - 30,
+        pill: r('.map-status').bottom <= r('.map-canvas .leaflet-control-attribution').top,
+        status: document.querySelector('.map-status').textContent,
+        pressed: document.querySelector('.map-draw').getAttribute('aria-pressed'),
+      };
+    })()`);
+    assert.deepEqual(m, {
+      bar: ['Cancel', 'Draw an area', 'Done'], tools: ['Draw a rectangle', 'Clear area'], row: 1, over: true, pill: true, status: 'Click two opposite corners.', pressed: 'true',
+    });
+    assert.deepEqual(page.problems, []);
+  } finally { await page.close(); }
+});
+
 test('header: the brand goes home to the first run; footer authors link to GitHub without leaking the referrer', { skip }, async () => {
   const page = await open(1280);
   try {
@@ -205,6 +264,7 @@ test('synthetic About: a popover that explains the data, with one link to Method
   const page = await open(1280, '', synthBase);
   try {
     await page.until(`document.querySelector('.synth-about')`, 'synthetic band');
+    assert.equal(await page.evaluate(`document.querySelector('.synth-about').textContent`), 'What is this?', 'one About only: the top bar\'s');
     await page.click('.synth-about');
     await page.until(`document.querySelector('#synth-about').matches(':popover-open')`, 'About popover open');
     assert.match(await page.evaluate(`document.querySelector('#synth-about').textContent`), /not real fire detections/);
@@ -436,8 +496,9 @@ test('example, apply, docked panel follows arrow keys, Method drawer and CSV exp
     await page.until(`!document.querySelector('.panel-host.is-open')`, 'Esc closes the panel');
     assert.equal(await page.evaluate(focusedLabel), next);
 
+    assert.equal(await page.evaluate(`document.querySelector('.method-button').textContent + '|' + document.querySelector('.method-button').getAttribute('aria-label')`), 'About|About');
     await page.click('.method-button');
-    await page.until(`document.querySelector('.drawer-panel[aria-modal="true"]')`, 'Method drawer opens');
+    await page.until(`document.querySelector('.drawer-panel[aria-modal="true"]')`, 'About drawer opens');
     assert.equal(await page.evaluate(`document.querySelector('.method-button').getAttribute('aria-expanded')`), 'true');
     for (let i = 0; i < 6; i++) await page.press('Tab');
     assert.equal(await page.evaluate(`document.querySelector('.drawer-panel').contains(document.activeElement)`), true, 'focus stays in the drawer');
@@ -446,7 +507,7 @@ test('example, apply, docked panel follows arrow keys, Method drawer and CSV exp
     assert.equal(await page.evaluate(`document.activeElement.classList.contains('method-button')`), true);
 
     await exportAs(page, 'csv');
-    await page.until(`document.querySelector('.toast-host [role=status] .toast-msg')?.textContent.startsWith('CSV saved: prime-radiant-2023-03-')`, 'CSV export toast');
+    await page.until(`document.querySelector('.toast-host [role=status] .toast-msg')?.textContent.startsWith('CSV saved: prime-radiant-fixture-area-tile-x17y13-2023-03-')`, 'CSV export toast');
     for (let i = 0; i < 50 && !(await readdir(downloadDir)).some((f) => f.endsWith('.csv')); i++) await wait(100);
     const files = (await readdir(downloadDir)).filter((f) => f.endsWith('.csv'));
     assert.equal(files.length, 1, 'one CSV downloaded');
@@ -478,10 +539,10 @@ test('example, apply, docked panel follows arrow keys, Method drawer and CSV exp
     await page.press('Escape');
     await page.until(`document.activeElement.classList.contains('export-button') && !document.querySelector('.export-menu').matches(':popover-open')`, 'Escape closes the menu, focus on Export');
     await exportAs(page, 'png');
-    await page.until(`document.querySelector('.toast-host [role=status] .toast-msg')?.textContent.startsWith('Image saved: prime-radiant-2023-03-2023-06.png')`, 'image export toast');
+    await page.until(`document.querySelector('.toast-host [role=status] .toast-msg')?.textContent.startsWith('Image saved: prime-radiant-fixture-area-tile-x17y13-2023-03-2023-06.png')`, 'image export toast');
     for (let i = 0; i < 50 && !(await readdir(downloadDir)).some((f) => f.endsWith('.png')); i++) await wait(100);
     const pngs = (await readdir(downloadDir)).filter((f) => f.endsWith('.png'));
-    assert.deepEqual(pngs, ['prime-radiant-2023-03-2023-06.png']);
+    assert.deepEqual(pngs, ['prime-radiant-fixture-area-tile-x17y13-2023-03-2023-06.png']);
     const model = imageModel({
       cells: result.cells, aoiCells: result.aoiCells, title: 'Fixture area (tile x17y13)', bbox: result.bbox,
       dataVersion: m.dataVersion, citation: m.citation, synthetic: false, generated: '2026-11-15',
@@ -507,6 +568,11 @@ test('outside the domain: a state card with Draw an area in the data domain and 
     await settle(page);
     await page.click('.state-box-outside .state-action');
     await page.until(`document.querySelector('.map-canvas .leaflet-pane') && document.querySelector('.map-canvas').getBoundingClientRect().height > 100`, 'the map opens');
+    // OSM's credit with its link, without Leaflet's prefix and its flag.
+    assert.deepEqual(await page.evaluate(`(() => { const a = document.querySelector('.map-canvas .leaflet-control-attribution'); return [a.textContent.trim(), a.querySelector('a').href, a.textContent.includes('Leaflet'), Boolean(a.querySelector('svg'))]; })()`),
+      ['© OpenStreetMap contributors', 'https://www.openstreetmap.org/copyright', false, false]);
+    // The map opens armed: the first Escape stops drawing, the second closes the form.
+    await page.press('Escape');
     await page.press('Escape');
     await settle(page);
     await page.click('.state-box-outside .state-chip');
@@ -985,6 +1051,7 @@ test('first-screen map: a pick previews the harmonized record without the hash, 
   const page = await open(1280, '', synthBase);
   try {
     await page.until(PREVIEW_READY, 'preview');
+    assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.hero-plate .hm-pin text')].map((t) => t.textContent)`), ['1', '2', '3'], 'the plate lists three, so it pins three');
     await settle(page);
     await page.evaluate(`document.querySelectorAll('.hero-plate .hs-row')[2].click()`);
     await page.until(`${previewText('.pv-tag')} === 'Your pick' && ${previewText('.pv-note')} === ${JSON.stringify(`Hotspot #3 in ${synthOverview.region.name}`)}`, 'hotspot 3 previewed');
@@ -1093,7 +1160,7 @@ const GLOBE_CLEAR = `(() => {
     .every((b) => b.right <= g.left || g.right <= b.left || b.bottom <= g.top || g.bottom <= b.top);
 })()`;
 
-test('global map: one click zooms so a square is at least 24 px, a second picks it; rows stay two lines; a map pick is named by its center', { skip }, async () => {
+test('global map: clicks zoom until a square is big enough for the pointer, then pick; rows stay two lines; a map pick is named by its center', { skip }, async () => {
   // The synthetic overview stretched to the whole globe, with a long place name as hotspot 1.
   const longest = { bbox: [23, -8, 24, -7], value: 2500, place: { country: 'Democratic Republic of the Congo', state: 'Kasaï-Oriental' } };
   const isHotspot = (c) => synthOverview.hotspots.some((hs) => hs.bbox[0] === c[0] && hs.bbox[1] === c[1]);
@@ -1131,11 +1198,18 @@ test('global map: one click zooms so a square is at least 24 px, a second picks 
         assert.deepEqual(rows.first, ['Kasaï-Oriental', 'Democratic Republic of the Congo', 'Kasaï-Oriental, Democratic Republic of the Congo',
           `Hotspot 1, Kasaï-Oriental, Democratic Republic of the Congo, 2,500 fire-cell-days in ${synthOverview.year}`]);
 
+        // A mouse picks from 10 px squares: the regional window is enough at 1280; the narrow map needs the pick window.
         const sq = `document.querySelector('.hm-sq[data-key="${plain[0]},${plain[1]}"]')`;
         await page.click(`.hm-sq[data-key="${plain[0]},${plain[1]}"]`);
         await page.until(`!document.querySelector('.hm-world').hidden`, 'the click zooms');
+        assert.equal(await page.evaluate(`document.querySelector('.hm').viewBox.baseVal.width`), 360, 'the regional window, 36 deg wide');
+        if (width < 768) {
+          assert.ok(await page.evaluate(`${sq}.getBoundingClientRect().width`) < 10, 'too small for a mouse at 400');
+          await page.click(`.hm-sq[data-key="${plain[0]},${plain[1]}"]`);
+          await page.until(`document.querySelector('.hm').viewBox.baseVal.width < 360`, 'a second click goes to the pick window');
+        }
         const size = await page.evaluate(`${sq}.getBoundingClientRect().width`);
-        assert.ok(size >= 24, `a square is ${size} px at ${width}`);
+        assert.ok(size >= (width < 768 ? 24 : 10), `a square is ${size} px at ${width}`);
         assert.equal(await page.evaluate(SQUARES_WHOLE), true, `no square cut by the map edge at ${width}`);
         assert.equal(await page.evaluate(PINS_APART), true, `pins apart zoomed in at ${width}`);
         assert.equal(await page.evaluate(GLOBE_CLEAR), true, `the globe button covers no square at ${width}`);
@@ -1149,10 +1223,13 @@ test('global map: one click zooms so a square is at least 24 px, a second picks 
         await page.until(`document.querySelector('.hm-world').hidden && document.activeElement.classList.contains('hm-map')`, 'the whole map again, focus on it');
         assert.ok(await page.evaluate(`document.querySelector('.hm').viewBox.baseVal.width`) > 3600, 'the squares plus their padding');
 
+        for (let i = 0; i < (width < 768 ? 2 : 1); i++) {
+          await page.click(`.hm-sq[data-key="${plain[0]},${plain[1]}"]`);
+          await page.until(`!document.querySelector('.hm-world').hidden`, 'zoom');
+        }
+        assert.equal(await page.evaluate(`document.querySelector('.ad-primary').disabled`), true, 'zooming clicks pick nothing');
         await page.click(`.hm-sq[data-key="${plain[0]},${plain[1]}"]`);
-        await page.until(`!document.querySelector('.hm-world').hidden`, 'zoom');
-        await page.click(`.hm-sq[data-key="${plain[0]},${plain[1]}"]`);
-        await page.until(`!document.querySelector('.ad-primary').disabled`, 'the second click picks');
+        await page.until(`!document.querySelector('.ad-primary').disabled`, 'the next click picks');
         await page.click('.ad-primary');
         const center = `${Math.abs(plain[1] + 0.5).toFixed(1)}°${plain[1] < 0 ? 'S' : 'N'} ${Math.abs(plain[0] + 0.5).toFixed(1)}°${plain[0] < 0 ? 'W' : 'E'}`;
         await page.until(`document.querySelector('.context h1')?.textContent === ${JSON.stringify(center)}`, 'the hero names the square by its center');
@@ -1169,7 +1246,7 @@ test('global map: one click zooms so a square is at least 24 px, a second picks 
   } finally { synthOpts.overviewBody = null; }
 });
 
-test('first-screen map with a global overview: zooms on a click, picks on the second, generic copy without a region', { skip }, async () => {
+test('first-screen map with a global overview: clicks zoom in levels until a square fits the pointer, then pick; generic copy without a region', { skip }, async () => {
   const longest = { bbox: [23, -8, 24, -7], value: 2500, place: { country: 'Democratic Republic of the Congo', state: 'Kasaï-Oriental' } };
   synthOpts.overviewBody = { ...synthOverview, region: null, cells: [...synthOverview.cells, [-120, 50, 3], [140, -30, 3], [23, -8, 2500]], hotspots: [longest, ...synthOverview.hotspots.slice(0, 9)] };
   try {
@@ -1202,17 +1279,56 @@ test('first-screen map with a global overview: zooms on a click, picks on the se
         await page.click('.hero-plate .hm-world');
         await page.until(`document.querySelector('.hero-plate .hm-world').hidden`, 'the whole map again');
         const sq = synthOverview.cells.find((c) => !synthOverview.hotspots.some((hs) => hs.bbox[0] === c[0] && hs.bbox[1] === c[1]));
-        await page.click(`.hero-plate .hm-sq[data-key="${sq[0]},${sq[1]}"]`);
-        await page.until(`!document.querySelector('.hero-plate .hm-world').hidden`, 'the click zooms');
-        assert.ok(await page.evaluate(`document.querySelector('.hero-plate .hm-sq[data-key="${sq[0]},${sq[1]}"]').getBoundingClientRect().width`) >= 24, 'a square of at least 24 px');
-        await page.click(`.hero-plate .hm-sq[data-key="${sq[0]},${sq[1]}"]`);
-        await page.until(`${previewText('.pv-tag')} === 'Your pick' && ${previewText('.pv-title')} === ${JSON.stringify(centerOf(sq))}`, 'the second click previews it');
+        const sqSel = `.hero-plate .hm-sq[data-key="${sq[0]},${sq[1]}"]`;
+        const vbWidth = `document.querySelector('.hero-plate .hm').viewBox.baseVal.width`;
+        // A tap is a coarse pointer: it needs 24 px squares, so at 1280 it goes regional, then to the pick window.
+        const tap = `(() => { const r = document.querySelector('${sqSel}').getBoundingClientRect();
+          document.querySelector('${sqSel}').dispatchEvent(new PointerEvent('click', { bubbles: true, pointerType: 'touch', clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 })); })()`;
+        if (width >= 768) {
+          await page.evaluate(tap);
+          await page.until(`${vbWidth} === 360`, 'a tap goes regional');
+          await page.evaluate(tap);
+          await page.until(`${vbWidth} < 360`, 'a second tap goes to the pick window');
+          assert.ok(await page.evaluate(`document.querySelector('${sqSel}').getBoundingClientRect().width`) >= 24, 'a tappable square');
+          assert.notEqual(await page.evaluate(previewText('.pv-tag')), 'Your pick', 'zooming taps pick nothing');
+          await page.click('.hero-plate .hm-world');
+          await page.until(`document.querySelector('.hero-plate .hm-world').hidden`, 'the globe goes back to the world');
+        }
+        // A mouse picks from 10 px squares: one zoom at 1280 (regional), two at 400.
+        await page.click(sqSel);
+        await page.until(`${vbWidth} === 360`, 'the click goes regional');
+        if (width < 768) {
+          await page.click(sqSel);
+          await page.until(`${vbWidth} < 360`, 'a second click goes to the pick window');
+        }
+        assert.ok(await page.evaluate(`document.querySelector('${sqSel}').getBoundingClientRect().width`) >= 10, 'a square a mouse can pick');
+        await page.click(sqSel);
+        await page.until(`${previewText('.pv-tag')} === 'Your pick' && ${previewText('.pv-title')} === ${JSON.stringify(centerOf(sq))}`, 'the next click previews it');
         assert.deepEqual(page.problems, []);
       } finally { await page.close(); }
     }
   } finally { synthOpts.overviewBody = null; }
 });
 
+
+test('record strip: the preview card ends with the sensors on one axis from the manifest, and fits at 400', { skip }, async () => {
+  const m = synthFiles.get('/data/manifest.json');
+  const mon = (x) => `${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Number(x.slice(5)) - 1]} ${x.slice(0, 4)}`;
+  for (const width of [1280, 400]) {
+    const page = await open(width, '', synthBase);
+    try {
+      await page.until(`document.querySelector('.preview-card .pv-record')`, 'the strip');
+      assert.equal(await page.evaluate(`document.querySelector('.pv-record').getAttribute('aria-label')`), `MODIS from ${mon(m.coverage.modis[0])}, VIIRS from ${mon(m.coverage.viirs[0])}, latest ${mon(m.last_month)}.`);
+      assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.pv-record .pr-label')].map((l) => l.textContent).concat(document.querySelector('.pr-latest').textContent)`),
+        [`MODIS ${m.coverage.modis[0].slice(0, 4)}`, `VIIRS ${m.coverage.viirs[0].slice(0, 4)}`, `Latest ${mon(m.last_month)}`]);
+      assert.equal(await page.evaluate(`document.querySelector('.pv-cta').getBoundingClientRect().bottom <= document.querySelector('.pv-record').getBoundingClientRect().top`), true, 'under the button');
+      assert.equal(await page.evaluate(`(() => { const c = document.querySelector('.preview-card').getBoundingClientRect(); return [...document.querySelectorAll('.pv-record *')].every((e) => { const r = e.getBoundingClientRect(); return r.left >= c.left && r.right <= c.right; }); })()`), true, `inside the card at ${width}`);
+      assert.equal(await page.evaluate(`document.querySelector('.hero-copy').textContent.includes('VIIRS from')`), false, 'no facts line in the hero');
+      assert.equal(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`), true);
+      assert.deepEqual(page.problems, []);
+    } finally { await page.close(); }
+  }
+});
 
 // A global overview carrying countries (pipeline countriesOf), as production will once rebuilt with --admin1:
 // the synthetic Brazil, one square in the Congo, and Russia across the antimeridian (wider than 120 deg).
@@ -1231,22 +1347,6 @@ const openAs = async (width, lang) => {
   await page.goto(`${synthBase}/web/`);
   return page;
 };
-
-test('first screen: the facts line reads the manifest, quiet under the lede, two lines on phone before the card', { skip }, async () => {
-  const facts = recordFacts(synthFiles.get('/data/manifest.json')).join(' · ');
-  for (const width of [1280, 400]) {
-    const page = await open(width, '', synthBase);
-    try {
-      await page.until(`document.querySelector('.hero-facts')`, 'facts line');
-      assert.equal(await page.evaluate(`document.querySelector('.hero-facts').textContent`), facts);
-      assert.equal(await page.evaluate(`getComputedStyle(document.querySelector('.hero-facts')).fontFamily.includes('Fira Code')`), true, 'monospace');
-      assert.equal(await page.evaluate(`document.querySelector('.hero-facts').getBoundingClientRect().bottom <= document.querySelector(${JSON.stringify(width < 600 ? '.preview-card' : '.hp-slot')}).getBoundingClientRect().top`), true, 'above the card on phone, the plate on desktop');
-      const lines = await page.evaluate(`Math.round(document.querySelector('.hero-facts').getBoundingClientRect().height / parseFloat(getComputedStyle(document.querySelector('.hero-facts')).lineHeight))`);
-      assert.equal(lines, width < 600 ? 2 : 1);
-      assert.deepEqual(page.problems, []);
-    } finally { await page.close(); }
-  }
-});
 
 test('hottest list by country: World lists countries, a row or the select zooms to one and lists its squares, pins follow; your region leads', { skip }, async () => {
   const ov = countriesOverview();
@@ -1404,7 +1504,8 @@ test('home Radiant: a placeholder at once, aria-busy, then the data on the same 
     assert.match(ph.label, /loading/);
     await page.until(`${previewText('.pv-tag')} === 'Suggested' && document.querySelector('.hero-art figcaption').textContent.startsWith('2000–2019.')`, 'the caption, before the data');
     // A web font swapping in late (a loaded machine) rewraps the caption; that is the font's shift, not the data's.
-    await page.until(`document.fonts.status === 'loaded'`, 'fonts');
+    // fonts.status reads 'loaded' before a face has even started, so ask for the caption's face itself.
+    await page.until(`document.fonts.check('400 0.8125rem "Fira Sans"') && document.fonts.status === 'loaded'`, 'fonts');
     const box = await page.evaluate(`JSON.stringify(document.querySelector('.hero-art').getBoundingClientRect())`);
     assert.equal(await page.evaluate(`document.querySelectorAll('.hero-art .radiant .rb-ph').length`), months, 'still the placeholder while the tiles are held back');
     await page.until(HERO_READY, 'data on the Radiant', 30000);

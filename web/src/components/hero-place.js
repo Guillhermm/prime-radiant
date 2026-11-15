@@ -4,7 +4,7 @@ import { hottestList, legendEl, mountHeatMap, swatch } from './heat-map.js';
 import { h } from './h.js';
 import { icon, mark } from './icons.js';
 import * as radiant from './radiant.js';
-import { bboxText } from './states.js';
+import { bboxText, mon } from './states.js';
 
 // The first screen's place flow (docs/ux.md, "First screen"): the heat map plate and a preview card
 // whose Radiant follows the pick. A pick here is not written to the hash; it becomes the last chosen
@@ -13,6 +13,7 @@ import { bboxText } from './states.js';
 const TAGS = { suggested: 'Suggested', pick: 'Your pick', current: 'Current area' };
 // Past this the previous Radiant dims under a "Loading the record" pill.
 const SLOW_MS = 150;
+const HERO_ROWS = 3;
 
 /** The share of an element's height inside the viewport, 0 to 1. */
 const visibleShare = (el) => {
@@ -82,6 +83,50 @@ export const hasRecord = (cells = []) => cells.some((c) => c.value != null);
 
 export const NO_RECORD = 'No record for this area in the data.';
 
+const monthIndex = (m) => Number(m.slice(0, 4)) * 12 + Number(m.slice(5, 7)) - 1;
+const STRIP_SENSORS = [['modis', 'MODIS'], ['viirs', 'VIIRS']];
+
+/**
+ * The record strip at the foot of the preview card: one lane per sensor family on an axis from
+ * January of the first year to the latest month, from the manifest. Lanes are {key, label, from, to}
+ * with from and to as shares of the axis. Null without a latest month or any coverage.
+ */
+export const recordStrip = (manifest) => {
+  const last = manifest?.last_month;
+  const spans = STRIP_SENSORS.map(([key, name]) => [key, name, manifest?.coverage?.[key]]).filter(([, , c]) => Array.isArray(c) && c[0]);
+  if (!last || !spans.length) return null;
+  const start = Math.min(...spans.map(([, , c]) => monthIndex(c[0].slice(0, 4) + '-01')));
+  const total = monthIndex(last) + 1 - start;
+  const share = (i) => Math.min(1, Math.max(0, (i - start) / total));
+  const lanes = spans.map(([key, name, c]) => ({
+    key, label: `${name} ${c[0].slice(0, 4)}`,
+    from: share(monthIndex(c[0])), to: share(Math.min(monthIndex(c[1] ?? last), monthIndex(last)) + 1),
+  }));
+  return {
+    lanes,
+    latest: `Latest ${mon(last)}`,
+    label: `${spans.map(([, name, c]) => `${name} from ${mon(c[0])}`).join(', ')}, latest ${mon(last)}.`,
+  };
+};
+
+const pct = (x) => `${(x * 100).toFixed(2)}%`;
+
+const stripEl = (manifest) => {
+  const m = recordStrip(manifest);
+  if (!m) return null;
+  return h('div', { class: 'pv-record', role: 'img', 'aria-label': m.label },
+    h('p', { class: 'pr-title', 'aria-hidden': 'true', text: 'Record' }),
+    h('div', { class: 'pr-axis', 'aria-hidden': 'true' },
+      ...m.lanes.map((l) => {
+        const lane = h('div', { class: `pr-lane pr-${l.key}` }, h('span', { class: 'pr-label', text: l.label }), h('span', { class: 'pr-track' }, h('span', { class: 'pr-bar' })));
+        lane.style.setProperty('--from', pct(l.from));
+        lane.style.setProperty('--to', pct(l.to));
+        return lane;
+      }),
+      h('span', { class: 'pr-tick' }),
+      h('span', { class: 'pr-latest', text: m.latest })));
+};
+
 /** The hero Radiant's accessible name, before and after its data. */
 export const heroRadiantLabel = (label) => (label
   ? `Fire calendar of ${label}: rings are years, slices are months. Arrow keys move between months, Enter opens the month in the calendar.`
@@ -113,7 +158,7 @@ const previewCard = (deps) => {
   const cta = h('button', { type: 'button', class: 'btn btn-primary btn-lg pv-cta', hidden: true, onclick: () => deps.onOpen?.(current) },
     h('span', { text: 'Open the calendar' }), icon('arrow'));
   const el = h('section', { class: 'card preview-card', 'aria-labelledby': 'preview-title' },
-    h('div', { class: 'pv-tagrow' }, tag, note), title, sub, value, art, cta, live);
+    h('div', { class: 'pv-tagrow' }, tag, note), title, sub, value, art, cta, stripEl(deps.manifest), live);
 
   let rad = null;
   if (deps.manifest?.month0 && deps.manifest?.last_month) {
@@ -214,9 +259,10 @@ const pendingSubject = { kind: 'pending' };
  */
 const plateEl = (overview, model, deps, focus) => {
   const m = drawerModel(overview);
-  const map = mountHeatMap(model, overview, { focus, onPick: (q) => deps.onPick(q) });
+  // The plate lists three, so it pins three; the place picker keeps all ten.
+  const map = mountHeatMap(model, overview, { focus, onPick: (q) => deps.onPick(q), maxPins: HERO_ROWS });
   const hot = hottestList({
-    overview, model, map, limit: 3, title: `${m.listTitle}, ${overview.year}`, titleClass: 'hp-list-title', rowSub: m.rowSub, onPick: (q) => deps.onPick(q),
+    overview, model, map, limit: HERO_ROWS, title: `${m.listTitle}, ${overview.year}`, titleClass: 'hp-list-title', rowSub: m.rowSub, onPick: (q) => deps.onPick(q),
   });
   const el = h('section', { class: 'plate hero-plate', 'aria-labelledby': 'plate-title' },
     h('div', { class: 'hp-head' }, h('h2', { id: 'plate-title', text: `Where it burned in ${overview.year}` }), h('p', { class: 'hp-unit', text: m.unit })),

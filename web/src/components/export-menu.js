@@ -11,10 +11,20 @@ const addMonths = (ym, n) => {
   return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`;
 };
 
-/** "prime-radiant-2001-01-2026-10.csv": the first and last month of the exported series. */
-export const exportFilename = (series, { prefix = 'prime-radiant', ext = 'csv' } = {}) => {
+const SLUG_MAX = 60;
+
+/** "Kasaï-Oriental, Democratic Republic of the Congo" to "kasai-oriental-democratic-republic-of-the-congo"; '' when nothing is left. */
+export const areaSlug = (name) => String(name ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  .replace(/[^a-z0-9]+/g, '-').slice(0, SLUG_MAX).replace(/^-+|-+$/g, '');
+
+/**
+ * "prime-radiant-kasai-oriental-democratic-republic-of-the-congo-2001-01-2026-10.csv": the area's
+ * slug, then the first and last month of the exported series. Without a usable name the slug is left out.
+ */
+export const exportFilename = (series, { prefix = 'prime-radiant', ext = 'csv', area = '' } = {}) => {
   const last = addMonths(series.start, Math.max(0, series.values.length - 1));
-  return `${prefix}-${series.start}-${last}.${ext}`;
+  const slug = areaSlug(area);
+  return `${prefix}${slug ? `-${slug}` : ''}-${series.start}-${last}.${ext}`;
 };
 
 const MIME = 'text/csv;charset=utf-8';
@@ -26,7 +36,7 @@ const MIME = 'text/csv;charset=utf-8';
  * @param {{series: object, cells?: object[], sensors?: object, meta: object}} what `series` names the file
  */
 export const csvExport = (kind, { series, cells, sensors, meta }) => ({
-  filename: exportFilename(series, kind === 'sensors' ? { prefix: 'prime-radiant-sensors' } : {}),
+  filename: exportFilename(series, { area: meta?.aoi, ...(kind === 'sensors' ? { prefix: 'prime-radiant-sensors' } : {}) }),
   mime: MIME,
   text: kind === 'sensors' ? toCsv('sensors', { ...sensors, harmonized: series }, meta) : toCsv('calendar', cells, meta),
 });
@@ -52,7 +62,7 @@ export const imageExport = async (what, { rasterize = (m) => toPng(renderSvg(m))
     cells: what.cells, aoiCells: what.aoiCells, title: what.title, bbox: what.bbox, synthetic: what.synthetic,
     dataVersion: what.manifest.dataVersion, citation: what.manifest.citation, generated: what.generated ?? new Date().toISOString().slice(0, 10),
   });
-  return { filename: exportFilename(what.series, { ext: 'png' }), mime: 'image/png', blob: await rasterize(model) };
+  return { filename: exportFilename(what.series, { ext: 'png', area: what.title }), mime: 'image/png', blob: await rasterize(model) };
 };
 
 const browserDownload = ({ filename, mime, text, blob }) => {

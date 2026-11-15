@@ -260,6 +260,31 @@ export const zoomWindow = (model, [lon, lat], boxW) => {
   };
 };
 
+// The middle zoom level: a window this many degrees wide (half as tall) around a click.
+export const REGIONAL_WIDTH = 36;
+
+/**
+ * The regional window, {west, north, width, height} in degrees: 36 x 18 of whole squares centered on
+ * [lon, lat] and kept inside the data extent (narrower only when the extent is).
+ */
+export const regionalWindow = (model, [lon, lat]) => {
+  const width = Math.min(REGIONAL_WIDTH, model.east - model.west);
+  const height = Math.min(width / ZOOM_ASPECT, model.north - model.south);
+  const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+  return {
+    west: clamp(Math.round(lon - width / 2), model.west, model.east - width),
+    north: clamp(Math.round(lat + height / 2), model.south + height, model.north),
+    width,
+    height,
+  };
+};
+
+// The smallest square a click may pick, in CSS px: 24 for touch (WCAG 2.2, 2.5.8 Target Size), 10 for a mouse.
+const PICK_PX = { fine: 10, coarse: 24 };
+
+/** Whether a 1 deg square drawn `pxPerDeg` CSS px wide is big enough to pick with this pointer ('fine' or 'coarse'). */
+export const squareFits = (pxPerDeg, pointer) => pxPerDeg * SQUARE_DEG >= PICK_PX[pointer === 'fine' ? 'fine' : 'coarse'];
+
 /** The square with fire nearest to [lon, lat] by its center, for a click that lands on the ocean; null when none burned. */
 export const nearestSquare = (model, [lon, lat]) => {
   let best = null;

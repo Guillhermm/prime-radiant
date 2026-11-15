@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bboxFromCorners, isTooSmall, bboxToBounds, boundsToBbox } from './map-picker.js';
+import { ARM_TEXT, areaSetText, bboxFromCorners, isTooSmall, bboxToBounds, boundsToBbox } from './map-picker.js';
 
 test('corners in any order give [west, south, east, north]', () => {
   const a = { lat: -15.3, lng: -55 };
@@ -39,4 +39,10 @@ test('sameBbox compares by value and handles null', async () => {
   assert.equal(sameBbox([1, 2, 3, 4], [1, 2, 3, 5]), false);
   assert.equal(sameBbox(null, null), true);
   assert.equal(sameBbox(null, [1, 2, 3, 4]), false);
+});
+
+test('the status after a draw reads north to south, then east to west, at one decimal', () => {
+  assert.equal(areaSetText([-50, -12.5, -45, -8]), 'Area set: 8.0°S to 12.5°S, 45.0°W to 50.0°W.');
+  assert.equal(areaSetText([-1.25, -0.5, 3, 2]), 'Area set: 2.0°N to 0.5°S, 3.0°E to 1.3°W.');
+  assert.equal(ARM_TEXT, 'Click two opposite corners.');
 });

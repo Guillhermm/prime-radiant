@@ -102,10 +102,10 @@ test('size: fixed width, height grows with the years, PNG at twice the size', ()
   assert.deepEqual(pngSize(two), { width: 2000, height: two.height * 2 });
 });
 
-test('imageExport names the file like the CSV, with .png', async () => {
+test('imageExport names the file like the CSV, with the area and .png', async () => {
   const blob = new Blob(['x']);
   const out = await imageExport({ ...input, series: { start: '2002-06', values: new Array(9).fill(0) }, manifest: { dataVersion: 'v', citation: 'c' } }, { rasterize: async () => blob });
-  assert.equal(out.filename, 'prime-radiant-2002-06-2003-02.png');
+  assert.equal(out.filename, 'prime-radiant-pantanal-2002-06-2003-02.png');
   assert.equal(out.mime, 'image/png');
   assert.equal(out.blob, blob);
 });

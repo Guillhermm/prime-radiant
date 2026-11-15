@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { hasRecord, heroRadiantLabel, NO_RECORD, previewCaption, previewModel, selectionLine } from './hero-place.js';
+import { hasRecord, heroRadiantLabel, NO_RECORD, previewCaption, recordStrip, previewModel, selectionLine } from './hero-place.js';
 import { mapModel } from '../places.js';
 
 const overview = {
@@ -60,4 +60,15 @@ test('hasRecord: a record of only null months (no sensor there) has nothing to d
   assert.equal(hasRecord([{ value: null }, { value: 0 }]), true);
   assert.equal(hasRecord([]), false);
   assert.equal(NO_RECORD, 'No record for this area in the data.');
+});
+
+test('recordStrip: lanes on a 2000-to-latest axis from the manifest, with its accessible sentence', () => {
+  const m = recordStrip({ coverage: { modis: ['2000-11', '2025-12'], viirs: ['2012-01', '2025-12'], noaa20: ['2018-04', '2025-12'] }, last_month: '2025-12' });
+  assert.equal(m.label, 'MODIS from Nov 2000, VIIRS from Jan 2012, latest Dec 2025.');
+  assert.equal(m.latest, 'Latest Dec 2025');
+  assert.deepEqual(m.lanes.map((l) => [l.key, l.label, Number(l.from.toFixed(4)), l.to]), [['modis', 'MODIS 2000', Number((10 / 312).toFixed(4)), 1], ['viirs', 'VIIRS 2012', Number((144 / 312).toFixed(4)), 1]]);
+  const short = recordStrip({ coverage: { modis: ['2000-11', '2019-12'] }, last_month: '2019-12' });
+  assert.equal(short.label, 'MODIS from Nov 2000, latest Dec 2019.');
+  assert.equal(recordStrip({ coverage: {} , last_month: '2019-12' }), null);
+  assert.equal(recordStrip(null), null);
 });

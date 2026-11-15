@@ -1,4 +1,4 @@
-import { centerLabel, countryWindow, dotPins, formatCount, HEAT_LABELS, hotspotRowsLabels, inWindow, isZoomable, listRanks, nearestSquare, regionCountry, sameBbox, scopeList, squareFor, squareText, stepSquare, valueLine, worldWindow, ZOOM_ASPECT, zoomWindow } from '../places.js';
+import { centerLabel, countryWindow, dotPins, formatCount, HEAT_LABELS, hotspotRowsLabels, inWindow, isZoomable, listRanks, nearestSquare, regionalWindow, REGIONAL_WIDTH, regionCountry, sameBbox, scopeList, squareFits, squareFor, squareText, stepSquare, valueLine, worldWindow, ZOOM_ASPECT, zoomWindow } from '../places.js';
 import { bboxText } from './states.js';
 import { h } from './h.js';
 import { icon, svgEl } from './icons.js';
@@ -17,12 +17,17 @@ const PIN_GAP_PX = 22;
 // world view still shows as one visible ring.
 const MIN_RING_PX = 14;
 
+// The click's pointer: touch and pen are coarse; a click without one (keyboard, synthetic) follows the device.
+const pointerOf = (ev) => (ev?.pointerType === 'touch' || ev?.pointerType === 'pen' ? 'coarse'
+  : ev?.pointerType === 'mouse' ? 'fine'
+    : globalThis.matchMedia?.('(pointer: fine)').matches ? 'fine' : 'coarse');
+
 /**
  * The heat map: squares, rank pins and the rings for selection, focus and hover, moved by `place`.
  * `setView(win)` shows a window in degrees (null: the whole map, or `world` when given) and
  * `setScale(k, pxPerUnit)` resizes the rings and pins by k and turns crowded pins into dots.
  */
-const mapSvg = (model, world = null) => {
+const mapSvg = (model, world = null, maxPins = Infinity) => {
   const W = (model.east - model.west) * U;
   const H = (model.north - model.south) * U;
   const box = world ? { width: 1000 * ZOOM_ASPECT, height: 1000 } : { width: W, height: H };
@@ -51,7 +56,7 @@ const mapSvg = (model, world = null) => {
     pinEls = [];
     for (const [key, rank] of ranks) {
       const q = model.byKey.get(key);
-      if (!q) continue;
+      if (!q || rank > maxPins) continue;
       const cx = x(q) + U - 0.5;
       const cy = y(q) + 0.5;
       const t = svgEl('text', { x: cx, y: cy + 3 });
@@ -130,13 +135,13 @@ const mapSvg = (model, world = null) => {
  * (`role="application"`), arrows move a focus ring (Shift five squares, Home hotspot 1), Enter or
  * Space or a click picks, a readout names the square under the pointer or focus, and a polite live
  * region reads each move. A map wider than 40 deg zooms in two levels (see docs/ux.md).
- * mountHeatMap(model, overview, {focus, onPick(q)}) returns {nodes, select(q), reveal(q), setArea(bbox),
+ * mountHeatMap(model, overview, {focus, onPick(q), maxPins}) returns {nodes, select(q), reveal(q), setArea(bbox),
  * start(), stop()}: nodes go in the plate in order; select() rings a square as the pick; reveal()
  * moves the focus ring there and zooms to it; start() and stop() bind and release the resize observer.
  */
-export const mountHeatMap = (model, overview, { focus = null, onPick = () => {} } = {}) => {
+export const mountHeatMap = (model, overview, { focus = null, onPick = () => {}, maxPins = Infinity } = {}) => {
   const zoomable = isZoomable(model);
-  const { svg, place, setArea, setPins, setScale, setView, degAt, unitsWide } = mapSvg(model, zoomable ? worldWindow(model) : null);
+  const { svg, place, setArea, setPins, setScale, setView, degAt, unitsWide } = mapSvg(model, zoomable ? worldWindow(model) : null, maxPins);
   let announceTimer = 0;
   let resizeObs = null;
   let picked = null;
@@ -152,40 +157,47 @@ export const mountHeatMap = (model, overview, { focus = null, onPick = () => {} 
     readout.replaceChildren(...(q ? [swatch(q.bin), h('b', { text: centerLabel(q.bbox) }), ` ${valueLine(q.value, overview)}`] : []));
   };
 
-  // Two-level zoom for a map too wide to pick from (the global extent): a click on the whole map
-  // shows a window around it, "Show whole map" goes back. No wheel or pinch.
-  let zoomCenter = null;
-  // A country's window (showBox): a middle level between the whole map and a click's window.
+  // Zoom for a map too wide to pick from (the global extent), in levels: the whole map, a country
+  // from the scope select, a regional window around a click, and the pick window. A click that cannot
+  // pick goes one level down; "Show whole map" goes back to the whole map. No wheel or pinch.
+  let level = 'world';
+  let center = null;
   let box = null;
   let win = null;
   const worldBtn = h('button', {
     type: 'button', class: 'icon-btn hm-world', 'aria-label': 'Show whole map', 'data-tip': 'Show whole map', hidden: true,
-    onclick: () => { box = null; zoomTo(null); mapEl.focus(); },
+    onclick: () => { box = null; zoomTo('world'); mapEl.focus(); },
   }, icon('globe'));
   if (zoomable) readoutRow.append(worldBtn);
+  const windowFor = (width) => ({
+    world: null, country: box, regional: center && regionalWindow(model, center), pick: center && zoomWindow(model, center, width),
+  })[level];
   const applyView = () => {
     const rect = svg.getBoundingClientRect();
     if (!rect.width) return;
     if (zoomable) {
-      win = zoomCenter ? zoomWindow(model, zoomCenter, rect.width) : box;
+      win = windowFor(rect.width);
       setView(win);
     }
     const pxPerUnit = rect.width / unitsWide();
     setScale(zoomable ? DRAWN_PX_PER_UNIT / pxPerUnit : 1, pxPerUnit);
   };
-  const zoomTo = (center) => {
-    zoomCenter = center;
-    worldBtn.hidden = !center && !box;
+  const zoomTo = (next, at = center) => {
+    level = next;
+    center = at;
+    worldBtn.hidden = level === 'world';
     applyView();
   };
-  // A click picks only where squares are big enough to aim at: in a click's window, or in a country
-  // window no wider than one.
-  const canPick = () => {
-    if (!zoomable || zoomCenter) return true;
-    if (!win) return false;
-    return win.width <= zoomWindow(model, [0, 0], svg.getBoundingClientRect().width).width;
+  // A click picks where a square is big enough to aim at with that pointer (WCAG 2.2 target size for
+  // touch); the keyboard and the coordinates form reach every square anyway.
+  const canPick = (ev) => {
+    if (!zoomable) return true;
+    const width = svg.getBoundingClientRect().width;
+    const shown = (win ?? worldWindow(model)).width;
+    return squareFits(width / shown, pointerOf(ev));
   };
-  const zoomToSquare = (q) => { if (zoomable && q) zoomTo([q.w + 0.5, q.s + 0.5]); };
+  const nextLevel = () => (level === 'world' || (level === 'country' && (box?.width ?? Infinity) > REGIONAL_WIDTH) ? 'regional' : 'pick');
+  const zoomToSquare = (q) => { if (zoomable && q) zoomTo('pick', [q.w + 0.5, q.s + 0.5]); };
 
   const moveFocus = (q, { follow = false } = {}) => {
     focusSq = q;
@@ -214,11 +226,11 @@ export const mountHeatMap = (model, overview, { focus = null, onPick = () => {} 
   svg.addEventListener('pointerleave', () => { place('hover', null); showReadout(picked); });
   svg.addEventListener('click', (ev) => {
     const q = squareAt(ev);
-    if (!canPick()) {
+    if (!canPick(ev)) {
       const at = degAt(ev.clientX, ev.clientY);
       const near = q ?? nearestSquare(model, at);
       if (near) { focusSq = near; place('focus', near); }
-      zoomTo(q || !near ? at : [near.w + 0.5, near.s + 0.5]);
+      zoomTo(nextLevel(), q || !near ? at : [near.w + 0.5, near.s + 0.5]);
       return;
     }
     if (!q) return;
@@ -236,7 +248,7 @@ export const mountHeatMap = (model, overview, { focus = null, onPick = () => {} 
     /** Pins for the squares the list shows (null: the overview's hotspots). */
     setPins: (ranks) => { setPins(ranks ?? model.ranks, { atWorld: Boolean(ranks) }); applyView(); },
     /** Shows a window around a country (null: the whole map); a window too wide to help is the whole map. */
-    showBox: (w) => { if (!zoomable) return; box = w; zoomTo(null); },
+    showBox: (w) => { if (!zoomable) return; box = w; zoomTo(w ? 'country' : 'world'); },
     start: () => {
       resizeObs?.disconnect();
       resizeObs = new ResizeObserver(applyView);

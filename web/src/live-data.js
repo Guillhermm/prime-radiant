@@ -26,7 +26,7 @@ export const LIVE_REASONS = {
   outside: 'Live data covers Brazil only, where its method was checked. This area has no live comparison.',
   noK: 'No NOAA-20 to S-NPP ratio for this area, so live values cannot be put in archive units.',
   noDays: 'No complete live day for this area yet.',
-  wholeMonths: 'Outside Brazil, live data is compared by whole months only, and no whole month of live data is in yet.',
+  wholeMonths: (since) => `Live data covers the whole world${since ? ` since ${since}` : ''}. Outside Brazil it is compared by whole months only, because the timing of fires within a month was measured over Brazil, so this area gets its first comparison once a whole month of live data is in.`,
 };
 
 /**
@@ -58,7 +58,7 @@ export const liveInput = ({ result, live, share, type0, now = new Date() }) => {
   if (!measured) {
     cmp.month = null;
     cmp.season = wholeMonths(cmp.season);
-    if (!cmp.season) return { reason: LIVE_REASONS.wholeMonths, fetched_at: fetchedAt };
+    if (!cmp.season) return { reason: LIVE_REASONS.wholeMonths(lm.coverage?.noaa20?.[0] ?? lm.day0), fetched_at: fetchedAt };
   }
   const view = cmp.month ?? cmp.season;
   if (!view) return { reason: cmp.reason ? `${LIVE_REASONS.noDays} (${cmp.reason}.)` : LIVE_REASONS.noDays, fetched_at: fetchedAt };

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   heatBin, HEAT_LABELS, centerLabel, hotspotPresets, placeLabel, hotspotLabels, hotspotAt, valueLine, sensorValueLine, defaultArea, suggestionCaption,
   drawerModel, mapModel, dataRegionBbox, regionCaption, squareFor, stepSquare, squareText,
-  hotspotRowLabels, hotspotRowsLabels, isZoomable, zoomWindow, worldWindow, dotPins, inWindow, nearestSquare, scopeList, listRanks, countryWindow, regionCountry, placeAt,
+  hotspotRowLabels, hotspotRowsLabels, isZoomable, zoomWindow, worldWindow, dotPins, inWindow, nearestSquare, scopeList, listRanks, countryWindow, regionCountry, placeAt, regionalWindow, squareFits,
 } from './places.js';
 
 const overview = {
@@ -57,7 +57,6 @@ test('default area: the link wins, then the last chosen area, then the suggestio
 
 test('copy names the region from the file, or stays generic without one', () => {
   const m = drawerModel(overview, { home: true });
-  assert.equal(m.title, 'Where did it burn in 2025?');
   assert.equal(m.unit, 'Fire-cell-days of 0.1° cells, summed per 1° square · VIIRS S-NPP 2025 · Testland');
   assert.equal(m.listTitle, 'Hottest in Testland');
   assert.equal(m.listSub, 'Most fire activity in 2025, one sensor');
@@ -226,4 +225,19 @@ test('placeAt: a hotspot, else a country top square, names a picked square', () 
   assert.equal(placeAt(withCountries, [-45, -7, -44, -6]).place.state, 'Maranhão');
   assert.equal(placeAt(withCountries, [-44, -7, -43, -6]).place.state, 'Piauí');
   assert.equal(placeAt(withCountries, [0, 0, 1, 1]), null);
+});
+
+test('regionalWindow: 36 x 18 around the click, kept inside the data extent', () => {
+  const world = { west: -180, east: 180, south: -60, north: 75 };
+  assert.deepEqual(regionalWindow(world, [-52, -10]), { west: -70, north: -1, width: 36, height: 18 });
+  assert.deepEqual(regionalWindow(world, [178, 74]), { west: 144, north: 75, width: 36, height: 18 }, 'clamped at the north-east corner');
+  assert.deepEqual(regionalWindow({ west: 0, east: 20, south: 0, north: 30 }, [10, 10]), { west: 0, north: 15, width: 20, height: 10 }, 'never wider than the extent');
+});
+
+test('squareFits: a mouse picks from 10 px squares, touch from 24 px (WCAG 2.2 target size)', () => {
+  assert.equal(squareFits(12, 'fine'), true);
+  assert.equal(squareFits(11, 'fine'), false, '11 px per degree draws a 9.9 px square');
+  assert.equal(squareFits(20, 'coarse'), false);
+  assert.equal(squareFits(27, 'coarse'), true);
+  assert.equal(squareFits(20, undefined), false, 'an unknown pointer is treated as touch');
 });

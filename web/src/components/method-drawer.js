@@ -29,7 +29,7 @@ export const methodModel = (manifest, { gates } = {}) => {
     sensors.push({ label: FAMILY_LABEL[family] ?? family.toUpperCase(), text: `${span[0]} to ${span[1]}${names ? ` (${names})` : ''}` });
   }
   return {
-    title: 'Method',
+    title: 'About',
     preliminary: caveat('not-validated', gates).preliminary,
     status: statusText(gates),
     method: `${HARMONIZE_METHOD.id}, version ${HARMONIZE_METHOD.version}`,
@@ -132,8 +132,8 @@ export const mount = (container, deps) => {
     const panel = h('div', { class: 'drawer-panel', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'drawer-title' },
       h('div', { class: 'grabber', 'aria-hidden': 'true' }),
       h('div', { class: 'panel-top' },
-        h('span', { class: 'eyebrow' }, 'Method', m.preliminary ? h('span', { class: 'badge', text: 'Preliminary' }) : null),
-        h('button', { type: 'button', class: 'icon-btn drawer-close', 'aria-label': 'Close method', onclick: () => close() }, icon('close'))),
+        h('span', { class: 'eyebrow' }, 'About', m.preliminary ? h('span', { class: 'badge', text: 'Preliminary' }) : null),
+        h('button', { type: 'button', class: 'icon-btn drawer-close', 'aria-label': 'Close About', onclick: () => close() }, icon('close'))),
       title,
       h('p', { class: 'lead', text: m.lead }),
       t && timelineSvg(t),
@@ -188,8 +188,8 @@ export const mount = (container, deps) => {
     returnTo = null;
   };
 
-  const button = h('button', { type: 'button', class: 'btn btn-ghost method-button', 'aria-haspopup': 'dialog', 'aria-expanded': 'false', 'aria-label': 'Method', onclick: (ev) => open(ev.currentTarget) },
-    icon('info', 'icon-phone'), h('span', { class: 'btn-label', text: 'Method' }));
+  const button = h('button', { type: 'button', class: 'btn btn-ghost method-button', 'aria-haspopup': 'dialog', 'aria-expanded': 'false', 'aria-label': 'About', onclick: (ev) => open(ev.currentTarget) },
+    icon('info', 'icon-phone'), h('span', { class: 'btn-label', text: 'About' }));
   deps.trigger?.replaceChildren(button);
 
   return {
