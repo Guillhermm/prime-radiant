@@ -194,6 +194,8 @@ Day 14: July 0.350, September 0.471, November 0.501 (the mathematician's check: 
 
 ## Global build (M4-K1)
 
+Science check: docs/gates/G1.md (accepted with caveats, except the type filter, which keeps gas flares; the app tags the global extent preliminary).
+
 `node tools/fetch-country.mjs --scope global --out raw/global`, then
 `node pipeline/build.js --in raw/global --out raw/build --admin1 <ne_10m_admin_1_states_provinces.geojson>`
 (the `publish-data` workflow does both, and checks the admin-1 file's sha256 from

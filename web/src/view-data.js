@@ -99,7 +99,7 @@ export const buildResult = ({ bbox, from, to, manifest, tiles, domain = null, gl
     yearRank: yearRank(harmonized, manifest),
     typical: typicalYear(harmonized.series, { partialMonths }),
     kpis: kpis(harmonized, base, manifest, { from, to, sensors }),
-    caveats: caveatsFor({ ...harmonized, anomaly: anomalySeries }, { domain: manifest.domain ?? null }),
+    caveats: caveatsFor({ ...harmonized, anomaly: anomalySeries }, { domain: manifest.domain ?? null, global: !manifest.domain }),
     aoiCells,
   };
 };

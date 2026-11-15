@@ -210,6 +210,9 @@ months, NOAA-20 for NOAA-20 x K months (`core/partial.js`).
 9. With a domain (the Brazil build), data cover only that outline (Natural Earth 10m, v5.1.2).
    Areas outside read as no data; border cells hold only detections inside the outline, so they
    undercount. A global build has no domain and does not show this caveat.
+10. A global build (no domain) shows `global-extent`, tagged preliminary: only Brazil was validated, type 0
+   keeps some gas flares and industrial sources, R was not checked by region, cells shrink toward the
+   poles, days are UTC (docs/gates/G1.md).
 
 ## 6b. Live comparison (M3-K3, gate V3 accepted with caveats on 2026-11-15)
 

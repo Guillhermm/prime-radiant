@@ -15,5 +15,5 @@ test('strip is not dismissible, links to the method and counts core caveats', ()
   assert.match(m.text, /VIIRS-equivalent \(MODIS × R\)/);
   assert.equal(m.readMore, 'How this is made');
   assert.equal('dismiss' in m, false);
-  assert.equal(m.count, 9);
+  assert.equal(m.count, 10);
 });
