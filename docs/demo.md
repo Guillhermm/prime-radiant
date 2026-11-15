@@ -6,10 +6,10 @@ Before recording: open the URL once and let it load; press Reload if the app off
 
 | Time | Screen | Say (about 75 words, about 2.5 a second) |
 |---|---|---|
-| 0:00 | Logo and home, still. | We are Prime Radiant. |
-| 0:02 | Home: the world heat map. | The MODIS sensor has counted fires since 2000. Its successor, VIIRS, sees more of them, so their records don't line up. |
-| 0:05 | Hover the hottest list, then the Radiant on the right. | Prime Radiant: twenty-five years of fire on one calendar, for any place on Earth. |
-| 0:10 | Click a hotspot, "Open the calendar", then a bright month; Export menu open. | Pick an area. We put NASA FIRMS hotspots from MODIS and VIIRS on one scale, so 2005 compares with 2025. See each month against its usual level, and export. |
+| 0:00 | Logo. | Hi, we're team Prime Radiant. |
+| 0:02 | Home: the world heat map. | Satellites have tracked fires since 2000, but the newer sensor, VIIRS, sees more than the older MODIS, so their records don't match. |
+| 0:05 | Hover the hottest list, then the Radiant on the right. | So we built Prime Radiant: twenty-five years of fire on one calendar, for any place on Earth. |
+| 0:10 | Click a hotspot, "Open the calendar", then a bright month; Export menu open. | Pick an area: MODIS and VIIRS hotspots from NASA FIRMS land on one scale, so 2005 compares with 2025, month by month, and you can export it. |
 | 0:20 | Live tab on a Brazilian area with a full chart, then Anomalies. | Next: this season against past years as it happens, so responders spot an unusual month while it unfolds. |
 | 0:28 | Logo with the URL. | primeradiant.zenus.systems |
 
