@@ -34,6 +34,18 @@ export const hotspotLabels = (hs) => {
   return place ? { label: place, coords: centerLabel(hs.bbox) } : { label: centerLabel(hs.bbox), coords: null };
 };
 
+/**
+ * A hotspot row's two lines: the state (else the country) over the country, so long names stay on
+ * one line each; `full` is the whole place for the tooltip and the accessible name. Without a place
+ * the center is the heading and `sub` is null.
+ */
+export const hotspotRowLabels = (hs) => {
+  const p = hs?.place;
+  const full = placeLabel(hs);
+  if (!full) return { title: centerLabel(hs.bbox), sub: null, full: centerLabel(hs.bbox) };
+  return { title: p.state ?? p.country, sub: p.country, full };
+};
+
 /** The hotspot whose square is `bbox`, or null. */
 export const hotspotAt = (overview, bbox) => (overview?.hotspots ?? []).find((hs) => sameBbox(hs.bbox, bbox)) ?? null;
 
@@ -135,6 +147,35 @@ export const stepSquare = (model, current, key, { by = 1 } = {}) => {
   }
   return current;
 };
+
+// The map zooms only when the data is wider than this many degrees (the global extent); the zoomed
+// window is at most 20 x 10 deg, narrower when needed to keep a 0.9 deg square at least 24 CSS px.
+export const ZOOM_MIN_EXTENT = 40;
+const ZOOM_MAX_WIDTH = 20;
+const MIN_SQUARE_PX = 24;
+const SQUARE_DEG = 0.9;
+
+export const isZoomable = (model) => Boolean(model) && model.east - model.west > ZOOM_MIN_EXTENT;
+
+/**
+ * The zoomed window in degrees, {west, north, width, height}, for a map box of boxW x boxH CSS px:
+ * same shape as the box, centered on [lon, lat] and kept inside the extent.
+ */
+export const zoomWindow = (model, [lon, lat], boxW, boxH) => {
+  const pxPerDeg = Math.max(boxW / ZOOM_MAX_WIDTH, MIN_SQUARE_PX / SQUARE_DEG);
+  const width = Math.min(boxW / pxPerDeg, model.east - model.west);
+  const height = Math.min(boxH / pxPerDeg, model.north - model.south);
+  const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+  return {
+    west: clamp(lon - width / 2, model.west, model.east - width),
+    north: clamp(lat + height / 2, model.south + height, model.north),
+    width,
+    height,
+  };
+};
+
+/** Whether the whole 1 deg square lies inside a zoom window. */
+export const inWindow = (win, q) => q.w >= win.west && q.w + 1 <= win.west + win.width && q.s >= win.north - win.height && q.s + 1 <= win.north;
 
 /** Screen reader line for a square: "6.5°S 44.5°W, 3,391 fire-cell-days in 2025, hotspot 1." */
 export const squareText = (model, square, overview) => {

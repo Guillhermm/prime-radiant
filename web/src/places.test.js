@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   heatBin, HEAT_LABELS, centerLabel, hotspotPresets, placeLabel, hotspotLabels, hotspotAt, valueLine, sensorValueLine, defaultArea, suggestionCaption,
   drawerModel, mapModel, dataRegionBbox, regionCaption, squareFor, stepSquare, squareText,
+  hotspotRowLabels, isZoomable, zoomWindow, inWindow,
 } from './places.js';
 
 const overview = {
@@ -107,4 +108,41 @@ test('dataRegionBbox: the domain cells when there is a domain, else the manifest
   assert.deepEqual(dataRegionBbox({ tiles: ['x17y13', 'x18y13', 'x17y14'] }), [-10, 40, 10, 60]);
   assert.equal(dataRegionBbox({ tiles: [] }), null);
   assert.equal(regionCaption(2000, 2026), 'The whole data region, 2000–2026. Rings are years, slices are months.');
+});
+
+test('hotspot rows: state over country, country over itself, coordinates without a place', () => {
+  const long = { bbox: [23, -8, 24, -7], place: { country: 'Democratic Republic of the Congo', state: 'Kasaï-Oriental' } };
+  assert.deepEqual(hotspotRowLabels(long), { title: 'Kasaï-Oriental', sub: 'Democratic Republic of the Congo', full: 'Kasaï-Oriental, Democratic Republic of the Congo' });
+  assert.deepEqual(hotspotRowLabels({ bbox: [0, 0, 1, 1], place: { country: 'Testland', state: null } }), { title: 'Testland', sub: 'Testland', full: 'Testland' });
+  assert.deepEqual(hotspotRowLabels({ bbox: [-45, -7, -44, -6] }), { title: '6.5°S 44.5°W', sub: null, full: '6.5°S 44.5°W' });
+});
+
+const world = { west: -180, east: 180, south: -60, north: 114 - 60 };
+
+test('zoom: only an extent wider than 40 degrees', () => {
+  assert.equal(isZoomable(mapModel(overview)), false);
+  assert.equal(isZoomable(world), true);
+  assert.equal(isZoomable({ west: 0, east: 40, south: 0, north: 10 }), false);
+  assert.equal(isZoomable(null), false);
+});
+
+test('zoom window: 20 x 10 at most, narrower to keep a square at 24 px, kept inside the extent', () => {
+  // 600 px wide: 30 px per degree already, so the full 20 x 10 window.
+  assert.deepEqual(zoomWindow(world, [0, 0], 600, 300), { west: -10, north: 5, width: 20, height: 10 });
+  // 344 px (a phone): 24 px / 0.9 deg sets the scale, about 12.9 deg wide.
+  const phone = zoomWindow(world, [0, 0], 344, 172);
+  assert.ok(Math.abs(phone.width - 12.9) < 0.01 && Math.abs(phone.height - 6.45) < 0.01);
+  assert.ok((344 / phone.width) * 0.9 >= 24 - 1e-9);
+  // At the corners it slides back inside the extent.
+  assert.deepEqual(zoomWindow(world, [-179, 53], 600, 300), { west: -180, north: 54, width: 20, height: 10 });
+  assert.deepEqual(zoomWindow(world, [179, -59], 600, 300), { west: 160, north: -50, width: 20, height: 10 });
+});
+
+test('a square is in the window only when all of it is', () => {
+  const win = { west: -10, north: 5, width: 20, height: 10 };
+  assert.equal(inWindow(win, { w: -10, s: -5 }), true);
+  assert.equal(inWindow(win, { w: 9, s: 4 }), true);
+  assert.equal(inWindow(win, { w: 10, s: 0 }), false);
+  assert.equal(inWindow(win, { w: 0, s: 5 }), false);
+  assert.equal(inWindow(win, { w: 0, s: -6 }), false);
 });

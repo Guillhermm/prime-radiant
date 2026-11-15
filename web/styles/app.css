@@ -735,8 +735,10 @@ html.sheet-open, html.drawer-open { overflow: hidden; }
   flex: 1; min-block-size: 0; display: flex; flex-direction: column; gap: 1rem; padding: 0 1.5rem 1.25rem; overflow: auto; overscroll-behavior: contain;
   scrollbar-width: thin; scrollbar-color: var(--color-border-strong) transparent;
 }
-.plate { padding: 1rem; border-radius: var(--radius-card); background: var(--plate); color: var(--plate-text); box-shadow: inset 0 0 0 1px var(--plate-edge); }
+.plate { position: relative; padding: 1rem; border-radius: var(--radius-card); background: var(--plate); color: var(--plate-text); box-shadow: inset 0 0 0 1px var(--plate-edge); }
 .hm-map { display: block; max-inline-size: 22rem; margin-inline: auto; border-radius: var(--radius-ctl); cursor: pointer; }
+.hm-map.is-zoomable { max-inline-size: none; }
+.hm-world { position: absolute; inset-block-start: 0.5rem; inset-inline-end: 0.5rem; inline-size: 2.75rem; block-size: 2.75rem; }
 .hm-map:focus-visible { outline: 2px solid var(--hm-focus); outline-offset: 0.375rem; box-shadow: none; }
 .hm { display: block; inline-size: 100%; block-size: auto; }
 .hm [hidden] { display: none; }
@@ -751,10 +753,11 @@ html.sheet-open, html.drawer-open { overflow: hidden; }
 /* The zero class is only 1.33:1 on the plate, so it carries a faint edge. */
 .hm-sq.hm-b0 { stroke: rgb(255 255 255 / 0.22); stroke-width: 0.6; }
 .hm-ring { fill: none; pointer-events: none; }
-.hm-sel-in, .hm-focus-in { stroke: var(--pin-bg); stroke-width: 2.6; }
-.hm-sel-out { stroke: var(--hm-sel); stroke-width: 2.2; }
-.hm-focus-out { stroke: var(--hm-focus); stroke-width: 2.2; }
-.hm-hover { stroke: var(--plate-text); stroke-width: 1.6; stroke-dasharray: 3 2; }
+/* Ring stroke widths are set by the script, scaled with the zoom. */
+.hm-sel-in, .hm-focus-in { stroke: var(--pin-bg); }
+.hm-sel-out { stroke: var(--hm-sel); }
+.hm-focus-out { stroke: var(--hm-focus); }
+.hm-hover { stroke: var(--plate-text); }
 .hm-map:not(:focus-visible) :is(.hm-focus-in, .hm-focus-out) { display: none; }
 .hm-pin { pointer-events: none; }
 .hm-pin circle { fill: var(--pin-bg); stroke: var(--pin-text); stroke-width: 1.2; }
@@ -777,9 +780,10 @@ html.sheet-open, html.drawer-open { overflow: hidden; }
 .hs-rank { display: grid; place-items: center; flex: none; inline-size: 1.5rem; block-size: 1.5rem; border-radius: 50%; background: var(--color-surface-2); color: var(--color-text-muted); font-size: 0.75rem; font-weight: 700; }
 .hs-row[aria-pressed="true"] .hs-rank { background: var(--color-accent); color: var(--color-accent-text); }
 .hs-name { flex: 1; min-inline-size: 0; display: flex; flex-direction: column; line-height: 1.25; }
-.hs-name b { font-size: 0.9375rem; font-weight: 600; overflow-wrap: anywhere; }
+.hs-name b { font-size: 0.9375rem; font-weight: 600; }
 .hs-name small { color: var(--color-text-muted); font-size: 0.75rem; }
-.hs-val { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.9375rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.hs-name b, .hs-name small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hs-val { flex: none; white-space: nowrap; display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.9375rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 .ad-manual {
   display: flex; align-items: center; gap: 0.625rem; min-block-size: 2.75rem; padding: 0.625rem 0.875rem; cursor: pointer; text-align: start;
   border: 1px dashed var(--color-border-strong); border-radius: var(--radius-ctl); background: none; color: var(--color-accent); font: 600 0.9375rem var(--font-sans);

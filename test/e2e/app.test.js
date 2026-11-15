@@ -33,7 +33,7 @@ let synthPlaces;
 // Switches for the synthetic origin: serve overview.json or answer 404 (as production can), and hold
 // tile responses back to see the first-run placeholder.
 // `dataVersion` relabels the synthetic manifest so the app takes it for real data.
-const synthOpts = { overview: true, tileDelay: 0, dataVersion: null };
+const synthOpts = { overview: true, overviewBody: null, tileDelay: 0, dataVersion: null };
 let synthFiles;
 
 before(async () => {
@@ -56,7 +56,7 @@ before(async () => {
   synthServer = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
     if (path === '/data/overview.json' && !synthOpts.overview) { res.writeHead(404, site.headers); return res.end(); }
-    let body = files.get(path);
+    let body = path === '/data/overview.json' && synthOpts.overviewBody ? synthOpts.overviewBody : files.get(path);
     if (synthOpts.dataVersion && (path === '/data/manifest.json' || path === '/data/global.json')) body = { ...body, dataVersion: synthOpts.dataVersion };
     if (!body) return serveFile(req, res);
     if (path.includes('/tiles/') && synthOpts.tileDelay) await wait(synthOpts.tileDelay);
@@ -976,6 +976,76 @@ test('a shared link wins over the suggestion, and is the area the tabs reopen af
     assert.ok((await page.evaluate('location.hash')).includes(bboxHash(shared)), 'the linked area, not hotspot 1');
     assert.deepEqual(page.problems, []);
   } finally { await page.close(); }
+});
+
+test('global map: one click zooms so a square is at least 24 px, a second picks it; rows stay two lines; a map pick is named by its center', { skip }, async () => {
+  // The synthetic overview stretched to the whole globe, with a long place name as hotspot 1.
+  const longest = { bbox: [23, -8, 24, -7], value: 2500, place: { country: 'Democratic Republic of the Congo', state: 'Kasaï-Oriental' } };
+  const isHotspot = (c) => synthOverview.hotspots.some((hs) => hs.bbox[0] === c[0] && hs.bbox[1] === c[1]);
+  const plain = synthOverview.cells.find((c) => !isHotspot(c));
+  synthOpts.overviewBody = {
+    ...synthOverview, region: null,
+    cells: [...synthOverview.cells, [-180, -60, 3], [179, 53, 3], [23, -8, 2500]],
+    hotspots: [longest, ...synthOverview.hotspots.slice(0, 9)],
+  };
+  try {
+    for (const width of [1280, 400]) {
+      const page = await open(width, `#${bboxHash(synthOverview.hotspots[0].bbox)}&view=calendar`, synthBase);
+      try {
+        await page.until(CALENDAR_READY, 'calendar');
+        await settle(page);
+        await page.click('.areas-button');
+        await page.until(`${AREAS_OPEN}?.classList.contains('is-zoomable')`, 'a zoomable map');
+        await settle(page);
+        assert.equal(await page.evaluate(`document.querySelector('.hm-world').hidden`), true, 'no way back before zooming');
+
+        const rows = await page.evaluate(`(() => {
+          const lines = (el) => { const t = [...el.childNodes].find((n) => n.nodeType === 3); const r = document.createRange(); r.selectNodeContents(t); return new Set([...r.getClientRects()].map((x) => Math.round(x.top))).size; };
+          const all = [...document.querySelectorAll('.hs-row')];
+          return {
+            heights: [...new Set(all.map((r) => Math.round(r.getBoundingClientRect().height)))],
+            lines: all.flatMap((r) => [...r.querySelectorAll('.hs-name b, .hs-name small, .hs-val')].map(lines)),
+            first: [all[0].querySelector('b').textContent, all[0].querySelector('small').textContent, all[0].title, all[0].getAttribute('aria-label')],
+          };
+        })()`);
+        assert.equal(rows.heights.length, 1, `rows of one height at ${width} (${rows.heights})`);
+        assert.ok(rows.lines.every((n) => n === 1), `name, country and value on one line each at ${width} (${rows.lines})`);
+        assert.deepEqual(rows.first, ['Kasaï-Oriental', 'Democratic Republic of the Congo', 'Kasaï-Oriental, Democratic Republic of the Congo',
+          `Hotspot 1, Kasaï-Oriental, Democratic Republic of the Congo, 2,500 fire-cell-days in ${synthOverview.year}`]);
+
+        const sq = `document.querySelector('.hm-sq[data-key="${plain[0]},${plain[1]}"]')`;
+        await page.click(`.hm-sq[data-key="${plain[0]},${plain[1]}"]`);
+        await page.until(`!document.querySelector('.hm-world').hidden`, 'the click zooms');
+        const size = await page.evaluate(`${sq}.getBoundingClientRect().width`);
+        assert.ok(size >= 24, `a square is ${size} px at ${width}`);
+        assert.equal(await page.evaluate(`document.querySelector('.ad-primary').disabled`), true, 'the zooming click picks nothing');
+
+        // A key that takes the focus out of the window recenters it there.
+        await page.press('Home');
+        await page.until(`(() => { const f = document.querySelector('.hm-focus-out').getBoundingClientRect(), m = document.querySelector('.hm').getBoundingClientRect(); return f.left >= m.left && f.right <= m.right && f.top >= m.top && f.bottom <= m.bottom; })()`, 'the window follows the focus to hotspot 1');
+
+        await page.click('.hm-world');
+        await page.until(`document.querySelector('.hm-world').hidden && document.activeElement.classList.contains('hm-map')`, 'the whole map again, focus on it');
+        assert.equal(await page.evaluate(`document.querySelector('.hm').viewBox.baseVal.width`), 3600);
+
+        await page.click(`.hm-sq[data-key="${plain[0]},${plain[1]}"]`);
+        await page.until(`!document.querySelector('.hm-world').hidden`, 'zoom');
+        await page.click(`.hm-sq[data-key="${plain[0]},${plain[1]}"]`);
+        await page.until(`!document.querySelector('.ad-primary').disabled`, 'the second click picks');
+        await page.click('.ad-primary');
+        const center = `${Math.abs(plain[1] + 0.5).toFixed(1)}°${plain[1] < 0 ? 'S' : 'N'} ${Math.abs(plain[0] + 0.5).toFixed(1)}°${plain[0] < 0 ? 'W' : 'E'}`;
+        await page.until(`document.querySelector('.context h1')?.textContent === ${JSON.stringify(center)}`, 'the hero names the square by its center');
+
+        // A hotspot row zooms to its square.
+        await settle(page);
+        await page.click('.areas-button');
+        await page.until(AREAS_OPEN, 'open again');
+        await page.evaluate(`document.querySelectorAll('.hs-row')[0].click()`);
+        assert.equal(await page.evaluate(`document.querySelector('.hm-world').hidden`), false, 'the row zooms the map');
+        assert.deepEqual(page.problems, []);
+      } finally { await page.close(); }
+    }
+  } finally { synthOpts.overviewBody = null; }
 });
 
 test('without overview.json the picker offers the manual path, quietly', { skip }, async () => {

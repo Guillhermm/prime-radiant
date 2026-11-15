@@ -1,7 +1,7 @@
 import { PREVIEW_VIEWS, viewsFor } from './views.js';
 import { createStore, parseHash, serializeHash } from './state.js';
 import { findPreset, presetsFor } from './presets.js';
-import { dataRegionBbox, defaultArea, hotspotAt, hotspotPresets, placeLabel } from './places.js';
+import { centerLabel, dataRegionBbox, defaultArea, hotspotAt, hotspotPresets, placeLabel } from './places.js';
 import * as appShell from './components/app-shell.js';
 import * as queryBar from './components/query-bar.js';
 import { spanFromManifest } from './components/date-range.js';
@@ -342,7 +342,7 @@ export const start = async (root = document.getElementById('app')) => {
     beforeOpen: () => { map.ctl?.closeFull(); qb.close(); drawer.close(); },
     onCommit: (bbox) => {
       const home = store.get().bbox === null;
-      goTo({ ...queryBar.presetPatch({ bbox, name: placeLabel(hotspotAt(places.overview, bbox)) }, store.get(), span), ...(home ? { view: 'calendar' } : {}) });
+      goTo({ ...queryBar.presetPatch({ bbox, name: placeLabel(hotspotAt(places.overview, bbox)) ?? centerLabel(bbox) }, store.get(), span), ...(home ? { view: 'calendar' } : {}) });
       if (home) window.scrollTo({ top: 0 });
     },
     onManual: (target, back) => qb.open(target === 'both' ? (isPhone() ? 'area' : 'map') : target, back ?? undefined),
