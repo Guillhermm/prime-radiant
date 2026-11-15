@@ -177,6 +177,12 @@ test('Series contract: boolean flags, method, comparable, validates', () => {
   assert.equal(validateSeries({ ...a, labels: a.labels.slice(1) })[0].code, 'BAD_LABELS');
   assert.equal(validateSeries({ ...a, flags: a.flags.slice(1) })[0].code, 'BAD_FLAGS');
   assert.equal(validateSeries({ ...a, flags: a.flags.map(() => 'x') })[0].code, 'BAD_FLAGS');
+  const sensors = { modis: a, viirs: a };
+  const c = anomaly(jan(2013, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]), man(), { sensors });
+  assert.equal(c.confirmedBy.length, c.values.length);
+  assert.deepEqual(validateSeries(c), []);
+  assert.equal(validateSeries({ ...c, confirmedBy: c.confirmedBy.slice(1) })[0].code, 'BAD_CONFIRMED_BY');
+  assert.equal(validateSeries({ ...c, confirmedBy: c.confirmedBy.map(() => 'noaa20') })[0].code, 'BAD_CONFIRMED_BY');
 });
 
 /** Full-year series: each year constant `v` per month (12 * v total). */
