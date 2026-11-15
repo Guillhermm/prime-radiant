@@ -214,16 +214,21 @@ months, NOAA-20 for NOAA-20 x K months (`core/partial.js`).
   never used without x R). `liveSeriesFromTiles` builds it from the live tiles for an AOI and
   declares `units: 'snpp-equivalent'`; `liveComparison` refuses any other unit. Days outside NOAA-20
   coverage, listed in `partial_days`, and the fetch day are null, never 0.
-- **Month to date**: cumulative fire-cell-days from the 1st to the last complete day (the leading
-  run of non-null days). Season: monthly totals, the current month provisional. Series id `live`,
-  `comparable: false`, never added to harmonized totals.
+- **Month to date**: from the 1st to the last day with data, the sum of the complete (non-null) days.
+  A partial or missing day is skipped, never counted as 0, and later complete days still count;
+  `daysCounted` and `daysMissing` are returned, and when more than a third of the days so far are
+  missing the result is low confidence. Season: monthly sums of complete days, the same rule for past
+  months (a month with partial days gets its increment band, not null), the current month provisional.
+  The last complete day is the last complete day in the area. Series id `live`, `comparable: false`,
+  never added to harmonized totals.
 - **Band**: median and quartiles (type 7) of the same calendar month in earlier years of the VIIRS era
-  (2012-02 on, baseline exclusions; at least 5 years, else null) multiplied by the mean cumulative
+  (2012-02 on, baseline exclusions; at least 5 years, else null) multiplied by the sum of the
+  increments (share[d] - share[d-1], share[0] = 0) of exactly the days counted, from the mean cumulative
   share of a month counted by the end of day d (`core/data/daily-share.json`, 12 x 31, from the
   national S-NPP daily data 2012-2025; gate V3 measured leave-one-year-out bias of at most 4% for
   Brazil). This replaces the earlier d/N scaling, which was 20-28% too high in Jun-Aug.
-- **Small areas**: under 2,000 in-domain 0.1 degree cells (about 20,000 km2, a Foundation choice not
-  yet validated) the comparison is marked low confidence (the Pantanal was 25-30% off either way).
+- **Low confidence**: K not usable (method 4.2), more than a third of the days so far missing, or an area under 2,000 in-domain 0.1 degree cells (about 20,000 km2, a Foundation choice not
+  yet validated; the Pantanal was 25-30% off either way).
 - **Type filter**: the simplest honest option is taken: values are kept and the per-month bias is
   stated (`typeBiasStatement`). `type0Share(allTypes, type0)` computes the archive's monthly type-0
   ratio when an all-types monthly series is built; `liveComparison` then multiplies by it.

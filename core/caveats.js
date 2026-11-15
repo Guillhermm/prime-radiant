@@ -46,7 +46,7 @@ const DEFS = [
   ['live-unfiltered', 'live', 'Live is unfiltered by type.',
     'Near-real-time detections carry no detection type, so static sources are not removed as in the archive. The bias is small in Aug-Nov (about 0.4% to 1.5%) and larger in the wet season (up to 3% to 10% in Feb-May).'],
   ['live-provisional', 'live', 'Current period is provisional.',
-    'The current month is still open: the line ends at the last complete UTC day, and the day of the fetch is never counted.'],
+    'The current month is still open: the line ends at the last complete day in the area (a UTC day), the day of the fetch is never counted, and a partial day is skipped, never counted as 0.'],
   ['live-sensor', 'live', 'Live uses NOAA-20 scaled to S-NPP.',
     'S-NPP near-real-time files ended on 2026-11-02, so live values are NOAA-20 detections multiplied by K to S-NPP equivalent units, the unit of the archive band.'],
   ['live-archive-lag', 'live', 'The archive follows later.',

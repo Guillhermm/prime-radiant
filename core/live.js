@@ -20,6 +20,8 @@ export const VIIRS_ERA_START = '2012-02';
  * and Brazil-wide as fine; 2,000 cells is about 20,000 km2. Revisit with the science team.
  */
 export const LIVE_MIN_CELLS = 2000;
+/** More than this fraction of the days so far missing (null) makes the comparison low confidence. */
+export const LIVE_MAX_MISSING = 1 / 3;
 
 /** Caveat ids for live data, kind 'live' (kind 'caveat' is the drawer's fixed 9). */
 export const LIVE_CAVEAT_IDS = ['live-nrt', 'live-approximate', 'live-not-harmonized', 'live-unfiltered', 'live-provisional',
@@ -58,7 +60,8 @@ const dayStr = (n) => new Date(n * 864e5).toISOString().slice(0, 10);
  * @param {Record<string, {cell: number[], day: number[], noaa20: (number|null)[]}>} liveTiles by tile id
  * @param {object} liveManifest validated live manifest
  * @param {[number, number, number, number]} bbox [west, south, east, north]
- * @param {{K: number|{value: number|null}, cells?: number|null}} opts K from harmonize(); `cells` = in-domain 0.1 degree
+ * `lowConfidence` on the result is true when `K.usable` is false (K failed the usability rule, method.md 4.2).
+ * @param {{K: number|{value: number|null, usable?: boolean}, cells?: number|null}} opts K from harmonize(); `cells` = in-domain 0.1 degree
  *   cells of the AOI (seriesForAoi(...).domain.inside), kept on the Series for the small-AOI label
  * @returns {object} Series id 'live', unit 'fire-cell-days', units 'snpp-equivalent', step 'day', comparable false
  */
@@ -88,7 +91,7 @@ export function liveSeriesFromTiles(liveTiles, liveManifest, bbox, { K, cells = 
     return !inside || partial.has(day) || (fetchDay && day >= fetchDay) ? null : sum * k;
   });
   return { id: 'live', unit: UNIT, units: LIVE_UNITS, step: 'day', start: liveManifest.day0, values, comparable: false,
-    method: { id: 'noaa20-x-K', version: 1 }, cells };
+    method: { id: 'noaa20-x-K', version: 1 }, cells, lowConfidence: typeof K === 'object' && K?.usable === false };
 }
 
 /**
@@ -165,6 +168,9 @@ function checkShare(share) {
   }
 }
 
+/** Increment of the share table for day d (1-based): share[d] - share[d-1], share[0] = 0. */
+const inc = (share, month, d) => share[month - 1][d - 1] - (d > 1 ? share[month - 1][d - 2] : 0);
+
 /**
  * Current season of near-real-time detections against the archive (roadmap M3-K3, gate V3 fixes).
  *
@@ -175,17 +181,23 @@ function checkShare(share) {
  *
  * Band method: median and interquartile range (type 7 quantiles) of the same calendar month in
  * earlier years of the VIIRS era (2012-02 on; same exclusions as baseline(): known partial months and
- * `partialMonths`), multiplied by `share[month][d-1]`, the mean fraction of a month's fire-cell-days
- * already counted by the end of day d (the table from the national S-NPP daily data, gate V3 L1).
- * The band is therefore the expected month-to-date, not the month total. Fewer than `minYears`
- * usable years gives null band entries (never 0).
+ * `partialMonths`), multiplied by the share of the month those days normally hold: the sum of
+ * the increments inc[d] = share[d] - share[d-1] (share[0] = 0) of exactly the days counted, where
+ * `share[month][d-1]` is the mean fraction of a month's fire-cell-days counted by the end of day d
+ * (the table from the national S-NPP daily data, gate V3 L1). With no missing day this is
+ * share[last day]. Fewer than `minYears` usable years gives null band entries (never 0).
  *
- * `month`: current month to date, step 'day', values[d-1] = cumulative fire-cell-days through day
- * d, ending at the last complete day (the leading run of non-null days from the 1st: a null day
- * ends it, it is never counted as 0). null (with `reason`) when no complete day starts the month.
+ * `month`: current month to date, step 'day', from the 1st to the last day with data. The value is
+ * the sum of the complete (non-null) days; a null (partial or missing) day is skipped, never
+ * counted as 0, and later complete days still count. values[d-1] is the running sum through
+ * day d, null on a missing day itself; band[d-1] the band for the days counted through d.
+ * null (with `reason`) when live data starts after the 1st. `daysCounted` and `daysMissing` (day
+ * strings) are returned for the month. When more than a third of the days so far are missing the result is
+ * low confidence (`lowConfidence`, reason in `lowConfidenceReasons`).
  * `season`: step 'month', one value per month from the first month fully covered by live data
- * to the current one; a past month with a null day is null; the current month is provisional and
- * its band uses the share at the last complete day.
+ * to the current one; a month's value sums its complete days and its band uses the increments of
+ * those days (a month with no complete day is null); `daysCounted` and `daysMissing` are parallel
+ * arrays (missing is a count).
  * Both match the live-view.js contract: `{live, band: {p25, median, p75}, provisional}`.
  *
  * Type filter (gate V3 L5): the archive keeps only presumed vegetation fires (type 0), the NRT
@@ -195,23 +207,29 @@ function checkShare(share) {
  * `typeBias` carries the per-month bias statement.
  *
  * `lowConfidence` is true when `live.cells` (in-domain 0.1 degree cells) is under LIVE_MIN_CELLS,
- * null when it is unknown.
+ * `live.lowConfidence` is set (K not usable), or more than a third of the days so far are
+ * missing; else false, or null when nothing is known about `cells`.
  *
  * @param {{live: object, harmonized: import('./index.js').Series, share: number[][],
  *   fetchedAt?: string|null, now?: Date, partialMonths?: string[], minYears?: number, type0Share?: (number|null)[]|null}} input
  * @returns {{fetched_at: string|null, stale: boolean, month: object|null, season: object|null, lastCompleteDay: string|null,
- *   lowConfidence: boolean|null, typeAdjusted: boolean, typeBias: string|null, reason?: string}}
+ *   daysCounted: number, daysMissing: string[], lowConfidence: boolean|null, lowConfidenceReasons: string[],
+ *   typeAdjusted: boolean, typeBias: string|null, reason?: string}}
  */
 export function liveComparison({ live, harmonized, share, fetchedAt = null, now = new Date(), partialMonths = [], minYears = LIVE_MIN_YEARS, type0Share: t0 = null }) {
   if (live?.units !== LIVE_UNITS) throw new RangeError(`liveComparison: live Series must declare units "${LIVE_UNITS}" (NOAA-20 x K), got ${JSON.stringify(live?.units)}`);
   checkShare(share);
   const stale = isStale(fetchedAt, now);
   const cells = live.cells ?? null;
-  const out = { fetched_at: fetchedAt, stale, month: null, season: null, lastCompleteDay: null,
-    lowConfidence: cells === null ? null : cells < LIVE_MIN_CELLS, typeAdjusted: false, typeBias: null };
+  const reasons = [];
+  if (cells !== null && cells < LIVE_MIN_CELLS) reasons.push(`small area: ${cells} cells, under ${LIVE_MIN_CELLS}`);
+  if (live.lowConfidence) reasons.push('K not usable');
+  const out = { fetched_at: fetchedAt, stale, month: null, season: null, lastCompleteDay: null, daysCounted: 0, daysMissing: [],
+    lowConfidence: null, lowConfidenceReasons: reasons, typeAdjusted: false, typeBias: null };
+  const verdict = () => { out.lowConfidence = reasons.length ? true : cells === null ? null : false; return out; };
   const days = live.values?.length ? dayList(live) : [];
   const lastData = [...days].reverse().find((d) => d.value !== null);
-  if (!lastData) return { ...out, reason: 'no complete live day' };
+  if (!lastData) { verdict(); return { ...out, reason: 'no complete live day' }; }
   const cur = lastData.day.slice(0, 7);
   const curNo = Number(cur.slice(5));
   const partial = new Set([...KNOWN_PARTIAL_MONTHS, ...partialMonths]);
@@ -219,37 +237,49 @@ export function liveComparison({ live, harmonized, share, fetchedAt = null, now 
   const ratio = (ym) => (Array.isArray(t0) && Number.isFinite(t0[Number(ym.slice(5)) - 1]) ? t0[Number(ym.slice(5)) - 1] : 1);
   out.typeAdjusted = Array.isArray(t0) && Number.isFinite(t0[curNo - 1]);
   out.typeBias = out.typeAdjusted ? null : typeBiasStatement(curNo);
-
-  // Current month: leading run of complete days from the 1st.
-  const ds = days.filter((d) => d.day.startsWith(cur));
+  const dom = (d) => Number(d.day.slice(8));
   const first = days[0].day;
-  const startsOn1st = first <= `${cur}-01`;
-  let run = 0;
-  if (startsOn1st) while (run < ds.length && ds[run].value !== null) run++;
-  const pool = pastYears(harmonized, cur, partial);
-  if (run === 0) {
-    out.reason = startsOn1st ? `${cur}-01 is not a complete day` : `live data starts after the 1st of ${cur}`;
+
+  // Current month: days 1..last day with data; complete days count, missing ones are skipped.
+  const ds = days.filter((d) => d.day.startsWith(cur) && d.day <= lastData.day);
+  if (first > `${cur}-01`) {
+    out.reason = `live data starts after the 1st of ${cur}`;
   } else {
-    let acc = 0;
-    const values = ds.slice(0, run).map((d) => (acc += d.value) * ratio(cur));
-    const band = toBand(values.map((_, i) => bandAt(pool, share[curNo - 1][i], minYears)));
-    out.lastCompleteDay = ds[run - 1].day;
-    out.month = { live: { ...meta, step: 'day', start: `${cur}-01`, values }, band, provisional: true, month: cur, basis: { years: pool.length, share: share[curNo - 1][run - 1] } };
+    const pool = pastYears(harmonized, cur, partial);
+    let acc = 0, frac = 0;
+    const values = [], fracs = [];
+    for (const d of ds) {
+      if (d.value === null) values.push(null);
+      else { acc += d.value; frac += inc(share, curNo, dom(d)); values.push(acc * ratio(cur)); }
+      fracs.push(frac);
+    }
+    const missing = ds.filter((d) => d.value === null).map((d) => d.day);
+    out.daysCounted = ds.length - missing.length;
+    out.daysMissing = missing;
+    if (missing.length > ds.length * LIVE_MAX_MISSING) reasons.push(`${missing.length} of ${ds.length} days so far are missing`);
+    const band = toBand(fracs.map((f) => bandAt(pool, f, minYears)));
+    out.lastCompleteDay = lastData.day;
+    out.month = { live: { ...meta, step: 'day', start: `${cur}-01`, values }, band, provisional: true, month: cur,
+      daysCounted: out.daysCounted, daysMissing: missing, basis: { years: pool.length, share: frac } };
   }
 
-  // Season: months fully covered by live data; the current one needs its leading run.
+  // Season: months fully covered by live data; a month sums its complete days.
   const firstMonth = first.endsWith('-01') ? first.slice(0, 7) : addMonths(first.slice(0, 7), 1);
-  const last = run > 0 ? cur : addMonths(cur, -1);
-  if (firstMonth <= last) {
+  if (firstMonth <= cur) {
     const months = [];
-    for (let m = firstMonth; m <= last; m = addMonths(m, 1)) months.push(m);
-    const values = months.map((m) => {
-      const mine = days.filter((d) => d.day.startsWith(m));
-      const use = m === cur ? mine.slice(0, run) : mine;
-      return use.some((d) => d.value === null) ? null : use.reduce((a, d) => a + d.value, 0) * ratio(m);
-    });
-    const band = toBand(months.map((m) => bandAt(pastYears(harmonized, m, partial), m === cur ? share[curNo - 1][run - 1] : 1, minYears)));
-    out.season = { live: { ...meta, step: 'month', start: firstMonth, values }, band, provisional: true };
+    for (let m = firstMonth; m <= cur; m = addMonths(m, 1)) months.push(m);
+    const values = [], bands = [], counted = [], missingN = [];
+    for (const m of months) {
+      const mine = days.filter((d) => d.day.startsWith(m) && d.day <= lastData.day);
+      const ok = mine.filter((d) => d.value !== null);
+      const no = Number(m.slice(5));
+      counted.push(ok.length);
+      missingN.push(mine.length - ok.length);
+      if (!ok.length) { values.push(null); bands.push({ p25: null, median: null, p75: null }); continue; }
+      values.push(ok.reduce((a, d) => a + d.value, 0) * ratio(m));
+      bands.push(bandAt(pastYears(harmonized, m, partial), ok.reduce((f, d) => f + inc(share, no, dom(d)), 0), minYears));
+    }
+    out.season = { live: { ...meta, step: 'month', start: firstMonth, values }, band: toBand(bands), provisional: true, daysCounted: counted, daysMissing: missingN };
   }
-  return out;
+  return verdict();
 }

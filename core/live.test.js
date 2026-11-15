@@ -42,27 +42,41 @@ test('month to date: cumulative days against the monthly band times the share ta
   assert.equal(r.stale, false);
 });
 
-test('a null day ends the month to date: it is never counted as 0 and later days do not count', () => {
+test('a missing day is skipped, never 0; later complete days count and the band uses exactly those increments', () => {
   const r = run(day('2026-11-01', [4, 1, null, 9]));
-  assert.deepEqual(r.month.live.values, [4, 5]);
-  assert.equal(r.month.band.median.length, 2);
-  assert.equal(r.lastCompleteDay, '2026-11-02');
+  assert.deepEqual(r.month.live.values, [4, 5, null, 14]);
+  assert.deepEqual(r.month.band.median, [55 / 31, 110 / 31, 110 / 31, 165 / 31]); // 3 counted days at the end
+  assert.equal(r.daysCounted, 3);
+  assert.deepEqual(r.daysMissing, ['2026-11-03']);
+  assert.equal(r.lastCompleteDay, '2026-11-04');
+  assert.equal(r.lowConfidence, null); // 1 of 4 missing is not over a third; cells unknown
   assert.equal(r.stale, true); // no fetched_at
 });
 
-test('trailing null (the open fetch day) is left out; a zero day stays 0', () => {
-  const r = run(day('2026-11-01', [0, 0, null]));
-  assert.deepEqual(r.month.live.values, [0, 0]);
+test('increments come from the share table, not from the day number', () => {
+  const share = SHARE.map((row) => row.map((_, i) => [0.1, 0.5, 0.6][i] ?? 1)); // day 1 0.1, day 2 0.5, day 3 0.6
+  const r = liveComparison({ live: day('2026-11-01', [1, null, 1]), harmonized: archive(), share, now: NOW });
+  assert.ok(Math.abs(r.month.band.median[2] - 55 * (0.1 + 0.1)) < 1e-9); // inc day 1 = 0.1, inc day 3 = 0.1
 });
 
-test('no complete day: no month, a reason', () => {
+test('more than a third of the days so far missing: low confidence with the reason', () => {
+  const r = run(day('2026-11-01', [1, null, null, 5]));
+  assert.equal(r.lowConfidence, true);
+  assert.match(r.lowConfidenceReasons[0], /2 of 4 days/);
+  assert.equal(run(day('2026-11-01', [1, null, 1, 5], { cells: 5000 })).lowConfidence, false);
+});
+
+test('trailing null (the open fetch day) is left out and does not count as missing; a zero day stays 0', () => {
+  const r = run(day('2026-11-01', [0, 0, null]));
+  assert.deepEqual(r.month.live.values, [0, 0]);
+  assert.deepEqual(r.daysMissing, []);
+});
+
+test('no complete day at all: no month, a reason', () => {
   const r = run(day('2026-11-01', [null, null]));
   assert.equal(r.month, null);
   assert.equal(r.season, null);
   assert.equal(r.reason, 'no complete live day');
-  const first = run(day('2026-11-01', [null, 3]));
-  assert.equal(first.month, null);
-  assert.match(first.reason, /not a complete day/);
 });
 
 test('band uses VIIRS-era years only: a pre-2012-02 Nov and the own year never count', () => {
@@ -100,6 +114,15 @@ test('season: whole months, current month to its last complete day with the shar
   assert.deepEqual(s.live.values, [30, 31, 3]);
   assert.deepEqual(s.band.median, [0, 0, 55 * (3 / 31)]);
   assert.deepEqual(s.band.p75, [0, 0, 77.5 * (3 / 31)]);
+});
+
+test('season: a past month with a partial day sums its complete days and gets the increment band, not null', () => {
+  const l = [...Array(31).fill(2), 1, 1, 1];
+  l[11] = null;
+  const q = run(day('2026-10-01', l));
+  assert.deepEqual(q.season.live.values, [60, 3]);
+  assert.deepEqual(q.season.daysMissing, [1, 0]);
+  assert.deepEqual(q.season.daysCounted, [30, 3]);
 });
 
 test('units must be snpp-equivalent: others are refused', () => {
@@ -166,10 +189,19 @@ test('isStale: older than 48 h or missing', () => {
   assert.equal(isStale('garbage', NOW), true);
 });
 
+test('K not usable marks the built Series and the comparison low confidence', () => {
+  const manifest = { day0: '2026-11-01', last_day: '2026-11-02', fetched_at: '2026-11-02T10:00:00Z', coverage: { noaa20: ['2026-11-01', '2026-11-02'] }, partial_days: { noaa20: [] } };
+  const tile = { cell: [0], day: [0], noaa20: [1] };
+  const bad = liveSeriesFromTiles({ x17y13: tile }, manifest, [-10, 40, -9.9, 40.1], { K: { value: 1, usable: false } });
+  assert.equal(bad.lowConfidence, true);
+  assert.equal(run(bad).lowConfidence, true);
+  assert.equal(liveSeriesFromTiles({ x17y13: tile }, manifest, [-10, 40, -9.9, 40.1], { K: { value: 1, usable: true } }).lowConfidence, false);
+});
+
 test('liveCaveats: kind live, preliminary until V3, carry the V3 wording', () => {
   const c = liveCaveats();
   assert.equal(c.length, 8);
   assert.ok(c.every((x) => x.kind === 'live' && x.preliminary));
   const text = c.map((x) => x.long).join(' ');
-  for (const w of ['approximate', 'NOAA-20', 'S-NPP', 'last complete', '2026-11-02', 'Earthdata Login', '2-3 month lag', 'type']) assert.ok(text.includes(w), w);
+  for (const w of ['approximate', 'NOAA-20', 'S-NPP', 'last complete day in the area', '2026-11-02', 'Earthdata Login', '2-3 month lag', 'type']) assert.ok(text.includes(w), w);
 });
