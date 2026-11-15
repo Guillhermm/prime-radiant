@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { anomaly, yearRank } from './anomaly.js';
 import { kpis } from './calendar.js';
 import { baseline } from './baseline.js';
+import { partialMonthsFor } from './partial.js';
 import { validateSeries } from './schema.js';
 
 const M = { id: 'x', version: 1 };
@@ -109,7 +110,20 @@ test('yearRank: 1 = most, ties share rank, incomplete and partial years excluded
   g.series.values[12] = null;
   const r2 = yearRank(g, man());
   assert.deepEqual(r2.years.map((y) => y.year), [2011]);
-  assert.deepEqual(r2.excluded, [{ year: 2012, reason: '2012-01 is a partial or Terra-only month' }]);
+  assert.deepEqual(r2.excluded, [{ year: 2012, reason: '2012-01 has no data' }]);
+  const p = years(2013, [1, 1, 1]);
+  const r3 = yearRank(p, man({ viirs: ['2014-05'] }));
+  assert.deepEqual(r3.excluded, [{ year: 2014, reason: '2014-05 is a partial or Terra-only month' }]);
+});
+
+test('partial months follow the supplying sensor: S-NPP observed, MODIS x R, NOAA-20 x K', () => {
+  const h = years(2013, [1, 1, 1]); // 2013..2015
+  const est = (ym) => ({ month: ym, flag: 'estimated' });
+  h.series.flags = [est('2013-03'), est('2015-11')];
+  const m = { coverage: { viirs: ['2012-01', '2015-10'], noaa20: ['2012-01', '2015-12'] },
+    partial_months: { modis: ['2013-03', '2014-06'], viirs: ['2013-04', '2015-11'], noaa20: ['2014-07', '2015-11'] } };
+  assert.deepEqual(partialMonthsFor(h, m), ['2013-03', '2013-04', '2015-11']);
+  // 2014-06 (MODIS) and 2014-07 (NOAA-20) are observed S-NPP months: not partial for this series
 });
 
 test('kpis carries flagged count, year rank and latest rank', () => {
@@ -117,6 +131,7 @@ test('kpis carries flagged count, year rank and latest rank', () => {
   const k = kpis(h, null, { last_month: '2023-12' });
   assert.equal(k.anomaly.flagged, 24); // 2022 (9 earlier years) and 2023 (10) each top their history
   assert.deepEqual(k.anomaly.yearRank, { year: 2023, rank: 1, n: 11 });
+  assert.deepEqual(k.anomaly.excludedYears, []);
   assert.equal(k.anomaly.latest.month, '2023-12');
   assert.equal(k.anomaly.latest.rank, 1);
   assert.equal(k.anomaly.latest.flagged, true);

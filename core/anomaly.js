@@ -1,19 +1,18 @@
 import { addMonths } from './months.js';
-import { baseline, KNOWN_PARTIAL_MONTHS, LAST_EXCLUDED_ERA_MONTH } from './baseline.js';
+import { baseline, LAST_EXCLUDED_ERA_MONTH } from './baseline.js';
+import { partialMonthsFor } from './partial.js';
 
 export const ANOMALY_METHOD = { id: 'percentile-rank', version: 1 };
 const UNIT = 'fire-cell-days';
 
-/** Months of either sensor that never enter a baseline or get a rank (same rule as baseline.js). */
-function excludedSet(manifest) {
-  return new Set([...KNOWN_PARTIAL_MONTHS, ...['modis', 'viirs'].flatMap((s) => manifest?.partial_months?.[s] ?? [])]);
-}
+/** Months that never enter a baseline or get a rank: partial for the sensor that supplies them (partial.js). */
+const excludedSet = (harmonized, manifest) => new Set(partialMonthsFor(harmonized, manifest));
 const isExcluded = (ym, excluded) => ym <= LAST_EXCLUDED_ERA_MONTH || excluded.has(ym);
 
 /**
  * Anomaly Series (method.md section 5): the percentile rank of each month's value against the
  * same calendar month in EARLIER years only, using the baseline's exclusions (null values,
- * Terra-only era and 2002-07, known and manifest partial months). A year never ranks against itself
+ * Terra-only era and 2002-07, months partial for their supplying sensor, see partial.js). A year never ranks against itself
  * or later years. Ties split evenly: rank = (below + equal / 2) / n, a fraction in 0..1.
  * `values[i]` is null when the month has no value, is itself excluded, or has fewer than
  * `minYears` (default 9) baseline years. `flags[i]` is true only when rank >= `threshold`
@@ -29,7 +28,7 @@ const isExcluded = (ym, excluded) => ym <= LAST_EXCLUDED_ERA_MONTH || excluded.h
  */
 export function anomaly(harmonized, manifest, { minYears = 9, threshold = 0.9 } = {}) {
   const { series } = harmonized;
-  const excluded = excludedSet(manifest);
+  const excluded = excludedSet(harmonized, manifest);
   const base = baseline(series, { minYears, partialMonths: [...excluded] });
   const byYm = new Map(series.values.map((v, i) => [addMonths(series.start, i), v]));
   const values = [], flags = [];
@@ -63,7 +62,7 @@ export function anomaly(harmonized, manifest, { minYears = 9, threshold = 0.9 } 
  */
 export function yearRank(harmonized, manifest) {
   const { series } = harmonized;
-  const excluded = excludedSet(manifest);
+  const excluded = excludedSet(harmonized, manifest);
   const byYear = new Map(); // year -> {total, months, reason}
   series.values.forEach((value, i) => {
     const ym = addMonths(series.start, i);

@@ -24,7 +24,7 @@ export const SHELL_FILES = [
   'src/components/method-drawer.js', 'src/components/query-bar.js', 'src/components/radiant.js', 'src/components/states.js',
   'src/components/synthetic-band.js', 'src/components/theme-control.js', 'src/components/toast.js', 'src/components/popover.js', 'src/components/share-menu.js', 'src/components/offline-chip.js', 'src/components/verdict-row.js',
   '../core/aggregate.js', '../core/anomaly.js', '../core/baseline.js', '../core/calendar.js', '../core/caveats.js', '../core/csv.js', '../core/domain.js',
-  '../core/grid.js', '../core/harmonize.js', '../core/index.js', '../core/months.js', '../core/schema.js', '../core/series.js', '../core/tiles.js',
+  '../core/grid.js', '../core/harmonize.js', '../core/index.js', '../core/months.js', '../core/partial.js', '../core/schema.js', '../core/series.js', '../core/tiles.js',
 ];
 
 export const shellUrls = (scope) => SHELL_FILES.map((p) => new URL(p, scope).href);

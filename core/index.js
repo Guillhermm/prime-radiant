@@ -21,6 +21,7 @@ export { seriesForAoi, cellCount, MAX_FINE_CELLS, fallbackLevels, seriesForLevel
 export { annualTotals } from './series.js';
 export { decodeTile, coverageLookup, tilesForBbox } from './tiles.js';
 export { baseline } from './baseline.js';
+export { partialMonthsFor } from './partial.js';
 export { anomaly, yearRank } from './anomaly.js';
 export { harmonize } from './harmonize.js';
 export { toCalendar, kpis } from './calendar.js';
