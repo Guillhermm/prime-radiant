@@ -327,7 +327,9 @@ test('iOS install hint: a permanent footer line, and a card once after the first
     await settle(page);
     await page.click('.ios-card .ios-hint-close');
     await page.until(`!document.querySelector('.ios-card')`, 'closed');
+    await page.evaluate(`window.__stale = true`);
     await page.goto(`${base}/web/?fixtures=1`);
+    await page.until(`!window.__stale && document.readyState === 'complete'`, 'reloaded');
     await openExample(page);
     await page.evaluate(`new Promise((r) => setTimeout(r, 300))`);
     assert.equal(await page.evaluate(`document.querySelector('.ios-card')`), null, 'never again');
@@ -786,11 +788,14 @@ test('theme: choosing light sets data-theme, persists across reload, system remo
     assert.equal(await page.evaluate(`document.documentElement.hasAttribute('data-theme')`), false);
     await pick('light');
     await page.until(`document.documentElement.getAttribute('data-theme') === 'light'`, 'light applied');
+    // Page.navigate can return while the old document still answers, so mark it and wait for a fresh one.
+    await page.evaluate(`window.__stale = true`);
     await page.goto(`${base}/web/?fixtures=1`);
-    await page.until(`document.querySelector('.site-footer .theme-opt')`, 'reloaded');
+    await page.until(`!window.__stale && document.readyState === 'complete' && document.querySelector('.site-footer .theme-opt')`, 'reloaded');
     assert.equal(await page.evaluate(`document.documentElement.getAttribute('data-theme')`), 'light', 'restored by the early script');
     assert.equal(await page.evaluate(`document.querySelector('.site-footer .theme-opt[data-theme-id="light"]').getAttribute('aria-checked')`), 'true');
     await pick('system');
+    await page.until(`document.querySelector('.site-footer .theme-opt[data-theme-id="system"]').getAttribute('aria-checked') === 'true'`, 'system checked');
     await page.until(`!document.documentElement.hasAttribute('data-theme')`, 'system removes data-theme');
   } finally { await page.close(); }
 });
