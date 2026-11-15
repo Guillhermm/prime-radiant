@@ -49,7 +49,7 @@ test('a missing day is skipped, never 0; later complete days count and the band 
   assert.equal(r.daysCounted, 3);
   assert.deepEqual(r.daysMissing, ['2026-11-03']);
   assert.equal(r.lastCompleteDay, '2026-11-04');
-  assert.equal(r.lowConfidence, null); // 1 of 4 missing is not over a third; cells unknown
+  assert.equal(r.lowConfidenceReasons.some((x) => /missing/.test(x)), false); // 1 of 4 missing is not over a third
   assert.equal(r.stale, true); // no fetched_at
 });
 
@@ -62,8 +62,15 @@ test('increments come from the share table, not from the day number', () => {
 test('more than a third of the days so far missing: low confidence with the reason', () => {
   const r = run(day('2026-11-01', [1, null, null, 5]));
   assert.equal(r.lowConfidence, true);
-  assert.match(r.lowConfidenceReasons[0], /2 of 4 days/);
-  assert.equal(run(day('2026-11-01', [1, null, 1, 5], { cells: 5000 })).lowConfidence, false);
+  assert.ok(r.lowConfidenceReasons.some((x) => /2 of 4 days/.test(x)));
+  assert.equal(run(day('2026-11-01', [1, null, 1, 5, 1, 1, 1], { cells: 5000 })).lowConfidence, false);
+});
+
+test('fewer than 7 days so far in the month: low confidence with the reason; 7 days is enough', () => {
+  const six = run(day('2026-11-01', Array(6).fill(1), { cells: 5000 }));
+  assert.equal(six.lowConfidence, true);
+  assert.deepEqual(six.lowConfidenceReasons, ['early in the month (fewer than 7 days)']);
+  assert.equal(run(day('2026-11-01', Array(7).fill(1), { cells: 5000 })).lowConfidence, false);
 });
 
 test('trailing null (the open fetch day) is left out and does not count as missing; a zero day stays 0', () => {
@@ -148,9 +155,10 @@ test('share table is required and checked', () => {
 });
 
 test('small AOI: low confidence under the cell threshold, null when unknown', () => {
-  assert.equal(run(day('2026-11-01', [1], { cells: LIVE_MIN_CELLS - 1 })).lowConfidence, true);
-  assert.equal(run(day('2026-11-01', [1], { cells: LIVE_MIN_CELLS })).lowConfidence, false);
-  assert.equal(run(day('2026-11-01', [1])).lowConfidence, null);
+  const w = Array(7).fill(1);
+  assert.equal(run(day('2026-11-01', w, { cells: LIVE_MIN_CELLS - 1 })).lowConfidence, true);
+  assert.equal(run(day('2026-11-01', w, { cells: LIVE_MIN_CELLS })).lowConfidence, false);
+  assert.equal(run(day('2026-11-01', w)).lowConfidence, null);
 });
 
 test('type filter: without a table the value stays and the month bias is stated; with one it is scaled', () => {

@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { validateManifest, validateTile, validateDomain } from '../../core/schema.js';
 import { locate, cellId, tileOf } from '../../core/grid.js';
 
@@ -104,4 +105,39 @@ test('coarse tile is the per-month sum of the fine tile per 1 deg cell, nulls ke
     assert.ok(o, `coarse row ${i} has a fine source`);
     assert.deepEqual([coarse.modis[i], coarse.viirs[i], coarse.noaa20[i]], [o.modis, o.viirs, o.noaa20]);
   });
+});
+
+// Real-tile sample (M1-K4). Offline CI has no data: set PR_REAL_DATA to a build output dir
+// (the one that holds manifest.json, domain.json and tiles/), e.g. PR_REAL_DATA=data/brazil.
+const realDir = process.env.PR_REAL_DATA;
+const real = { skip: realDir ? false : 'PR_REAL_DATA not set: real-data contract checks skipped (set it to a build output dir such as data/brazil)' };
+const realJson = (p) => JSON.parse(readFileSync(join(realDir, p), 'utf8'));
+
+test('real manifest validates and lists exactly the fine tiles on disk', real, () => {
+  const m = realJson('manifest.json');
+  assert.deepEqual(validateManifest(m), []);
+  const onDisk = (d) => readdirSync(join(realDir, 'tiles', d)).map((f) => f.replace('.json', '')).sort();
+  assert.deepEqual(onDisk('0.1'), [...m.tiles].sort());
+  assert.deepEqual(onDisk('1'), [...m.tiles].sort());
+});
+test('real domain.json validates', real, () => {
+  const m = realJson('manifest.json');
+  assert.ok(m.domain, 'manifest names a domain');
+  assert.deepEqual(validateDomain(realJson(m.domain.file)), []);
+});
+test('every real fine and coarse tile validates against the real manifest', real, () => {
+  const m = realJson('manifest.json');
+  for (const [dir, res] of [['0.1', 0.1], ['1', 1]]) {
+    for (const id of m.tiles) {
+      assert.deepEqual(validateTile(realJson(`tiles/${dir}/${id}.json`), { manifest: m, res }), [], `${dir}/${id}`);
+    }
+  }
+});
+test('real coarse tiles hold the same totals as the fine tiles, per sensor', real, () => {
+  const m = realJson('manifest.json');
+  for (const id of m.tiles) {
+    const f = realJson(`tiles/0.1/${id}.json`);
+    const c = realJson(`tiles/1/${id}.json`);
+    for (const s of ['modis', 'viirs', 'noaa20']) assert.equal(sum(c[s]), sum(f[s]), `${id} ${s}`);
+  }
 });

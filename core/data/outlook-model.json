@@ -1,0 +1,90 @@
+{
+  "method": {
+    "id": "outlook-logistic",
+    "version": 1
+  },
+  "status": "experimental",
+  "features": [
+    "anomaly",
+    "anomaly-3m-mean",
+    "month-sin",
+    "month-cos",
+    "log1p-median-next",
+    "anomaly-prev-year"
+  ],
+  "mean": [
+    -0.035832,
+    -0.041414,
+    -0.106784,
+    -0.009429,
+    2.883748,
+    -0.108239
+  ],
+  "std": [
+    0.725296,
+    0.52281,
+    0.695033,
+    0.710941,
+    1.433797,
+    0.716112
+  ],
+  "weights": [
+    0.471334,
+    0.147215,
+    -0.07491,
+    0.003789,
+    -0.109307,
+    0.174733
+  ],
+  "bias": -0.213148,
+  "trained": {
+    "from": "2018-02",
+    "to": "2020-12",
+    "samples": 22393
+  },
+  "command": "node pipeline/outlook.js --data /home/aukauemelo/prime-radiants/prime-radiant/data/brazil --live /home/aukauemelo/prime-radiants/prime-radiant/data/live --out /tmp/claude-1000/-home-aukauemelo-prime-radiants-prime-radiant/ead8c772-ecef-42f5-a04d-2ba9d0ea2bd7/scratchpad/outlook --model-out core/data/outlook-model.json",
+  "dataVersion": "20261114",
+  "references": {
+    "constant": 0.4512,
+    "persistence_given_above": 0.5784,
+    "persistence_given_not_above": 0.3462
+  },
+  "metrics": {
+    "temporal": {
+      "n": 25458,
+      "brier": 0.2147,
+      "brier_constant": 0.2492,
+      "brier_persistence_calibrated": 0.2258,
+      "bss_constant": 0.1385,
+      "bss_constant_ci": [
+        0.1072,
+        0.172
+      ],
+      "bss_persistence": 0.0491,
+      "bss_persistence_ci": [
+        0.0321,
+        0.0662
+      ],
+      "auc": 0.7209,
+      "auc_persistence": 0.6589
+    },
+    "spatial": {
+      "n": 25458,
+      "brier": 0.2156,
+      "brier_constant": 0.2495,
+      "brier_persistence_calibrated": 0.226,
+      "bss_constant": 0.1356,
+      "bss_constant_ci": [
+        0.1048,
+        0.1687
+      ],
+      "bss_persistence": 0.0458,
+      "bss_persistence_ci": [
+        0.0276,
+        0.0656
+      ],
+      "auc": 0.7174,
+      "auc_persistence": 0.654
+    }
+  }
+}
