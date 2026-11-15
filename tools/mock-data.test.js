@@ -23,6 +23,7 @@ test('overview: the newest full VIIRS year, and each hotspot is one of its cells
   const o = data.overview;
   assert.equal(o.sensor, 'viirs');
   assert.equal(o.year, 2019);
+  assert.deepEqual(o.region, { id: 'ne10m-brazil', name: 'Brazil' });
   assert.ok(o.hotspots.length > 0 && o.cells.length > 0);
   for (const h of o.hotspots) assert.ok(o.cells.some((c) => c[0] === h.bbox[0] && c[1] === h.bbox[1] && c[2] === h.value));
 });

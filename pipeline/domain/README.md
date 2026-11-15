@@ -7,8 +7,8 @@
   13.3 MB for the whole world). 10m was kept: the Brazil outline is small.
 - Derived file: the Brazil feature only (`ADM0_A3 == "BRA"`, one MultiPolygon of 43 polygons),
   properties dropped, coordinates rounded to 5 decimals (about 1 m), plus a top-level
-  `domain: {id: "ne10m-brazil", version: "5.1.2"}` that the build copies into the manifest.
-  234 KB; sha256 `4125f74b6d39e18f1377554026f7c686c03feb573870814117825dc37de60cf7`.
+  `domain: {id: "ne10m-brazil", version: "5.1.2", name: "Brazil"}`: the build copies id and version into the manifest, and name into `overview.json` as the region label.
+  234 KB; sha256 `cc207c56c63d59785d78cb0a2575863379d14821e8f83653ab97b868b3dd33db`.
 - License: public domain (https://www.naturalearthdata.com/about/terms-of-use/, checked 2026-11-14:
   "All versions of Natural Earth raster + vector map data ... are in the public domain").
   Credit is not required; the app credits it anyway.

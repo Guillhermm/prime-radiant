@@ -2,7 +2,7 @@
  * overview.json: where it burned, for the place picker. One number per 1 deg cell (fire-cell-days
  * of one VIIRS sensor over the newest full calendar year) and a ranked list of hotspots kept apart.
  * One sensor, observed counts only, so no harmonization factor enters the map.
- *   node pipeline/overview.js --in <build dir>
+ *   node pipeline/overview.js --in <build dir> [--domain file.geojson]
  * Reads manifest.json and tiles/1/*.json from the build and writes overview.json next to them.
  */
 import fs from 'node:fs';
@@ -51,9 +51,10 @@ export const pickHotspots = (cells, { n = HOTSPOTS, apart = MIN_APART_DEG } = {}
 /**
  * @param {object} manifest validated build manifest
  * @param {Object<string, {cell: number[], month: number[], viirs: (number|null)[], noaa20: (number|null)[]}>} coarse tile id -> 1 deg tile
+ * @param {{id: string, name: string}|null} [region] the domain's label, from the domain file
  * @returns {object|null} the overview, or null when no VIIRS sensor covers a full year
  */
-export const buildOverview = (manifest, coarse) => {
+export const buildOverview = (manifest, coarse, region = null) => {
   const source = pickSource(manifest);
   if (!source) return null;
   const { sensor, year } = source;
@@ -75,17 +76,20 @@ export const buildOverview = (manifest, coarse) => {
   }).sort((a, b) => a[1] - b[1] || a[0] - b[0]);
   const partial = (manifest.partial_months?.[sensor] ?? []).filter((m) => m.startsWith(`${year}-`));
   return {
-    schema: 1, dataVersion: manifest.dataVersion, sensor, year, res: 1, unit: 'fire-cell-days',
+    schema: 1, dataVersion: manifest.dataVersion, region, sensor, year, res: 1, unit: 'fire-cell-days',
     partial_months: partial, cells, hotspots: pickHotspots(cells),
   };
 };
 
+/** The region label a domain file declares (`domain: {id, name}`), or null when it names none. */
+export const regionOf = (geojson) => (geojson?.domain?.name ? { id: String(geojson.domain.id), name: String(geojson.domain.name) } : null);
+
 /** Reads a build directory, writes overview.json into it; returns the overview or null when there is none to write. */
-export const writeOverview = (dir) => {
+export const writeOverview = (dir, region = null) => {
   const read = (rel) => JSON.parse(fs.readFileSync(path.join(dir, rel), 'utf8'));
   const manifest = read('manifest.json');
   const coarse = Object.fromEntries(manifest.tiles.map((id) => [id, read(`tiles/1/${id}.json`)]));
-  const overview = buildOverview(manifest, coarse);
+  const overview = buildOverview(manifest, coarse, region);
   if (!overview) return null;
   const errors = validateOverview(overview);
   if (errors.length) throw new Error(`overview: ${errors.map((e) => `${e.code} ${e.path}`).join('; ')}`);
@@ -94,11 +98,11 @@ export const writeOverview = (dir) => {
 };
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
-  const { values } = parseArgs({ options: { in: { type: 'string' } } });
+  const { values } = parseArgs({ options: { in: { type: 'string' }, domain: { type: 'string' } } });
   if (!values.in) {
     console.error('usage: node pipeline/overview.js --in <build dir>');
     process.exit(2);
   }
-  const o = writeOverview(values.in);
+  const o = writeOverview(values.in, values.domain ? regionOf(JSON.parse(fs.readFileSync(values.domain, 'utf8'))) : null);
   console.log(o ? `overview: ${o.sensor} ${o.year}, ${o.cells.length} cells, ${o.hotspots.length} hotspots` : 'overview: no VIIRS sensor covers a full year; nothing written');
 }

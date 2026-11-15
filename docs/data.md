@@ -112,7 +112,7 @@ A build from a small bbox file or a few-day extract marks nearly every month par
 ## Overview for the place picker (overview.json)
 
 `pipeline/build.js` ends by writing `overview.json` (`pipeline/overview.js`; also runnable alone as
-`node pipeline/overview.js --in <build dir>` on an existing build). It holds, for the newest calendar
+`node pipeline/overview.js --in <build dir>` on an existing build). It holds the region label the domain file declares (`region: {id, name}`, null without one) and, for the newest calendar
 year a VIIRS sensor covers in full (S-NPP on a tie, NOAA-20 once it has the newer full year), that
 one sensor's observed fire-cell-days per 1 deg cell (`cells: [west, south, value]`, summed from the
 coarse tiles), the sensor's partial months of that year, and up to 10 hotspots ranked by value and

@@ -19,7 +19,7 @@ import { readFirms, newStats } from './read.js';
 import { binRecords, createBinResult } from './bin.js';
 import { createCoverage, buildManifest, coverageIndexes } from './manifest.js';
 import { compareTileIds, writeTiles } from './write-tiles.js';
-import { writeOverview } from './overview.js';
+import { regionOf, writeOverview } from './overview.js';
 
 const EXT = /\.(csv|csv\.gz|dbf)$/i;
 
@@ -47,11 +47,12 @@ export function inBbox([w, s, e, n], lon, lat) {
 export async function build({ inputs, outDir, bbox, month0 = '2000-01', dataVersion, generatedAt = new Date().toISOString(), baseUrl = 'data/', domainFile }) {
   const t0 = performance.now();
   if (bbox) checkBbox(bbox);
-  let clipper, domainBox, domainInfo;
+  let clipper, domainBox, domainInfo, region = null;
   if (domainFile) {
     const gj = JSON.parse(fs.readFileSync(domainFile, 'utf8'));
     const polys = polygonsOf(gj);
     clipper = createClipper(polys);
+    region = regionOf(gj);
     domainBox = bboxOfPolygons(polys);
     domainInfo = { id: gj.domain?.id ?? path.basename(domainFile, '.geojson'), version: String(gj.domain?.version ?? 'unknown'), file: 'domain.json', res: 0.1 };
   }
@@ -98,7 +99,7 @@ export async function build({ inputs, outDir, bbox, month0 = '2000-01', dataVers
   fs.mkdirSync(outDir, { recursive: true });
   if (clipper) fs.writeFileSync(path.join(outDir, 'domain.json'), `${JSON.stringify(clipper.domain)}\n`);
   fs.writeFileSync(path.join(outDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
-  const overview = writeOverview(outDir);
+  const overview = writeOverview(outDir, region);
 
   const fcd = Object.fromEntries(Object.entries(into.counts).map(([fam, tiles]) =>
     [fam, Object.values(tiles).reduce((a, cells) => a + Object.values(cells).reduce((b, ms) => b + [...ms.values()].reduce((c, n) => c + n, 0), 0), 0)]));

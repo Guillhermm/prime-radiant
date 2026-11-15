@@ -286,6 +286,10 @@ export function validateOverview(o) {
   const e = [];
   if (o.schema !== 1) e.push(err('BAD_SCHEMA', 'schema', 'schema must be 1'));
   if (typeof o.dataVersion !== 'string' || !o.dataVersion) e.push(err('BAD_FIELD', 'dataVersion', 'dataVersion must be a non-empty string'));
+  const r = o.region;
+  if (r !== null && !(isObj(r) && typeof r.id === 'string' && r.id && typeof r.name === 'string' && r.name)) {
+    e.push(err('BAD_FIELD', 'region', 'region must be null or {id, name} non-empty strings'));
+  }
   if (!['viirs', 'noaa20'].includes(o.sensor)) e.push(err('BAD_FIELD', 'sensor', 'sensor must be viirs or noaa20'));
   if (!Number.isInteger(o.year) || o.year < 2000) e.push(err('BAD_FIELD', 'year', 'year must be an integer from 2000'));
   if (o.res !== 1) e.push(err('BAD_FIELD', 'res', 'res must be 1'));

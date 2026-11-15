@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildOverview, fullYear, pickHotspots, pickSource } from './overview.js';
+import { buildOverview, fullYear, pickHotspots, pickSource, regionOf } from './overview.js';
 import { validateOverview } from '../core/schema.js';
 import { cellId } from '../core/grid.js';
 import { monthIndex } from '../core/months.js';
@@ -45,7 +45,17 @@ test('buildOverview sums one sensor over the year into [west, south, value] cell
   assert.deepEqual(o.cells, [[-51, -9, 7], [-56, -3, 12]]);
   assert.deepEqual(o.partial_months, ['2025-03']);
   assert.deepEqual(o.hotspots, [{ bbox: [-56, -3, -55, -2], value: 12 }, { bbox: [-51, -9, -50, -8], value: 7 }]);
+  assert.equal(o.region, null);
   assert.deepEqual(validateOverview(o), []);
+});
+
+test('region: the domain file names it, and the overview carries it for the picker label', () => {
+  assert.deepEqual(regionOf({ domain: { id: 'ne10m-brazil', version: '5.1.2', name: 'Brazil' } }), { id: 'ne10m-brazil', name: 'Brazil' });
+  assert.equal(regionOf({ domain: { id: 'fixture-box', version: '1' } }), null);
+  const o = buildOverview(manifest(), coarse, { id: 'r1', name: 'Region One' });
+  assert.deepEqual(o.region, { id: 'r1', name: 'Region One' });
+  assert.deepEqual(validateOverview(o), []);
+  assert.deepEqual(validateOverview({ ...o, region: { id: 'r1' } }).map((e) => e.code), ['BAD_FIELD']);
 });
 
 test('buildOverview returns null when no VIIRS sensor covers a full year', () => {
