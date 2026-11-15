@@ -23,12 +23,12 @@ test('model carries unit, grid assumption, sensor dates, domain, citation and ac
   assert.equal(m.method, 'ratio-of-sums, version 1');
 });
 
-test('gate V1 passed: no Preliminary badge, a validated status, core caveats with only live data and the global extent preliminary', () => {
+test('gate V1 passed: no Preliminary badge, a validated status, core caveats with only the pre-live placeholder preliminary', () => {
   const m = methodModel(manifest);
   assert.equal(m.preliminary, false);
   assert.match(m.status, /validated by the science team \(gate V1/);
   assert.equal(m.caveats.length, 10);
-  assert.deepEqual(m.caveats.filter((c) => c.preliminary).map((c) => c.id), ['nrt-unfiltered', 'global-extent']);
+  assert.deepEqual(m.caveats.filter((c) => c.preliminary).map((c) => c.id), ['nrt-unfiltered']);
   assert.equal(methodModel(manifest, { gates: NO_GATES }).preliminary, true);
   assert.match(statusText(NO_GATES), /preliminary/);
 });
