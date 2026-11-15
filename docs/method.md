@@ -269,7 +269,7 @@ months, NOAA-20 for NOAA-20 x K months (`core/partial.js`).
 
 ## 7. Fire outlook (experimental)
 
-M4-K2, gate V4 passed with caveats after fixes O1-O5 (`docs/gates/V4.md`). Not shown in the web app yet. Code: `core/outlook.js` (features, logistic regression, scores, bootstrap), `pipeline/outlook.js` (CLI), coefficients in `core/data/outlook-model.json`.
+M4-K2, gate V4 passed with caveats after fixes O1-O5 (`docs/gates/V4.md`). Not shown in the web app yet. Code: `core/outlook.js` (features, logistic regression, scores, bootstrap), `core/outlook-gbt.js` (boosted trees), `pipeline/outlook.js` (CLI), the shipped model and its metrics in `core/data/outlook-model.json` (field `model` says which).
 
 - **What it predicts**: per 1 deg cell, the probability that the target month's fire-cell-days are above the cell's baseline median (section 5) for that calendar month. Not ignitions, not fire danger. It uses no rainfall, weather or drought data, so it cannot see rain onset, ENSO or policy changes and misses turning points. For fire danger see INPE Risco de Fogo or GWIS.
 - **Required UI wording (V4)**: "Experimental. Chance that next month's hotspot activity in this 1 deg cell is above its usual (median) level, learned only from past satellite hotspot counts. No rainfall, weather or drought data. Not a fire-danger rating or a count of fires. For fire danger, see INPE Risco de Fogo or GWIS." Add to it: "Less reliable in transition months (Oct-Dec, Feb-Apr), when rain onset or retreat, which this model cannot see, decides the month." and "Issued <issued_at date>, based on data to <based_on_data_to>." In `hindcast` mode name the target month ("the chance that <target_month>'s ...") instead of "next month's". Never "fire risk" or "fire forecast".
@@ -279,6 +279,8 @@ M4-K2, gate V4 passed with caveats after fixes O1-O5 (`docs/gates/V4.md`). Not s
 - **Every output** (manifest, report, each tile) carries `target_month`, `last_observed_month`, `issued_at` (passed in by the CLI, no clock in pure code) and `based_on_data_to` (last day of `last_observed_month`); the manifest also carries `mode` (`forecast` or `hindcast`).
 - **Features** (own data only, standardized): this month's anomaly `log1p(v) - log1p(median)`; mean anomaly of the last 3 months; sin and cos of the target month; `log1p` of the target month's median; the target calendar month's anomaly one year earlier. Missing any input drops the sample.
 - **Model**: logistic regression, full-batch gradient descent, L2 = 1e-3, 400 iterations, lr 0.5, zero start: deterministic, no random seed needed. Trained on cells with median above 0.
+- **Boosted trees (candidate, `--model gbt`)**: gradient-boosted decision trees for binary log loss (`core/outlook-gbt.js`): depth 3, learning rate 0.1, 32 quantile split candidates per feature, Newton leaves (lambda 1, at least 20 samples per leaf), no randomness. The number of rounds is chosen on the last training year (2020) after fitting on the earlier training years, then refit on all training data (38 rounds on the 2026-11 run). Seven features: the six above plus the **neighbour anomaly**, the mean `log1p` anomaly this month of the up to 8 surrounding 1 deg cells present in the data (0 when none; month t only, so no leakage). Same split, references and crossed bootstrap as the logistic model.
+- **Default model rule**: `auto` ships GBT only if, on the headline set (median above 1, time split), its BSS vs calibrated persistence has a 95% CI whose lower bound is above the logistic upper bound, or is higher by at least 0.01 with its lower bound above the logistic point estimate, and its tile-blocked BSS is not worse. Otherwise logistic stays. `--model logistic|gbt` forces one. On the 2026-11 run GBT 0.060 (0.045-0.077) vs logistic 0.049 (0.032-0.066): the intervals overlap and the lower bound 0.045 is below 0.049, so **logistic stays the default**. The model file also keeps both models' metrics (`compared`).
 - **No-skill cells (O2)**: cells whose target median is 0 or at most 1 are still given a probability but carry `no_skill = 1` in the tiles; they are not ranked and not counted in the skill below (measured skill there is about zero). On the 2026-11 run 17% of cells are no-skill; in the 2022-2025 test window 26% of cell-months are.
 - **Validation** (no leakage): train on targets up to 2020-12, test on 2022-01..2025-12 (2021 is the gap). Spatial check: 5 folds of whole 10 deg tiles held out. References, both fit on training only: a constant base rate (0.451) and a calibrated persistence, P(above next | above now) = 0.578 and P(above next | not above now) = 0.346 (hard 0/1 persistence is not used). Skill = Brier skill score, BSS = 1 - BS / BS_ref; 95% intervals from a seeded **crossed bootstrap** (1000 draws): the 10 deg tiles and the test years are resampled independently with replacement, and a (tile, year) block enters with the product of its two draw counts. This is wider than resampling tile x year blocks, because neighbors and a bad year are shared. The shrunk climatology of the first version is dropped.
 - **Result, Brazil** (Brier of the constant 0.2492 and of persistence 0.2258 on the first row):
@@ -291,9 +293,19 @@ M4-K2, gate V4 passed with caveats after fixes O1-O5 (`docs/gates/V4.md`). Not s
 | All samples, tile-blocked | 27,832 | 0.120 (0.091-0.154) | 0.036 (0.011-0.056) | 0.703 |
 | Median 1 or less alone, time split | 2,374 | -0.031 (-0.085-0.031) | -0.049 (-0.102--0.006) | 0.596 |
 
+  Side by side with the boosted trees, same samples (BSS vs calibrated persistence, 95% CI; AUC):
+
+| Samples (2022-2025 test) | Logistic (shipped) | Boosted trees (`--model gbt`) |
+|---|---|---|
+| Median above 1, time split | 0.049 (0.032-0.066); AUC 0.721 | 0.060 (0.045-0.077); AUC 0.724 |
+| Median above 1, tile-blocked | 0.046 (0.028-0.066) | 0.061 (0.041-0.080) |
+| All samples, time split | 0.040 (0.021-0.059); AUC 0.707 | 0.057 (0.042-0.071); AUC 0.716 |
+| All samples, tile-blocked | 0.036 (0.011-0.056) | 0.057 (0.038-0.074) |
+| Median 1 or less alone | -0.049 (-0.102--0.006) | 0.020 (-0.010-0.049) |
+
   The skill over a calibrated persistence is real but small. The first version's 0.37 was against 0/1 persistence and is withdrawn. The V4 gate's own check (mathematician, all samples, other bootstrap) reported 0.040 (0.027-0.054) vs persistence and 0.124 (0.104-0.146) vs constant. In cells with median 1 or less the model is worse than both references, which is why they are labeled `no-skill`.
 - **Limits**: one region, one split, 3 training years, a base rate that is not stationary; cells are not independent (the bootstrap blocks by tile x year but not neighbors across tiles); the model is trained once and not refit as months arrive. The 2026-08 month could be checked against MODIS only (V4): one month, not a skill test. **Next step**: climate drivers (rainfall, temperature, humidity, fuel dryness).
-- **Run**: `node pipeline/outlook.js --data data/brazil --live data/live --out data/outlook --model-out core/data/outlook-model.json`. Output: `manifest.json`, `report.json`, `tiles/<id>.json` = `{target_month, last_observed_month, issued_at, based_on_data_to, cell[], p[], no_skill[]}`.
+- **Run**: `node pipeline/outlook.js --data data/brazil --live data/live --out data/outlook --model-out core/data/outlook-model.json`. Add `--model auto|logistic|gbt` (default `auto`, the rule above). Output (manifest and report also carry `model`): `manifest.json`, `report.json`, `tiles/<id>.json` = `{target_month, last_observed_month, issued_at, based_on_data_to, cell[], p[], no_skill[]}`.
 
 ## 8. Open questions
 

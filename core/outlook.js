@@ -6,6 +6,9 @@
 export const OUTLOOK_METHOD = { id: 'outlook-logistic', version: 1 };
 export const FEATURES = ['anomaly', 'anomaly-3m-mean', 'month-sin', 'month-cos', 'log1p-median-next', 'anomaly-prev-year'];
 
+/** GBT features: the six above plus the mean anomaly of the 8 neighbouring 1 deg cells this month. */
+export const FEATURES_GBT = [...FEATURES, 'neighbor-anomaly'];
+
 /** log1p ratio to the baseline median: log1p(v) - log1p(median). */
 export const anomaly1p = (v, med) => Math.log1p(v) - Math.log1p(med);
 
@@ -39,6 +42,20 @@ export function featuresAt(values, medians, t, month) {
   if (!ok(next) || p < 0 || !ok(values[p]) || !ok(medians[p])) return null;
   const ang = (2 * Math.PI * month) / 12;
   return [a[0], (a[0] + a[1] + a[2]) / 3, Math.sin(ang), Math.cos(ang), Math.log1p(next), anomaly1p(values[p], medians[p])];
+}
+
+/**
+ * Mean anomaly (anomaly1p) at month index t over the neighbouring cells that have a value and a
+ * median there; `neighbors` is a list of `{values, medians}`. 0 (neutral) when none has. Uses month
+ * t only (the same month as the cell's own `anomaly` feature), so nothing after t enters.
+ */
+export function neighborAnomaly(neighbors, t) {
+  let s = 0, n = 0;
+  for (const c of neighbors) {
+    if (t < 0 || !ok(c.values[t]) || !ok(c.medians[t])) continue;
+    s += anomaly1p(c.values[t], c.medians[t]); n++;
+  }
+  return n ? s / n : 0;
 }
 
 export const sigmoid = (z) => 1 / (1 + Math.exp(-z));

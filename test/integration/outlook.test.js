@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { runOutlook } from '../../pipeline/outlook.js';
+import { chooseModel, runOutlook } from '../../pipeline/outlook.js';
 
 // Synthetic 1 deg tile: seasonal fires with a persistent yearly level per cell, S-NPP 2012-01..2024-12,
 // NOAA-20 2018-04..2024-12. Seeded, so the run is reproducible.
@@ -99,4 +99,30 @@ test('no-skill: a cell with median 0 is forecast but labeled, the others are not
   assert.ok(tile.cell.includes(0));
   tile.cell.forEach((c, i) => assert.equal(tile.no_skill[i], c === 0 ? 1 : 0, `cell ${c}`));
   fs.rmSync(dir, { recursive: true });
+});
+
+test('model flag: default is logistic unless GBT clearly wins; gbt is deterministic and keeps the output shape', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'outlook-'));
+  makeBuild(dir);
+  const split = { trainTo: '2020-12', testFrom: '2022-01', testTo: '2024-12', now: '2025-03-05T00:00:00Z' };
+  const g1 = runOutlook({ dataDir: dir, model: 'gbt', ...split });
+  const g2 = runOutlook({ dataDir: dir, model: 'gbt', ...split });
+  assert.equal(g1.model.model, 'gbt');
+  assert.deepEqual(g1.model.trees, g2.model.trees);
+  assert.equal(g1.manifest.model, 'gbt');
+  const t = [...g1.tiles.values()][0];
+  assert.ok(t.p.length > 0 && t.p.every((p) => p >= 0 && p <= 1) && t.target_month === '2025-01');
+  assert.ok(g1.model.compared.logistic.temporal && g1.model.compared.gbt.temporal);
+  assert.equal(runOutlook({ dataDir: dir, model: 'logistic', ...split }).model.model, 'logistic');
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('chooseModel: non-overlapping CI or clearly better wins, overlap keeps logistic, forced choice wins', () => {
+  const mk = (b, ci, sb = b) => ({ temporal: { bss_persistence: b, bss_persistence_ci: ci }, spatial: { bss_persistence: sb } });
+  const lg = mk(0.05, [0.03, 0.07]);
+  assert.equal(chooseModel(lg, mk(0.09, [0.08, 0.10])).model, 'gbt'); // non-overlapping
+  assert.equal(chooseModel(lg, mk(0.07, [0.055, 0.09])).model, 'gbt'); // clearly: +0.02, lower above logistic point
+  assert.equal(chooseModel(lg, mk(0.06, [0.04, 0.08])).model, 'logistic'); // overlap, lower below point
+  assert.equal(chooseModel(lg, mk(0.09, [0.08, 0.10], 0.0)).model, 'logistic'); // tile-blocked worse
+  assert.equal(chooseModel(lg, mk(0.0, [-0.1, 0.1]), 'gbt').model, 'gbt');
 });

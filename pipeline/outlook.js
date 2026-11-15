@@ -14,7 +14,9 @@ import { parseArgs } from 'node:util';
 import { baseline, KNOWN_PARTIAL_MONTHS } from '../core/baseline.js';
 import { addMonths, monthIndex } from '../core/months.js';
 import { coverageLookup } from '../core/tiles.js';
-import { FEATURES, OUTLOOK_METHOD, featuresAt, fitLogistic, outcome, predict, scoreSet } from '../core/outlook.js';
+import { fitGbt, chooseRounds, predictGbt } from '../core/outlook-gbt.js';
+import { parseTileId } from '../core/grid.js';
+import { FEATURES_GBT, neighborAnomaly, FEATURES, OUTLOOK_METHOD, featuresAt, fitLogistic, outcome, predict, scoreSet } from '../core/outlook.js';
 
 const FOLDS = 5;
 /** Cells whose target median is at most this carry `no-skill` (gate V4 O2). */
@@ -151,15 +153,29 @@ export function buildSamples(cells, month0) {
   const zeroT = [];
   let last = -1;
   for (const c of cells) c.values.forEach((v, i) => { if (v !== null && i > last) last = i; });
+  const gxy = (c) => { const { tx, ty } = parseTileId(c.tile); return [tx * 10 + (c.cell % 10), ty * 10 + Math.floor(c.cell / 10)]; };
+  const at = new Map();
   for (const c of cells) {
-    const medians = baseline({ start: month0, values: c.values }).series.values;
+    c.medians = baseline({ start: month0, values: c.values }).series.values;
+    const [X, Y] = gxy(c);
+    at.set(`${X},${Y}`, c);
+  }
+  for (const c of cells) {
+    const medians = c.medians;
+    const [X, Y] = gxy(c);
+    const nbrs = [];
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+      const o = (dx || dy) && at.get(`${X + dx},${Y + dy}`);
+      if (o) nbrs.push(o);
+    }
     for (let T = 1; T <= last + 1; T++) {
       const mo = Number(addMonths(month0, T).slice(5));
       const y = outcome(c.values, medians, T);
       const x = featuresAt(c.values, medians, T - 1, mo);
       if (x) {
-        if (y !== null) samples.push({ tile: c.tile, cell: c.cell, T, x, y, med: medians[T], above: x[0] > 0 ? 1 : 0 });
-        if (T === last + 1) forecast.push({ tile: c.tile, cell: c.cell, x, med: medians[T] });
+        const xg = [...x, neighborAnomaly(nbrs, T - 1)];
+        if (y !== null) samples.push({ tile: c.tile, cell: c.cell, T, x, xg, y, med: medians[T], above: x[0] > 0 ? 1 : 0 });
+        if (T === last + 1) forecast.push({ tile: c.tile, cell: c.cell, x, xg, med: medians[T] });
       }
       if (x && c.values[T] !== null && medians[T] === 0) zeroT.push(T);
     }
@@ -177,9 +193,32 @@ export function calibrate(train) {
   return { constant: c, persistence: [rate(0), rate(1)] };
 }
 
-function evaluate(model, ref, test, month0) {
+/** Gradient-boosted settings: depth 3, lr 0.1; rounds chosen on the last training year (training period only). */
+export const GBT_OPTS = { depth: 3, lr: 0.1, bins: 32, lambda: 1, minLeaf: 20 };
+
+/**
+ * A model kind turns training samples into a scorer. `logistic` uses the six features, `gbt` the
+ * seven (with the neighbour anomaly) and picks its rounds on the last calendar year of the training
+ * samples, then refits on all of them.
+ */
+export function fitKind(kind, train, month0, fixedRounds = null) {
+  if (kind === 'logistic') {
+    const m = fitLogistic(col(train, 'x'), col(train, 'y'), {});
+    return { model: m, score: (s) => predict(m, s.x) };
+  }
+  let rounds = fixedRounds, valLoss = null;
+  if (rounds === null) {
+    const lastYear = Math.max(...train.map((s) => +yearOf(month0, s.T)));
+    const tr = train.filter((s) => +yearOf(month0, s.T) < lastYear), va = train.filter((s) => +yearOf(month0, s.T) === lastYear);
+    ({ rounds, loss: valLoss } = chooseRounds({ X: col(tr, 'xg'), y: col(tr, 'y') }, { X: col(va, 'xg'), y: col(va, 'y') }, GBT_OPTS));
+  }
+  const m = { ...fitGbt(col(train, 'xg'), col(train, 'y'), { ...GBT_OPTS, rounds }), rounds, validation_log_loss: valLoss };
+  return { model: m, score: (s) => predictGbt(m, s.xg) };
+}
+
+function evaluate(fit, ref, test, month0) {
   return scoreSet({
-    p: test.map((s) => predict(model, s.x)), constant: test.map(() => ref.constant),
+    p: test.map(fit.score), constant: test.map(() => ref.constant),
     persist: test.map((s) => ref.persistence[s.above]), y: col(test, 'y'),
     block: test.map((s) => `${s.tile}|${yearOf(month0, s.T)}`),
   });
@@ -188,13 +227,15 @@ function evaluate(model, ref, test, month0) {
 /**
  * Train on targets <= trainTo, test on targets in [testFrom, testTo]; plus 5-fold tile blocking.
  * The headline skill counts test samples whose target median is above NO_SKILL_MEDIAN; the share left out is reported.
+ * `kind` is `logistic` or `gbt`.
  */
-export function trainAndValidate(samples, zeroT, month0, { trainTo = '2020-12', testFrom = '2022-01', testTo = '2025-12', fit = {} } = {}) {
+export function trainAndValidate(samples, zeroT, month0, { trainTo = '2020-12', testFrom = '2022-01', testTo = '2025-12', kind = 'logistic' } = {}) {
   const [a, b, c] = [trainTo, testFrom, testTo].map(monthIndex).map((m) => m - monthIndex(month0));
   const train = samples.filter((s) => s.T <= a);
   const test = samples.filter((s) => s.T >= b && s.T <= c);
   if (!train.length || !test.length) throw new Error(`no samples: train ${train.length}, test ${test.length}`);
-  const model = fitLogistic(col(train, 'x'), col(train, 'y'), fit);
+  const fit = fitKind(kind, train, month0);
+  const model = fit.model;
   const ref = calibrate(train);
   const head = test.filter((s) => s.med > NO_SKILL_MEDIAN);
   const low = test.filter((s) => s.med <= NO_SKILL_MEDIAN);
@@ -206,9 +247,9 @@ export function trainAndValidate(samples, zeroT, month0, { trainTo = '2020-12', 
       const tr = train.filter((s) => !held.has(s.tile));
       const te = set.filter((s) => held.has(s.tile));
       if (!tr.length || !te.length) continue;
-      const m = fitLogistic(col(tr, 'x'), col(tr, 'y'), fit);
+      const ft = fitKind(kind, tr, month0, kind === 'gbt' ? model.rounds : null);
       const r = calibrate(tr);
-      for (const s of te) folded.push({ s, p: predict(m, s.x), r });
+      for (const s of te) folded.push({ s, p: ft.score(s), r });
     }
     return folded.length ? { folds: FOLDS, ...scoreSet({
       p: folded.map((f) => f.p), constant: folded.map((f) => f.r.constant),
@@ -218,14 +259,35 @@ export function trainAndValidate(samples, zeroT, month0, { trainTo = '2020-12', 
   };
   const zero = zeroT.filter((T) => T >= b && T <= c).length;
   return {
-    model, ref, counts: { train: train.length, test: head.length, test_all: test.length, test_median_le_1: low.length, train_from: addMonths(month0, Math.min(...col(train, 'T'))), train_to: trainTo },
+    kind, model, score: fit.score, ref, counts: { train: train.length, test: head.length, test_all: test.length, test_median_le_1: low.length, train_from: addMonths(month0, Math.min(...col(train, 'T'))), train_to: trainTo },
     no_skill_share_of_test: (zero + low.length) / (zero + test.length),
     no_skill_test: { median_0: zero, median_le_1: low.length, skill_cells_months: head.length },
-    temporal: evaluate(model, ref, head, month0),
+    temporal: evaluate(fit, ref, head, month0),
     spatial: blocked(head),
-    temporal_all: evaluate(model, ref, test, month0), spatial_all: blocked(test),
-    temporal_median_le_1: low.length ? evaluate(model, ref, low, month0) : null,
+    temporal_all: evaluate(fit, ref, test, month0), spatial_all: blocked(test),
+    temporal_median_le_1: low.length ? evaluate(fit, ref, low, month0) : null,
   };
+}
+
+export const GBT_METHOD = { id: 'outlook-gbt', version: 1 };
+
+/**
+ * Decision rule for the default model (O-GBT). `choice` is `auto`, `logistic` or `gbt` (forced by --model).
+ * Auto picks GBT only when, on the headline set (median above 1, time split), its BSS vs calibrated
+ * persistence beats the logistic one with a non-overlapping 95% CI (GBT lower bound above the logistic
+ * upper bound), or clearly better: higher point estimate by at least 0.01 and GBT lower bound above the
+ * logistic point estimate; and the tile-blocked point estimate is not worse. Otherwise logistic stays.
+ */
+export function chooseModel(lg, gb, choice = 'auto') {
+  const l = lg.temporal, g = gb.temporal;
+  const ls = lg.spatial?.bss_persistence ?? -Infinity, gs = gb.spatial?.bss_persistence ?? -Infinity;
+  const nonOverlap = g.bss_persistence_ci[0] > l.bss_persistence_ci[1];
+  const clearly = g.bss_persistence - l.bss_persistence >= 0.01 && g.bss_persistence_ci[0] > l.bss_persistence;
+  const better = (nonOverlap || clearly) && gs >= ls;
+  const model = choice === 'auto' ? (better ? 'gbt' : 'logistic') : choice;
+  return { model, requested: choice, rule: 'gbt if (CI lower > logistic CI upper or diff >= 0.01 with CI lower > logistic point) and tile-blocked not worse; BSS vs calibrated persistence, median above 1, time split',
+    logistic_bss_persistence: round(l.bss_persistence), gbt_bss_persistence: round(g.bss_persistence), logistic_ci: l.bss_persistence_ci.map((x) => round(x)), gbt_ci: g.bss_persistence_ci.map((x) => round(x)),
+    gbt_beats_logistic: better };
 }
 
 const skill = (s) => s && { n: s.n, brier: s.brier, brier_constant: s.brier_constant, brier_persistence_calibrated: s.brier_persistence_calibrated,
@@ -237,25 +299,30 @@ const skill = (s) => s && { n: s.n, brier: s.brier, brier_constant: s.brier_cons
  * `now` (default: the live fetch time, else the current time) decides forecast vs hindcast: the
  * output is a forecast only when the last observed month is the month before `now`'s month.
  */
-export function runOutlook({ dataDir, liveDir = null, outDir, modelOut, now = null, issuedAt = null, command = 'node pipeline/outlook.js', ...split }) {
+export function runOutlook({ dataDir, liveDir = null, outDir, modelOut, now = null, issuedAt = null, command = 'node pipeline/outlook.js', model: choice = 'auto', ...split }) {
   const { manifest, K, cells, live } = loadCells(dataDir, { liveDir });
   const { samples, forecast, zeroT, lastMonth } = buildSamples(cells, manifest.month0);
-  const v = trainAndValidate(samples, zeroT, manifest.month0, split);
+  const lg = trainAndValidate(samples, zeroT, manifest.month0, { ...split, kind: 'logistic' });
+  const gb = trainAndValidate(samples, zeroT, manifest.month0, { ...split, kind: 'gbt' });
+  const decision = chooseModel(lg, gb, choice);
+  const v = decision.model === 'gbt' ? gb : lg;
   const target = addMonths(lastMonth, 1);
   const ref = new Date(now ?? live?.fetchedAt ?? Date.now());
   const complete = addMonths(ref.toISOString().slice(0, 7), -1);
   const mode = lastMonth === complete ? 'forecast' : 'hindcast';
   const rounded = (x) => x.map((r) => round(r, 6));
-  const model = {
-    method: OUTLOOK_METHOD, status: 'experimental', features: FEATURES,
-    mean: rounded(v.model.mean), std: rounded(v.model.std), weights: rounded(v.model.weights), bias: round(v.model.bias, 6),
-    trained: { from: v.counts.train_from, to: v.counts.train_to, samples: v.counts.train }, command, dataVersion: manifest.dataVersion,
-    references: { constant: round(v.ref.constant, 4), persistence_given_above: round(v.ref.persistence[1], 4), persistence_given_not_above: round(v.ref.persistence[0], 4) },
-    metrics: { temporal: skill(roundDeep(v.temporal)), spatial: skill(roundDeep(v.spatial)) },
-  };
-  const report = { method: OUTLOOK_METHOD, status: 'experimental', dataVersion: manifest.dataVersion, K: round(K, 4),
+  const refs = { constant: round(v.ref.constant, 4), persistence_given_above: round(v.ref.persistence[1], 4), persistence_given_not_above: round(v.ref.persistence[0], 4) };
+  const side = (r) => ({ temporal: skill(roundDeep(r.temporal)), spatial: skill(roundDeep(r.spatial)) });
+  const common = { status: 'experimental', model: decision.model, trained: { from: v.counts.train_from, to: v.counts.train_to, samples: v.counts.train }, command, dataVersion: manifest.dataVersion,
+    references: refs, metrics: side(v), decision, compared: { logistic: side(lg), gbt: side(gb) } };
+  const model = decision.model === 'gbt'
+    ? { method: GBT_METHOD, ...common, features: FEATURES_GBT, bias: round(v.model.bias, 6), lr: v.model.lr, depth: v.model.depth, rounds: v.model.rounds, validation_log_loss: round(v.model.validation_log_loss, 6),
+      trees: JSON.parse(JSON.stringify(v.model.trees, (k, x) => (typeof x === 'number' ? round(x, 6) : x))) }
+    : { method: OUTLOOK_METHOD, ...common, features: FEATURES, mean: rounded(v.model.mean), std: rounded(v.model.std), weights: rounded(v.model.weights), bias: round(v.model.bias, 6) };
+  const report = { method: model.method, status: 'experimental', dataVersion: manifest.dataVersion, K: round(K, 4),
     test: { from: split.testFrom ?? '2022-01', to: split.testTo ?? '2025-12' }, counts: v.counts,
-    no_skill_share_of_test: round(v.no_skill_share_of_test), no_skill_test: v.no_skill_test, references: model.references,
+    no_skill_share_of_test: round(v.no_skill_share_of_test), no_skill_test: v.no_skill_test, references: model.references, model: decision.model, decision, compared: model.compared,
+    gbt_full: decision.model === 'gbt' ? undefined : roundDeep({ temporal: gb.temporal, spatial: gb.spatial, temporal_all: gb.temporal_all, spatial_all: gb.spatial_all, temporal_median_le_1: gb.temporal_median_le_1, rounds: gb.model.rounds }),
     live_months: live?.list ?? null, temporal: roundDeep(v.temporal), spatial: roundDeep(v.spatial),
     temporal_all: roundDeep(v.temporal_all), spatial_all: roundDeep(v.spatial_all), temporal_median_le_1: roundDeep(v.temporal_median_le_1) };
   const issued = issuedAt ?? ref.toISOString();
@@ -266,7 +333,7 @@ export function runOutlook({ dataDir, liveDir = null, outDir, modelOut, now = nu
   for (const f of forecast) {
     if (!byTile.has(f.tile)) byTile.set(f.tile, { ...stamp, cell: [], p: [], no_skill: [] });
     const t = byTile.get(f.tile);
-    const p = round(predict(model, f.x), 3);
+    const p = round(v.score(f), 3);
     const ns = f.med > NO_SKILL_MEDIAN ? 0 : 1;
     t.cell.push(f.cell); t.p.push(p); t.no_skill.push(ns);
     sumP += p; noSkill += ns;
@@ -275,7 +342,7 @@ export function runOutlook({ dataDir, liveDir = null, outDir, modelOut, now = nu
     ...(mode === 'hindcast' ? { hindcast_note: `latest complete month is ${complete}; the newest data this output has is ${lastMonth}` } : {}),
     dataVersion: manifest.dataVersion, grid: { res: 1, tile_deg: 10 },
     tiles: [...byTile.keys()].sort(), cells: forecast.length, no_skill_cells: noSkill, no_skill_share: round(forecast.length ? noSkill / forecast.length : 0),
-    mean_p: round(forecast.length ? sumP / forecast.length : null), skill: model.metrics, no_skill_share_of_test: round(v.no_skill_share_of_test), method: OUTLOOK_METHOD };
+    model: decision.model, mean_p: round(forecast.length ? sumP / forecast.length : null), skill: model.metrics, no_skill_share_of_test: round(v.no_skill_share_of_test), method: model.method };
   if (outDir) {
     fs.mkdirSync(path.join(outDir, 'tiles'), { recursive: true });
     for (const [id, t] of byTile) fs.writeFileSync(path.join(outDir, 'tiles', `${id}.json`), `${JSON.stringify(t)}\n`);
@@ -287,15 +354,15 @@ export function runOutlook({ dataDir, liveDir = null, outDir, modelOut, now = nu
 }
 
 async function main() {
-  const { values } = parseArgs({ options: { data: { type: 'string' }, live: { type: 'string' }, out: { type: 'string' }, 'model-out': { type: 'string' } } });
+  const { values } = parseArgs({ options: { data: { type: 'string' }, live: { type: 'string' }, out: { type: 'string' }, 'model-out': { type: 'string' }, model: { type: 'string' } } });
   if (!values.data || !values.out) {
     console.error('usage: node pipeline/outlook.js --data <build dir> [--live <live dir>] --out <dir> [--model-out core/data/outlook-model.json]');
     process.exit(2);
   }
-  const command = `node pipeline/outlook.js --data ${values.data}${values.live ? ` --live ${values.live}` : ''} --out ${values.out}${values['model-out'] ? ` --model-out ${values['model-out']}` : ''}`;
-  const { report, manifest } = runOutlook({ dataDir: values.data, liveDir: values.live, issuedAt: new Date().toISOString(), outDir: values.out, modelOut: values['model-out'], command });
+  const command = `node pipeline/outlook.js --data ${values.data}${values.live ? ` --live ${values.live}` : ''} --out ${values.out}${values['model-out'] ? ` --model-out ${values['model-out']}` : ''}${values.model ? ` --model ${values.model}` : ''}`;
+  const { report, manifest } = runOutlook({ dataDir: values.data, liveDir: values.live, issuedAt: new Date().toISOString(), outDir: values.out, modelOut: values['model-out'], command, model: values.model ?? 'auto' });
   const strip = (s) => s && { ...s, reliability: undefined };
-  console.log(JSON.stringify({ mode: manifest.mode, target_month: manifest.target_month, last_observed_month: manifest.last_observed_month,
+  console.log(JSON.stringify({ model: report.model, decision: report.decision, compared: report.compared, mode: manifest.mode, target_month: manifest.target_month, last_observed_month: manifest.last_observed_month,
     cells: manifest.cells, mean_p: manifest.mean_p, no_skill_share: manifest.no_skill_share, no_skill_share_of_test: report.no_skill_share_of_test,
     counts: report.counts, references: report.references, live_months: report.live_months, temporal: strip(report.temporal), spatial: strip(report.spatial),
     temporal_all: strip(report.temporal_all), spatial_all: strip(report.spatial_all), temporal_median_le_1: strip(report.temporal_median_le_1) }, null, 2));
