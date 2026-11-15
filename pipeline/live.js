@@ -78,9 +78,11 @@ export async function downloadNrt({ fetch, urls, dir }) {
  * @param {Object} counts counts[family][tile][cell] = Map dayNumber -> count
  * @param {Object<string, [number, number]|null>} cov per sensor [first, last] absolute day numbers
  * @param {number} day0 absolute day number of the manifest day0
+ * @param {Object<string, string[]>} [partial] per sensor partial days "YYYY-MM-DD": written null, never 0
  * @returns {Map<string, {cell: number[], day: number[], modis: (number|null)[], viirs: (number|null)[], noaa20: (number|null)[]}>}
  */
-export function buildLiveTiles(counts, cov, day0) {
+export function buildLiveTiles(counts, cov, day0, partial = {}) {
+  const skip = Object.fromEntries(SENSORS.map((s) => [s, new Set((partial[s] ?? []).map(dayNumber))]));
   const tileIds = new Set();
   for (const fam of Object.values(counts)) for (const t of Object.keys(fam)) tileIds.add(t);
   const out = new Map();
@@ -103,7 +105,7 @@ export function buildLiveTiles(counts, cov, day0) {
       t.day.push(r.day);
       for (const s of SENSORS) {
         const c = cov[s];
-        const inside = c && r.day + day0 >= c[0] && r.day + day0 <= c[1];
+        const inside = c && r.day + day0 >= c[0] && r.day + day0 <= c[1] && !skip[s].has(r.day + day0);
         t[s].push(inside ? (r[s] ?? 0) : null);
       }
     }
@@ -118,25 +120,48 @@ export function serializeLiveTile(t) {
   return `{\n${body}\n}\n`;
 }
 
+/** Days of a sensor's coverage whose global record count is under this share of the median daily count are partial. */
+export const PARTIAL_SHARE = 0.5;
+
 /**
- * Live manifest. `coverage` and `partial_days` are in "YYYY-MM-DD". The first day of a sensor's
- * coverage is partial (a rolling 24h/48h/7d file starts mid-day), and so is its last day when it
- * is the fetch day (still open) or earlier than the manifest's last day (the sensor stopped or
- * lags mid-day: S-NPP ended 2026-11-02 15:40 UTC).
- * @param {{fetchedAt: string, days: Object<string, {first: string, last: string}>, tiles: string[],
+ * Partial days of one sensor (gate V3, L2): a day is partial when its global record count (every
+ * accepted record of the sensor that day, before the domain clip, any type) is under 50% of the
+ * median daily count over its coverage window (days without records count 0); the fetch day is
+ * always partial, and so is a sensor's last day when it is earlier than `lastDay` (the feed ended
+ * mid-day: S-NPP, 2026-11-02 15:40 UTC, is 55% of the median, above the 50% rule). The first day is
+ * not partial by default.
+ * @param {Object<string, number>} counts day -> records
+ * @param {{first: string, last: string}} cov
+ * @returns {string[]} sorted days
+ */
+export function partialDays(counts, cov, fetchDay, lastDay = cov.last) {
+  const first = dayNumber(cov.first);
+  const n = dayNumber(cov.last) - first + 1;
+  const daily = Array.from({ length: n }, (_, i) => counts[dayString(first + i)] ?? 0).sort((a, b) => a - b);
+  const median = n % 2 ? daily[(n - 1) / 2] : (daily[n / 2 - 1] + daily[n / 2]) / 2;
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const d = dayString(first + i);
+    if (d === fetchDay || (d === cov.last && cov.last < lastDay) || (counts[d] ?? 0) < PARTIAL_SHARE * median) out.push(d);
+  }
+  return out;
+}
+
+/**
+ * Live manifest. `coverage` and `partial_days` are in "YYYY-MM-DD"; `daily_records` holds the
+ * global record count per sensor and day that `partial_days` is derived from.
+ * @param {{fetchedAt: string, days: Object<string, {first: string, last: string}>,
+ *   dayCounts?: Object<string, Object<string, number>>, tiles: string[],
  *   sources: object[], domain?: object, stats?: object, baseUrl?: string}} o
  */
-export function buildLiveManifest({ fetchedAt, days, tiles, sources, domain, stats, baseUrl = 'data/live/' }) {
+export function buildLiveManifest({ fetchedAt, days, dayCounts = {}, tiles, sources, domain, stats, baseUrl = 'data/live/' }) {
   const coverage = {};
   const partial = {};
   for (const s of SENSORS) coverage[s] = days[s] ? [days[s].first, days[s].last] : null;
   const all = Object.values(coverage).filter(Boolean);
   if (!all.length) throw new Error('no NRT records for any sensor: coverage cannot be derived');
   const lastDay = all.map((c) => c[1]).sort().at(-1);
-  for (const s of SENSORS) {
-    const d = days[s];
-    partial[s] = d ? [...new Set([d.first, ...(d.last === fetchedAt.slice(0, 10) || d.last < lastDay ? [d.last] : [])])] : [];
-  }
+  for (const s of SENSORS) partial[s] = days[s] ? partialDays(dayCounts[s] ?? {}, days[s], fetchedAt.slice(0, 10), lastDay) : [];
   return {
     schema: 1,
     kind: 'live',
@@ -148,6 +173,8 @@ export function buildLiveManifest({ fetchedAt, days, tiles, sources, domain, sta
     last_day: lastDay,
     coverage,
     partial_days: partial,
+    partial_share: PARTIAL_SHARE,
+    daily_records: dayCounts,
     satellites: SATELLITES,
     sources,
     ...(stats ?? {}),
@@ -183,6 +210,7 @@ export async function buildLive({ inputs, outDir, fetchedAt, domainFile, baseUrl
 
   const into = createBinResult();
   const days = {};
+  const dayCounts = {};
   const sources = [];
   const reader = { read: 0, rejected: {} };
   let noType = 0;
@@ -199,6 +227,8 @@ export async function buildLive({ inputs, outDir, fetchedAt, domainFile, baseUrl
           const d = (days[SENSOR_OF[fam]] ??= { first: rec.utcDay, last: rec.utcDay });
           if (rec.utcDay < d.first) d.first = rec.utcDay;
           if (rec.utcDay > d.last) d.last = rec.utcDay;
+          const c = (dayCounts[SENSOR_OF[fam]] ??= {});
+          c[rec.utcDay] = (c[rec.utcDay] ?? 0) + 1;
         }
         if (clipper && !(inBbox(domainBox, rec.lon, rec.lat) && clipper.contains(rec.lon, rec.lat))) { clippedByDomain++; continue; }
         yield rec;
@@ -216,7 +246,7 @@ export async function buildLive({ inputs, outDir, fetchedAt, domainFile, baseUrl
     for (const cells of Object.values(tiles)) for (const ds of Object.values(cells)) for (const n of ds.values()) fcd[SENSOR_OF[fam]] += n;
   }
   const manifest = buildLiveManifest({
-    fetchedAt, days, tiles: tileIds, sources, domain: domainInfo, baseUrl,
+    fetchedAt, days, dayCounts, tiles: tileIds, sources, domain: domainInfo, baseUrl,
     stats: {
       records_without_type: noType,
       skipped: into.stats.skipped,
@@ -226,7 +256,7 @@ export async function buildLive({ inputs, outDir, fetchedAt, domainFile, baseUrl
     },
   });
   const cov = Object.fromEntries(SENSORS.map((s) => [s, manifest.coverage[s]?.map(dayNumber) ?? null]));
-  const built = buildLiveTiles(into.counts, cov, dayNumber(manifest.day0));
+  const built = buildLiveTiles(into.counts, cov, dayNumber(manifest.day0), manifest.partial_days);
   const dir = path.join(outDir, 'tiles', '0.1');
   fs.rmSync(path.join(outDir, 'tiles'), { recursive: true, force: true });
   fs.mkdirSync(dir, { recursive: true });

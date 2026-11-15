@@ -378,6 +378,10 @@ export function validateLiveTile(t, { manifest } = {}) {
     seen.add(`${c}:${d}`);
   });
   const d0 = Number.isNaN(span) ? NaN : dayNum(manifest.day0);
+  const partial = new Set();
+  if (!Number.isNaN(d0) && isObj(manifest.partial_days)) {
+    for (const k of SENSORS) for (const x of manifest.partial_days[k] ?? []) partial.add(`${k}:${dayNum(x) - d0}`);
+  }
   for (const k of SENSORS) {
     const c = Number.isNaN(d0) || !isObj(manifest.coverage) ? undefined : manifest.coverage[k];
     const cov = c === null ? [1, 0] : Array.isArray(c) ? c.map((x) => dayNum(x) - d0) : null;
@@ -386,7 +390,10 @@ export function validateLiveTile(t, { manifest } = {}) {
       const d = t.day[i];
       if (!cov || !Number.isInteger(d) || d < 0 || d >= span || cov.some(Number.isNaN)) return;
       const inside = d >= cov[0] && d <= cov[1];
-      if (inside && v === null) e.push(err('NULL_INSIDE_COVERAGE', `${k}[${i}]`, `${k} is null on day ${d} inside its coverage; use 0 for none detected`));
+      const part = partial.has(`${k}:${d}`);
+      if (part && v !== null) e.push(err('COUNT_ON_PARTIAL_DAY', `${k}[${i}]`, `${k} has a count on partial day ${d}; must be null`));
+      else if (part) return;
+      else if (inside && v === null) e.push(err('NULL_INSIDE_COVERAGE', `${k}[${i}]`, `${k} is null on day ${d} inside its coverage; use 0 for none detected`));
       else if (!inside && v !== null) e.push(err('COUNT_OUTSIDE_COVERAGE', `${k}[${i}]`, `${k} has a count on day ${d} outside its coverage; must be null`));
     });
   }

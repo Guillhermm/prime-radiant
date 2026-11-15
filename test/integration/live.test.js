@@ -10,7 +10,7 @@ const root = new URL('../../fixtures/', import.meta.url).pathname;
 const opts = {
   inputs: ['nrt-modis.csv', 'nrt-viirs.csv'].map((f) => path.join(root, f)),
   domainFile: path.join(root, 'domain', 'box.geojson'),
-  fetchedAt: '2026-11-12T12:00:00Z',
+  fetchedAt: '2026-11-13T00:30:00Z', // the day after the data: no fetch-day partial
 };
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'pr-live-it-'));
 const read = (...p) => fs.readFileSync(path.join(...p), 'utf8');
@@ -50,7 +50,9 @@ test('NRT files have no type column: handled, counted, recorded in the manifest'
 
 test('provenance: fetch time, per-sensor day coverage, skipped NOAA-21, clipped, duplicates, counts', async () => {
   const { manifest } = await buildLive({ ...opts, outDir: tmp() });
-  assert.equal(manifest.fetched_at, '2026-11-12T12:00:00Z');
+  assert.equal(manifest.fetched_at, '2026-11-13T00:30:00Z');
+  assert.deepEqual(manifest.partial_days, { modis: [], viirs: [], noaa20: [] });
+  assert.deepEqual(manifest.daily_records.modis, { '2026-11-10': 2, '2026-11-11': 2, '2026-11-12': 2 });
   assert.deepEqual(manifest.coverage, { modis: ['2026-11-10', '2026-11-12'], viirs: ['2026-11-11', '2026-11-12'], noaa20: ['2026-11-12', '2026-11-12'] });
   assert.deepEqual(manifest.skipped, { NOAA21: 1 });
   assert.equal(manifest.clipped_by_domain, 1);
@@ -65,4 +67,14 @@ test('a rebuild into the same folder replaces the tiles of the previous run', as
   fs.writeFileSync(path.join(out, 'tiles', '0.1', 'x0y0.json'), '{}');
   await buildLive({ ...opts, outDir: out });
   assert.deepEqual(fs.readdirSync(path.join(out, 'tiles', '0.1')), ['x17y13.json']);
+});
+
+test('the fetch day is partial: its counts are null in the tile and the manifest lists it', async () => {
+  const out = tmp();
+  const { manifest } = await buildLive({ ...opts, outDir: out, fetchedAt: '2026-11-12T12:00:00Z' });
+  assert.deepEqual(manifest.partial_days, { modis: ['2026-11-12'], viirs: ['2026-11-12'], noaa20: ['2026-11-12'] });
+  const t = JSON.parse(read(out, 'tiles/0.1/x17y13.json'));
+  assert.deepEqual(t.modis, [1, 1, null, 1, null, null]);
+  assert.deepEqual(t.noaa20, [null, null, null, null, null, null]);
+  assert.deepEqual(validateLiveTile(t, { manifest }), []);
 });

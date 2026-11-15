@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { buildLiveManifest, buildLiveTiles, downloadNrt, nrtUrls, buildLive, serializeLiveTile } from './live.js';
+import { partialDays, buildLiveManifest, buildLiveTiles, downloadNrt, nrtUrls, buildLive, serializeLiveTile } from './live.js';
 import { binRecords } from './bin.js';
 import { locate } from '../core/grid.js';
 
@@ -48,14 +48,37 @@ test('buildLiveTiles: null outside a sensor day coverage, 0 inside, rows sorted'
   assert.match(serializeLiveTile(t), /^\{\n {2}"cell": \[\d+,\d+\],\n {2}"day": \[0,1\],/);
 });
 
-test('buildLiveManifest: first day partial, last day partial on the fetch day or before the manifest last day, no coverage throws', () => {
+test('partialDays: under 50% of the median, the fetch day, a feed that ended early; never the first day', () => {
+  const counts = { '2026-11-08': 10, '2026-11-09': 100, '2026-11-10': 49, '2026-11-11': 100, '2026-11-12': 100, '2026-11-13': 100 };
+  // median of 7 days (11-14 has no records: 0) is 100; 11-08 is the first day and 10 < 50 still counts as partial by the rule
+  assert.deepEqual(partialDays(counts, { first: '2026-11-09', last: '2026-11-13' }, '2026-11-20'), ['2026-11-10']);
+  assert.deepEqual(partialDays({ ...counts, '2026-11-10': 50 }, { first: '2026-11-09', last: '2026-11-13' }, '2026-11-20'), []);
+  assert.deepEqual(partialDays(counts, { first: '2026-11-09', last: '2026-11-13' }, '2026-11-13'), ['2026-11-10', '2026-11-13']);
+  assert.deepEqual(partialDays(counts, { first: '2026-11-09', last: '2026-11-13' }, '2026-11-20', '2026-11-14'), ['2026-11-10', '2026-11-13']);
+  assert.deepEqual(partialDays({ '2026-11-09': 100, '2026-11-11': 100 }, { first: '2026-11-09', last: '2026-11-11' }, 'x'), ['2026-11-10'], 'a day with no records inside the window');
+});
+
+test('buildLiveManifest: partial days from record counts, fetch day, no coverage throws', () => {
   const days = { modis: { first: '2026-11-08', last: '2026-11-14' }, viirs: { first: '2026-11-09', last: '2026-11-15' } };
-  const m = buildLiveManifest({ fetchedAt: '2026-11-15T09:00:00Z', days, tiles: [], sources: [{ file: 'a.csv' }] });
+  const full = (a, b, n) => Object.fromEntries(Array.from({ length: b - a + 1 }, (_, i) => [`2026-11-${String(a + i).padStart(2, '0')}`, n]));
+  const dayCounts = { modis: { ...full(8, 14, 100), '2026-11-11': 10 }, viirs: full(9, 15, 100) };
+  const m = buildLiveManifest({ fetchedAt: '2026-11-15T09:00:00Z', days, dayCounts, tiles: [], sources: [{ file: 'a.csv' }] });
   assert.equal(m.day0, '2026-11-08');
   assert.equal(m.last_day, '2026-11-15');
   assert.deepEqual(m.coverage.noaa20, null);
-  assert.deepEqual(m.partial_days, { modis: ['2026-11-08', '2026-11-14'], viirs: ['2026-11-09', '2026-11-15'], noaa20: [] }); // modis stopped a day early
+  assert.deepEqual(m.partial_days, { modis: ['2026-11-11', '2026-11-14'], viirs: ['2026-11-15'], noaa20: [] }); // modis ended a day early
+  assert.equal(m.partial_share, 0.5);
+  assert.deepEqual(m.daily_records, dayCounts);
   assert.throws(() => buildLiveManifest({ fetchedAt: '2026-11-15T09:00:00Z', days: {}, tiles: [], sources: [] }), /coverage/);
+});
+
+test('buildLiveTiles writes a sensor\'s partial days as null, not 0 and not the count', () => {
+  const l = locate(-9.95, 40.05);
+  const counts = { modis: { [l.tile]: { [l.cell]: new Map([[100, 1], [101, 2]]) } }, viirs: { [l.tile]: { [l.cell]: new Map([[100, 3]]) } } };
+  const cov = { modis: [100, 101], viirs: [100, 101], noaa20: null };
+  const t = buildLiveTiles(counts, cov, 100, { modis: ['1970-04-12'] }).get(l.tile); // day 101 = 1970-04-12
+  assert.deepEqual(t.modis, [1, null]);
+  assert.deepEqual(t.viirs, [3, 0]);
 });
 
 test('buildLive rejects a missing or non-UTC fetchedAt and empty inputs', async () => {

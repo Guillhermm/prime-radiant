@@ -29,6 +29,14 @@ test('live manifest: bad kind, fetch time, days, coverage, sources', () => {
   assert.deepEqual(bad({ coverage: { modis: null, viirs: null, noaa20: null } }), []);
 });
 
+test('live tile: a partial day must be null and is allowed to be null inside coverage', () => {
+  const m = { ...manifest(), partial_days: { modis: ['2026-11-11'], viirs: [], noaa20: [] } };
+  const t = tile(); // row 1 and 3 are day 1 (2026-11-11)
+  assert.ok(codes(validateLiveTile(t, { manifest: m })).includes('COUNT_ON_PARTIAL_DAY'));
+  t.modis[1] = null; t.modis[3] = null;
+  assert.deepEqual(validateLiveTile(t, { manifest: m }), []);
+});
+
 test('live tile: null/0 rule against day coverage, span and duplicates', () => {
   const t = (f) => { const x = tile(); f(x); return codes(validateLiveTile(x, { manifest: manifest() })); };
   assert.ok(t((x) => { x.viirs[1] = null; }).includes('NULL_INSIDE_COVERAGE'));
