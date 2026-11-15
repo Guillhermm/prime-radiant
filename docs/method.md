@@ -61,8 +61,11 @@ not checked end to end), **assumption** (a choice the team made) or **unverified
 | VIIRS S-NPP | 2012-01-20 to 2026-11-02 15:40 UTC | VIIRS series and R overlap |
 | VIIRS NOAA-20 | 2018-04-01 onward | K overlap, and VIIRS continuation after S-NPP (section 4.4) |
 
-Partial months for either sensor (2002-07, 2012-01, 2026-11, any outage month) are
-excluded from R and from the baseline.
+Partial months (2002-07, 2012-01, 2026-11, any outage month: a satellite with fewer
+acquisition days than days in the month) are excluded from R and K when partial for
+either sensor of the ratio. For the baseline and anomalies, a month is partial when it is
+partial for the sensor that supplies it: S-NPP for observed months, MODIS for MODIS x R
+months, NOAA-20 for NOAA-20 x K months (`core/partial.js`).
 
 ## 4. Harmonization
 
@@ -139,6 +142,19 @@ excluded from R and from the baseline.
 - At least 5 years are required, else no median is shown.
 - With an all-zero history the median is 0: compare by difference or percentile rank,
   never by ratio.
+
+## 5b. Anomalies (M2-K1, gate V2 pending)
+
+- **Assumption**: a month's anomaly is its percentile rank against the same calendar
+  month in earlier years only, with the baseline's exclusions (partial months for the
+  supplying sensor, Terra-only months, null): rank = (below + equal / 2) / n, so ties
+  split evenly and 0.5 is the median. No rank when n < 9 earlier years.
+- **Assumption**: a month is flagged when rank >= 0.9 and n >= 9.
+- All-zero history: 0 gives rank 0.5 (not flagged); any value above 0 gives rank 1
+  (flagged). In sparse areas one fire-cell-day after nine zero years is flagged.
+- Year rank: complete years ranked by harmonized total (1 = most; ties share the better
+  rank). A year containing a partial or missing month is excluded, with its reason.
+- Implementation: `core/anomaly.js` (`anomaly`, `yearRank`); KPIs in `kpis().anomaly`.
 
 ## 6. Caveats (shown on screen)
 
