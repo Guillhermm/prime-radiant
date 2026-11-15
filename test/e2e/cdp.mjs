@@ -73,6 +73,8 @@ export const launch = async (chromePath) => {
     listeners.add(onEvent);
     await Promise.all(['Runtime', 'Log', 'Page'].map((d) => cmd(`${d}.enable`)));
     await cmd('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width < 600 });
+    // E2E_CPU_THROTTLE=6 slows the page like a loaded CI runner, to reproduce timing races locally.
+    if (process.env.E2E_CPU_THROTTLE) await cmd('Emulation.setCPUThrottlingRate', { rate: Number(process.env.E2E_CPU_THROTTLE) });
 
     const evaluate = async (expr) => {
       const r = await cmd('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true });
@@ -87,9 +89,11 @@ export const launch = async (chromePath) => {
       }
       throw new Error(`timeout waiting for: ${what}`);
     };
-    const click = async (sel) => {
-      const box = await evaluate(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return null; e.scrollIntoView({ block: 'center' }); const at = () => { const r = e.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; }; return new Promise((done) => { let last = at(); let still = 0; let n = 0; const tick = () => { const now = at(); still = now[0] === last[0] && now[1] === last[1] ? still + 1 : 0; last = now; if (still >= 3 || ++n > 120) done(now); else requestAnimationFrame(tick); }; requestAnimationFrame(tick); }); })()`);
-      if (!box) throw new Error(`missing element: ${sel}`);
+    // Clicks land by coordinates, so wait until the target holds still and is the element hit at
+    // its center: on a slow runner the page can still grow or shrink after scrollIntoView.
+    const click = async (sel, ms = 20000) => {
+      const box = await evaluate(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return null; const at = () => { const r = e.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; }; const hit = ([x, y]) => { const t = document.elementFromPoint(x, y); return t === e || e.contains(t); }; e.scrollIntoView({ block: 'center' }); const t0 = performance.now(); return new Promise((done) => { let last = at(); let still = 0; const tick = () => { const now = at(); still = now[0] === last[0] && now[1] === last[1] ? still + 1 : 0; last = now; if (still >= 3 && hit(now)) return done(now); if (performance.now() - t0 > ${ms}) return done(null); if (still >= 3) { e.scrollIntoView({ block: 'center' }); still = 0; } requestAnimationFrame(tick); }; requestAnimationFrame(tick); }); })()`);
+      if (!box) throw new Error(`missing or unreachable element: ${sel}`);
       for (const type of ['mousePressed', 'mouseReleased']) await cmd('Input.dispatchMouseEvent', { type, x: box[0], y: box[1], button: 'left', clickCount: 1 });
     };
     const keys = { Escape: 27, Enter: 13, Tab: 9, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40 };

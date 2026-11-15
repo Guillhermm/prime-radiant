@@ -299,7 +299,7 @@ test('without the Popover API, About and the share menu still close on Escape an
     await page.until(`!${shown('#synth-about')} && document.activeElement.classList.contains('synth-about')`, 'Escape closes, focus on About');
     await page.click('.synth-about');
     await page.until(shown('#synth-about'), 'About again');
-    await page.click('h1, .hero-title');
+    await page.click('.hero-title');
     await page.until(`!${shown('#synth-about')}`, 'outside click closes');
     await openExample(page);
     await settle(page);
@@ -805,6 +805,7 @@ test('PWA: the manifest is valid and the service worker registers and activates'
   try {
     const m = await (await fetch(`${base}/web/manifest.webmanifest`)).json();
     assert.equal(m.id, '/prime-radiant');
+    await page.until(`document.querySelector('link[rel=manifest]')`, 'page loaded');
     assert.equal(await page.evaluate(`document.querySelector('link[rel=manifest]').href`), `${base}/web/manifest.webmanifest`);
     await page.until(`navigator.serviceWorker.getRegistration().then((r) => r?.active?.state === 'activated')`, 'service worker activated');
     assert.equal(await page.evaluate(`navigator.serviceWorker.getRegistration().then((r) => r.scope)`), `${base}/web/`);
