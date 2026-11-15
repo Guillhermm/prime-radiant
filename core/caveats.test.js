@@ -5,7 +5,7 @@ import { CAVEAT_IDS, DEFAULT_GATES, NO_GATES, caveat, catalog, caveatsFor } from
 test('catalog: nine caveats plus anomaly caveats and flags, short and long text, unique ids', () => {
   const all = catalog();
   assert.equal(all.filter((c) => c.kind === 'caveat').length, 10);
-  assert.ok(caveatsFor({ series: {} }, { global: true }).some((c) => c.id === 'global-extent' && c.preliminary), 'the global build is preliminary');
+  assert.ok(caveatsFor({ series: {} }, { global: true }).some((c) => c.id === 'global-extent' && !c.preliminary), 'the global build passed gates G1 and G2 with caveats');
   assert.ok(!caveatsFor({ series: {} }).some((c) => c.id === 'global-extent'));
   assert.deepEqual(all.filter((c) => c.kind === 'flag').map((c) => c.id),
     ['unconfirmed', 'cross-era', 'sparse-baseline', 'estimated', 'viirs-outage-filled', 'viirs-not-archived', 'terra-only',
@@ -16,8 +16,8 @@ test('catalog: nine caveats plus anomaly caveats and flags, short and long text,
   for (const c of all) assert.ok(c.short && c.long && c.long.length >= c.short.length, c.id);
 });
 
-test('preliminary: after V1, V2 and V3 only the pre-M3 nrt-unfiltered placeholder and the unvalidated global extent stay preliminary', () => {
-  assert.deepEqual(catalog().filter((c) => c.preliminary).map((c) => c.id), ['nrt-unfiltered', 'global-extent']);
+test('preliminary: after V1, V2 and V3 only the pre-M3 nrt-unfiltered placeholder stays preliminary', () => {
+  assert.deepEqual(catalog().filter((c) => c.preliminary).map((c) => c.id), ['nrt-unfiltered']);
   assert.equal(DEFAULT_GATES['not-validated'], 'passed');
 });
 

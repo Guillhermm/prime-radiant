@@ -206,7 +206,7 @@ The live type-0 share (`core/data/type0-share.json`) was derived without the mas
 
 ## Global build (M4-K1)
 
-Science check: docs/gates/G1.md (accepted with caveats, except the type filter, which keeps gas flares; the app tags the global extent preliminary). Fix: the static-source mask above (gate G2), applied from the first global build after 2026-11-15 18:00.
+Science check: docs/gates/G1.md (accepted with caveats, except the type filter, which keeps gas flares; the app tags the global extent preliminary). Fix: the static-source mask above (gate G2), applied from `202611152226` (published 2026-11-15, build 85 minutes on the runner, peak 1.5 GB); the global caveat is no longer preliminary.
 
 `node tools/fetch-country.mjs --scope global --out raw/global`, then
 `node pipeline/build.js --in raw/global --out raw/build --admin1 <ne_10m_admin_1_states_provinces.geojson>`

@@ -219,10 +219,11 @@ months, NOAA-20 for NOAA-20 x K months (`core/partial.js`).
 9. With a domain (the Brazil build), data cover only that outline (Natural Earth 10m, v5.1.2).
    Areas outside read as no data; border cells hold only detections inside the outline, so they
    undercount. A global build has no domain and does not show this caveat.
-10. A global build (no domain) shows `global-extent`, tagged preliminary: only Brazil was validated, type 0
-   keeps some gas flares and industrial sources, R was not checked by region, cells shrink toward the
-   poles, days are UTC (docs/gates/G1.md). The static-source mask (gate G2) removes most flares from the
-   next build on; the caveat is revised once that build is published and checked.
+10. A global build (no domain) shows `global-extent` (gates G1 and G2, accepted with caveats): flares are
+   removed by the static-source mask but some may remain, R was not checked by region (a world R is low
+   confidence), cells shrink toward the poles, days are UTC. Checked on the first masked publish
+   (`202611152226`): the 2025 S-NPP fire-cell-days of the 10 degree tile holding Hassi Messaoud fell 55%,
+   Rumaila's 40%, the Niger Delta's 1.8%, Angola's 0.1%, the Brazilian arc of deforestation's 1.0%.
 
 ## 6b. Live comparison (M3-K3, gate V3 accepted with caveats on 2026-11-15)
 

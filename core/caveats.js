@@ -25,8 +25,8 @@ const DEFS = [
     'The harmonization method has not passed the science gate (V1). Numbers are preliminary.'],
   ['domain-only', 'caveat', 'Data cover the domain outline only.',
     'Data cover only the domain the build was clipped to (a Natural Earth 10m outline, v5.1.2; the Method drawer names it). Areas outside read as no data; border cells hold only detections inside the outline, so they undercount.'],
-  ['global-extent', 'caveat', 'Outside Brazil the method is preliminary.',
-    'The method was validated for Brazil (gate V1). Elsewhere it is preliminary (global check, 2026-11-15): FIRMS labels some gas flares and industrial heat sources as vegetation fires, so oil and gas fields (the Sahara, Iraq, the Niger Delta) overcount; the MODIS to VIIRS ratio was not checked region by region, and a regional or global fallback ratio is weakest in boreal forests. Counts are per 0.1 degree cell, whose area shrinks toward the poles, so do not compare areas at different latitudes. Days are UTC days.'],
+  ['global-extent', 'caveat', 'Outside Brazil: checked with caveats.',
+    'The method was first validated for Brazil (gate V1) and then checked worldwide (gates G1 and G2, 2026-11-15). Gas flares, volcanoes and industrial heat sources are removed with FIRMS source types and multi-year persistence; some flares may remain, and a spot about 1 km across that burns on 10 or more days a year, in two years, is dropped. The MODIS to VIIRS ratio was not checked region by region, and a ratio taken from the whole world is shown as low confidence. Counts are per 0.1 degree cell, whose area shrinks toward the poles, so do not compare areas at different latitudes. Days are UTC days.'],
   // anomaly caveats (gate V2 A6), added when anomaly results are present
   ['anomaly-rule', 'anomaly', 'Anomaly: rank against earlier years.',
     'The anomaly is the percentile rank of a month against the same calendar month in earlier years (50% = typical). A month is flagged when it ranks in the top tenth of earlier years (ties count against it) and the same holds on MODIS alone or VIIRS alone.'],
@@ -94,7 +94,7 @@ export const NO_GATES = Object.freeze(Object.fromEntries(CAVEAT_IDS.map((id) => 
  */
 // Gate V3 passed on its re-check (docs/gates/V3.md), so the live items are no longer preliminary.
 // The global extent failed one point of its check (type 0 keeps gas flares), so it stays preliminary.
-const PRELIMINARY = new Set(['nrt-unfiltered', 'global-extent']);
+const PRELIMINARY = new Set(['nrt-unfiltered']);
 export const DEFAULT_GATES = Object.freeze(Object.fromEntries(
   CAVEAT_IDS.map((id) => [id, PRELIMINARY.has(id) ? 'preliminary' : 'passed'])));
 
