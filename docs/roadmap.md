@@ -411,7 +411,7 @@ Sync **S4**: anomaly stub replaced by real core; V2, D2, Q2; deploy.
 - Acceptance: V3 verdict written; wording on screen matches it.
 - Tests: unit on band computation.
 - Files: `core/live.js`, `core/caveats.js`, `docs/method.md`.
-- Status: done. V3 re-check on 2026-11-15: accepted with caveats, live clipped to Brazil (`docs/gates/V3.md`).
+- Status: done. V3 re-check on 2026-11-15: accepted with caveats, live clipped to Brazil (`docs/gates/V3.md`). Worldwide since gate V5 (2026-11-15, `docs/gates/V5.md`): the live job applies the static-source mask when the published data carries it; outside Brazil only whole past months are compared.
 
 ### Guilherme
 
