@@ -7,7 +7,7 @@ Before recording: open the URL once and let it load; press Reload if the app off
 | Time | Screen | Say (about 75 words, about 2.5 a second) |
 |---|---|---|
 | 0:00 | Logo. | We're team Prime Radiant. Prime Radiant is a fire calendar for any place on Earth. |
-| 0:02 | Home: the world heat map. | Satellites have tracked fires since 2000, but the newer sensor, VIIRS, sees more than the older MODIS, so their records don't match. |
+| 0:02 | Home: the world heat map. | NASA's MODIS sensor has tracked fires since 2000. Its successor, VIIRS, sees more fires, so the two records don't match. |
 | 0:05 | Hover the hottest list, then the Radiant on the right. | We join both NASA FIRMS records on one scale: twenty-five years showing when a place burns and which years burned most. |
 | 0:10 | Click a hotspot, "Open the calendar", then a bright month; Export menu open. | Pick an area, see each month against its usual level, and export the numbers. |
 | 0:20 | Live tab on a Brazilian area with a full chart, then Anomalies. | Next: this season against past years as it happens, so responders spot an unusual month while it unfolds. |
