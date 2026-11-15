@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { OUTSIDE_LINE, OUTSIDE_EXPORT, bboxText, domainNote, errorState, liveStatus, recordDates, ribbonModel, screenState, stateModel } from './states.js';
+import { heroCaption, heroPlan, heroRadiantLabel, outsideLine, outsideExport, bboxText, domainNote, errorState, liveStatus, recordDates, ribbonModel, screenState, stateModel } from './states.js';
 
 test('empty offers one chip per example area', () => {
   const m = stateModel({ kind: 'empty' }, { presets: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] });
@@ -84,18 +84,52 @@ test('example ribbon: density class of each month median, no median is no data',
 test('an area outside the domain gets its own state, never a zero or a grid of no data', () => {
   const nulls = [{ value: null }, { value: null }];
   assert.deepEqual(screenState({ hasArea: true, status: 'ready', cells: nulls, outside: true }), { kind: 'outside', results: false });
-  const m = stateModel({ kind: 'outside' });
+  const four = ['a', 'b', 'c', 'd'].map((id) => ({ id, label: id.toUpperCase(), bbox: [0, 0, 1, 1] }));
+  const m = stateModel({ kind: 'outside' }, { presets: four });
   assert.equal(m.title, 'Outside the data domain');
-  assert.equal(m.lines[0], OUTSIDE_LINE);
-  assert.match(OUTSIDE_LINE, /not zeros/);
+  assert.equal(m.lines[0], outsideLine());
+  assert.match(outsideLine(), /^This area lies outside the data domain, .*not zeros\.$/);
   assert.equal(m.role, 'status');
-  assert.deepEqual(m.action, { id: 'draw', label: 'Draw an area in Brazil' }, 'the way out is the primary action');
-  assert.deepEqual(m.chips.map((c) => c.id), ['pantanal', 'amazon-arc'], 'with the example areas');
-  assert.match(OUTSIDE_EXPORT, /^Nothing to export: .*outside Brazil/);
+  assert.deepEqual(m.action, { id: 'draw', label: 'Draw an area in the data domain' }, 'the way out is the primary action');
+  const named = stateModel({ kind: 'outside' }, { region: 'Testland' });
+  assert.deepEqual(named.action, { id: 'draw', label: 'Draw an area in Testland' }, 'the region name from overview.json');
+  assert.equal(named.lines[1], 'Draw an area in Testland, or open an example.');
+  assert.match(named.lines[0], /^This area lies outside Testland, the only region/);
+  assert.deepEqual(m.chips.map((c) => c.id), ['a', 'b', 'c'], 'with the first three example areas');
+  assert.deepEqual(stateModel({ kind: 'outside' }).chips, [], 'none without examples');
+  assert.equal(outsideExport(), 'Nothing to export: this area lies outside the data domain.');
+  assert.equal(outsideExport('Testland'), 'Nothing to export: this area lies outside Testland, the data domain.');
 });
 
 test('an area partly outside names the share the counts cover', () => {
-  assert.equal(domainNote({ cells: 20000, inside: 10000, partial: true }), 'Part of this area lies outside Brazil, the data domain: counts cover the 50% inside it.');
+  assert.equal(domainNote({ cells: 20000, inside: 10000, partial: true }, 'Testland'), 'Part of this area lies outside Testland, the data domain: counts cover the 50% inside it.');
+  assert.equal(domainNote({ cells: 20000, inside: 10000, partial: true }), 'Part of this area lies outside the data domain: counts cover the 50% inside it.');
   assert.equal(domainNote({ cells: 100, inside: 100, partial: false }), null);
   assert.equal(domainNote(undefined), null);
+});
+
+const manifest = { month0: '2000-11', last_month: '2026-10' };
+const hotspot = { id: 'hotspot-1', rank: 1, label: 'Pará, Brazil', bbox: [-53, -9, -52, -8] };
+
+test('heroPlan: the suggestion, else the first example, else the whole data region once overview.json is known missing', () => {
+  assert.equal(heroPlan({ manifest: null }), null, 'no manifest: the brand mark');
+  assert.deepEqual(heroPlan({ manifest, presets: [hotspot], overview: { year: 2025 }, overviewSettled: true }), { kind: 'suggested', preset: hotspot });
+  const fixture = { id: 'fixture-box', label: 'Fixture area', bbox: [-10, 40, 0, 50] };
+  assert.deepEqual(heroPlan({ manifest, presets: [fixture] }), { kind: 'example', preset: fixture });
+  assert.deepEqual(heroPlan({ manifest, presets: [] }), { kind: 'pending' }, 'overview.json still on its way');
+  assert.deepEqual(heroPlan({ manifest, presets: [], overviewSettled: true }), { kind: 'region' });
+});
+
+test('heroCaption needs only the manifest years, so it is set with the placeholder', () => {
+  const overview = { year: 2025, region: { name: 'Testland' } };
+  assert.match(heroCaption({ kind: 'suggested', preset: hotspot }, { manifest, overview }), /^Suggested: the 1° area .* in Testland, 2025\..* Pick a month to open it in the calendar\.$/);
+  assert.equal(heroCaption({ kind: 'region' }, { manifest, synthetic: true }),
+    'The whole data region, 2000–2026. Rings are years, slices are months. Pick a month to open it in the calendar. Synthetic data.');
+  assert.match(heroCaption({ kind: 'example', preset: { label: 'Fixture area' } }, { manifest }), /^Fixture area, 2000–2026, as a Radiant/);
+  assert.equal(heroCaption({ kind: 'pending' }, { manifest }), '');
+});
+
+test('heroRadiantLabel says how to use the Radiant, and that it is loading before data', () => {
+  assert.match(heroRadiantLabel(hotspot), /^Fire calendar of Pará, Brazil: .*Enter opens the month in the calendar\.$/);
+  assert.match(heroRadiantLabel(null), /loading/);
 });

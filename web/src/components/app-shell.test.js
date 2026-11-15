@@ -34,6 +34,13 @@ test('hero names the matching example area and the period', () => {
   assert.deepEqual(h, { eyebrow: 'Burning activity calendar', title: 'Pantanal', subtitle: 'Fire-cell-days per month, 2012-01 to 2025-12.' });
 });
 
+test('the area\'s own name wins over the example label', () => {
+  const presets = [{ id: 'p', label: 'Pantanal', bbox: [-58, -20, -55, -17] }];
+  assert.equal(heroModel({ view: 'calendar', bbox: [-58, -20, -55, -17], name: 'My ranch' }, { presets }).title, 'My ranch');
+  assert.equal(heroModel({ view: 'calendar', bbox: [1, 2, 3, 4], name: 'My ranch' }).title, 'My ranch');
+  assert.equal(heroModel({ view: 'calendar', bbox: null, name: 'My ranch' }).title, 'Choose an area');
+});
+
 test('hero falls back to a custom area and to a prompt without an area', () => {
   assert.equal(heroModel({ view: 'live', bbox: [1, 2, 3, 4] }, { presets: [] }).title, 'Custom area');
   assert.equal(heroModel({ view: 'sensors', bbox: [1, 2, 3, 4] }, { synthetic: true }).eyebrow, 'Sensors · two records, one series · Synthetic data');

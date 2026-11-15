@@ -45,6 +45,7 @@ test('routing: shell, data, api, tiles and non-GET', () => {
   assert.equal(routeFor(req('http://localhost:8433/web/?fixtures=1'), SCOPE), 'shell');
   assert.equal(routeFor(req('http://localhost:8433/core/grid.js'), SCOPE), 'shell');
   assert.equal(routeFor(req('http://localhost:8433/data/manifest.json'), SCOPE), 'network-first');
+  assert.equal(routeFor(req('http://localhost:8433/data/v/20261115/overview.json'), SCOPE), 'network-first', 'overview.json is data, cached like the manifest');
   assert.equal(routeFor(req('http://localhost:8433/fixtures/manifest.json'), SCOPE), 'network-first');
   assert.equal(routeFor(req('http://localhost:8433/api/live?bbox=1,2,3,4'), SCOPE), 'network-only');
   assert.equal(routeFor(req('https://tile.openstreetmap.org/3/1/2.png'), SCOPE), 'bypass');

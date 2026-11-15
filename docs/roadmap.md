@@ -63,7 +63,7 @@ Owned by Kaue in `core/schema.js` + `fixtures/`, reviewed by Guilherme. A change
 | Domain `data/domain.json` | `{rows:{latIdx:[[c0,c1],...]}}`: 0.1 deg cells that intersect the polygon, as inclusive column runs per row (latIdx 0 = lat -90, column 0 = lon -180; sorted, non-touching). A 1 deg cell is in when any of its fine cells is. Rule: inside coverage and inside the domain, absent row = 0; outside the domain every value is null (a series for an AOI wholly outside is all null, flagged `outside-domain`; partly outside, sums cover the in-domain part and the series is flagged `partial-domain`). Records outside the polygon are dropped at build (`clipped_by_domain`); the polygon is `pipeline/domain/brazil.geojson` | pipeline | core/domain, core/aggregate |
 | Series | `{id: modis|viirs|harmonized|baseline|anomaly|live, unit:"fire-cell-days", start:"YYYY-MM", values:(number|null)[], flags?, method:{id,version}, comparable:boolean}`; null = sensor not operating, 0 = none detected (hard rule) | core | web |
 | CalendarCell | `{year, month, value, status: observed|harmonized|no-data|partial, estimated:boolean, flags?:string[], median?, rank?}` | core/calendar | calendar-grid, cell-detail, kpi-strip |
-| QueryState | `{bbox:[w,s,e,n], from:"YYYY-MM", to:"YYYY-MM", view: calendar|sensors|anomalies|live, layer: counts|anomaly}` in URL hash `#aoi=bbox:w,s,e,n&from=..&to=..&view=..&layer=..` | web/state | web |
+| QueryState | `{bbox:[w,s,e,n], name: string|null, from:"YYYY-MM", to:"YYYY-MM", view: calendar|sensors|anomalies|live, layer: counts|anomaly}` in URL hash `#aoi=bbox:w,s,e,n&name=..&from=..&to=..&view=..&layer=..` | web/state | web |
 | Core API | `seriesForAoi`, `harmonize`, `baseline`, `toCalendar`, `kpis`, `toCsv` (M1); `anomaly`, `flags`, `yearRank` (M2); live tiles share the tile shape with `day[]` instead of `month[]` (M3) | core | web |
 | Live (M3) | `data/live/manifest.json` + tiles with `day[]`; `GET /api/live?bbox=&days=` -> Series `id:"live", comparable:false` | pipeline/live, api | live-view |
 
@@ -343,22 +343,25 @@ Sync points:
 
 ### Kaue
 
-**M2-K1 Anomaly core** · M · depends: M1-K7, V1
+✅ **M2-K1 Anomaly core** · M · depends: M1-K7, V1
 - Deliverable: `core/anomaly.js`: percentile rank of a month against its baseline with ties split evenly, year rank by total, flag when rank >= 90th percentile (threshold from V2, default 0.9) and n >= 9 baseline years; Series `id:"anomaly"`; KPI additions: count, rank of year, current-month anomaly.
 - Acceptance: mathematician known answers (MAD 0 sparse case handled, ties split, n < 9 never flagged, year excluded from own baseline).
 - Tests: unit `core/anomaly.test.js`.
 - Files: `core/anomaly.js`, `core/calendar.js`, `core/index.js`.
+- Status: built with the V2 fixes A1-A6 (S-NPP outage months filled from NOAA-20 x K, single-sensor confirmation, scaled year ranks, sparse-baseline labels).
 
 **M2-K2 Flagged periods list and figures** · M · depends: M2-K1, M1-G10
 - Deliverable: `flag-list.js` (flagged months grouped into consecutive periods, rule stated on screen, keyboard selectable, selects the cell in the grid via QueryState), rank-of-year cards reusing KPI strip patterns.
 - Acceptance: selecting a period focuses the first cell; rule text matches `docs/method.md`.
 - Tests: unit on period grouping; integration on fixture.
 - Files: `web/src/components/flag-list.js`.
+- Status: in progress. Built: `core/periods.js` (`flaggedPeriods`, `flagRuleText`) with unit tests. Planned: `flag-list.js` and the rank-of-year cards.
 
-**M2-K3 Science gate V2** · S · depends: M2-K1
+✅ **M2-K3 Science gate V2** · S · depends: M2-K1
 - Deliverable: baseline + anomaly section of `docs/method.md` validated; caveat for small n and sparse areas.
 - Acceptance: written verdict; unvalidated items stay "preliminary".
 - Files: `docs/method.md`, `core/caveats.js`.
+- Status: passed with caveats on the re-check of 2026-11-15 (`docs/gates/V2.md`).
 
 ### Guilherme
 
@@ -405,6 +408,7 @@ Sync **S4**: anomaly stub replaced by real core; V2, D2, Q2; deploy.
 - Acceptance: V3 verdict written; wording on screen matches it.
 - Tests: unit on band computation.
 - Files: `core/live.js`, `core/caveats.js`, `docs/method.md`.
+- Status: in progress. `core/live.js` is built and the V3 verdict is written (`docs/gates/V3.md`: rejected until fixes L1-L6 land). The fixes are in the code (daily share table `core/data/daily-share.json`, partial days, NOAA-20 x K series, VIIRS-era band, type-0 share, live caveats); the V3 re-check is not recorded yet, so the live view stays preliminary.
 
 ### Guilherme
 
@@ -418,6 +422,7 @@ Sync **S4**: anomaly stub replaced by real core; V2, D2, Q2; deploy.
 - Deliverable: `api/live.js` Vercel function: `MAP_KEY` from env (set in the Vercel dashboard by the account owner, Guilherme), bbox validated and snapped to 0.5 deg, days 1-2, whitelisted sources, `Cache-Control: s-maxage=900, stale-while-revalidate`, `fetch` injected for tests, errors never echo the upstream URL (it contains the key); WAF rate-limit rule if Hobby allows it (unverified).
 - Acceptance: key never in response, logs or client bundle (grep of built site and a response capture); invalid bbox 400.
 - Tests: unit with stubbed fetch, including an upstream error containing the key.
+- Open (gate V3): `api/live.js` counts a fire-cell-day from the union of NOAA-20, NOAA-21 and MODIS NRT, which is not comparable to the single-sensor band and includes NOAA-21, which the archive excludes. Align it with `core/live.js` (NOAA-20 x K) before the live view uses the proxy.
 - Files: `api/live.js`, `vercel.json`.
 
 **M3-G3 Live release** · S · depends: M3-G1, M3-K2, V3
@@ -477,6 +482,11 @@ Off the critical path thanks to the contract: the whole web track (runs on fixtu
 - Gate: global extent goes through a Second Foundation check before it ships (V1 was validated on Brazil).
 - Tests: integration test that chunked and one-pass builds agree on the fixtures.
 - Files: `pipeline/build.js`, `tools/fetch-country.mjs`, `.github/workflows/publish-data.yml`, `docs/data.md`.
+
+**M4-G1 Rank named regions in the place picker** · M/L · depends: place picker step 1, polygon AOIs
+- Status: proposed 2026-11-15, after step 1 (which ranks 1 deg squares labeled with country and state).
+- Deliverable: the pipeline sums fire-cell-days per state or province (Natural Earth admin-1, global, public domain) into `overview.json`; the drawer lists the hottest regions by total, with density (per 1,000 cells) as a second column and a later sort toggle; opening a region uses its polygon as the area, not its bounding box (today an area is a bbox, which would pull in the neighbors), so polygon AOIs in `core/` come first. Biomes or ecoregions after that, once a source with a checked license is chosen.
+- Gate: a Second Foundation check of the per-region sums and of density as a ranking.
 
 **M4-K2 Fire outlook (machine learning), proposed, not decided** · L · depends: M2 (C) done, a decision by the humans on scope and stack
 - Status: idea under discussion (2026-11-15), nothing built. To be discussed before it is sliced.

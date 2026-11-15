@@ -1,4 +1,4 @@
-import { validateManifest, validateTile, validateDomain } from '../../core/schema.js';
+import { validateManifest, validateTile, validateDomain, validateOverview, validatePlaces } from '../../core/schema.js';
 import { tilesForBbox, cellCount, MAX_FINE_CELLS } from '../../core/index.js';
 import { createDomain } from '../../core/domain.js';
 import { parseTileId } from '../../core/grid.js';
@@ -16,9 +16,12 @@ export class DataSourceError extends Error {
 
 // Paths are relative to the page, which sits one level under the site root in dev
 // (the repo root is served, page at /web/) and at the root on Vercel, where ../ stays at the root.
+// The fixtures have no overview.json or places.json, so fixture mode does not ask for them.
 export const dataSourceConfig = ({ fixtures = false } = {}) => ({
   manifestUrl: fixtures ? '../fixtures/manifest.json' : '../data/manifest.json',
   root: '../',
+  withOverview: !fixtures,
+  withPlaces: !fixtures,
 });
 
 const baseOf = (manifest, root) => {
@@ -36,6 +39,12 @@ export const domainUrl = (manifest, root = '') => {
   if (!/^[\w-][\w.-]*$/.test(file)) throw new DataSourceError('invalid', `manifest: domain file "${file}" is not a plain file name`);
   return `${baseOf(manifest, root)}${file}`;
 };
+
+/** URL of overview.json, next to the tiles under the manifest's base_url. */
+export const overviewUrl = (manifest, root = '') => `${baseOf(manifest, root)}overview.json`;
+
+/** URL of places.json, the name suggestions, next to overview.json. */
+export const placesUrl = (manifest, root = '') => `${baseOf(manifest, root)}places.json`;
 
 /**
  * The tiles a query needs. harmonize falls back from the area to its 10 degree tiles, then the
@@ -62,12 +71,15 @@ export const tilesNeeded = (bbox, manifest, domain = null) => {
 
 /**
  * @param {{manifestUrl: string, root?: string, fetchFn?: typeof fetch, concurrency?: number}} cfg
+ * `overview()` resolves to the validated overview.json or null, never rejects; `places()` the same
+ * for places.json, fetched once and cached for the session, the failure included. `domain()` resolves
+ * to the validated domain file (null without one) and rejects like load() does.
  * `load(bbox)` aborts the previous load, fetches the needed tiles (at most `concurrency` at a
  * time), validates each with core's schema and returns `{manifest, domain, tiles: {fine, coarse}, ids}`.
  * The manifest, the domain and validated tiles are cached for the session; a failed or aborted
  * fetch is not.
  */
-export const createDataSource = ({ manifestUrl, root = '', fetchFn = (...a) => fetch(...a), concurrency = 6 }) => {
+export const createDataSource = ({ manifestUrl, root = '', withOverview = true, withPlaces = true, fetchFn = (...a) => fetch(...a), concurrency = 6 }) => {
   const tileCache = new Map();
   let manifestPromise = null;
   let domainPromise = null;
@@ -112,6 +124,34 @@ export const createDataSource = ({ manifestUrl, root = '', fetchFn = (...a) => f
     return domainPromise;
   };
 
+  // The place picker's map is optional: anything wrong with it (missing, invalid, offline) is null,
+  // and the app falls back to drawing or typing an area.
+  const overview = async () => {
+    if (!withOverview) return null;
+    try {
+      const m = await manifest();
+      const o = await getJson(overviewUrl(m, root));
+      return validateOverview(o).length ? null : o;
+    } catch {
+      return null;
+    }
+  };
+
+  // Name suggestions are a convenience: anything wrong with the file means no suggestions.
+  let placesPromise = null;
+  const places = () => {
+    placesPromise ??= (async () => {
+      if (!withPlaces) return null;
+      try {
+        const p = await getJson(placesUrl(await manifest(), root));
+        return validatePlaces(p).length ? null : p;
+      } catch {
+        return null;
+      }
+    })();
+    return placesPromise;
+  };
+
   const fetchTile = async (m, res, id, signal) => {
     const key = `${res}/${id}`;
     if (tileCache.has(key)) return tileCache.get(key);
@@ -150,5 +190,5 @@ export const createDataSource = ({ manifestUrl, root = '', fetchFn = (...a) => f
     }
   };
 
-  return { manifest, load, cancel: () => current?.abort() };
+  return { manifest, overview, places, domain: async () => domain(await manifest()), load, cancel: () => current?.abort() };
 };

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseBboxInputs, bboxToInputs } from './aoi-form.js';
-import { PRESETS } from '../presets.js';
+import { FIXTURE_PRESET } from '../presets.js';
 
 const ok = { south: '-20.1', west: '-58.2', north: '-15.3', east: '-55.0' };
 
@@ -40,8 +40,8 @@ test('bboxToInputs round-trips and handles null', () => {
   assert.deepEqual(bboxToInputs(null), { west: '', south: '', east: '', north: '' });
 });
 
-test('every preset is a valid bbox and flagged as placeholder until H3', () => {
-  for (const p of PRESETS) {
+test('the fixture preset is a valid bbox and flagged as placeholder', () => {
+  for (const p of [FIXTURE_PRESET]) {
     assert.ok(p.placeholder);
     assert.equal(parseBboxInputs(bboxToInputs(p.bbox)).errors.bbox, undefined, p.id);
     assert.notEqual(parseBboxInputs(bboxToInputs(p.bbox)).bbox, null, p.id);

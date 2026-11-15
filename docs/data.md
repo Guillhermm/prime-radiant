@@ -165,3 +165,35 @@ Brazil domain clip, the archive dedupe; months in `partial_months.viirs` of `dat
 left out. 14 years, 168 months. Command (2 minutes):
 `node pipeline/daily-share.js --in raw/country --years 2012-2025 --domain pipeline/domain/brazil.geojson --manifest data/brazil/manifest.json --out core/data/daily-share.json`.
 Day 14: July 0.350, September 0.471, November 0.501 (the mathematician's check: about 0.36, 0.48, 0.50).
+
+## Overview for the place picker (overview.json)
+
+`pipeline/build.js` ends by writing `overview.json` (`pipeline/overview.js`; also runnable alone as
+`node pipeline/overview.js --in <build dir>` on an existing build). With `--admin1` each hotspot also carries `place: {country, state}` (`pipeline/places.js`): the state holding most of the square's 100 fine-cell centers. It holds the region label the domain file declares (`region: {id, name}`, null without one) and, for the newest calendar
+year a VIIRS sensor covers in full (S-NPP on a tie, NOAA-20 once it has the newer full year), that
+one sensor's observed fire-cell-days per 1 deg cell (`cells: [west, south, value]`, summed from the
+coarse tiles), the sensor's partial months of that year, and up to 10 hotspots ranked by value and
+kept at least 3 deg apart on one axis (`hotspots: [{bbox, value}]`). No harmonization factor enters
+it. A build with no full VIIRS year writes none, and the app falls back to drawing or typing an area.
+`core/schema.js` `validateOverview` checks it, and `pipeline/publish.js` validates it when present.
+
+First real file (data version `20261115`, 2026-11-15): S-NPP 2025, 793 cells, 274,291
+fire-cell-days, 10.9 KB; top hotspot the cell at 7°S to 6°S, 45°W to 44°W (Maranhão) with 3,391.
+
+Science check (Second Foundation mathematician, 2026-11-15): correct, with caveats. Recomputed
+independently from `raw/country/viirs-snpp_2025_Brazil.csv` (type 0, own point-in-polygon clip, one
+count per 0.1 deg cell and UTC day): four 1 deg cells match exactly ((-45,-7) 3,391; (-43,-4) 2,225;
+(-56,-2) 1,167; border cell (-61,4) 1,130), total 274,291, no partial 2025 month. Conditions for the
+app: a 1 deg value is a sum of 0.1 deg fire-cell-days (up to 36,500 a year), not days with fire in
+the square, so the label names the 0.1 deg cells; the ranking is "most fire activity in that year,
+one sensor", not a lasting hotspot claim (only the top cell held its rank across 2023 to 2025); and
+border squares count only the part inside the domain.
+
+## Place names for the area field (places.json)
+
+`pipeline/build.js` also writes `places.json` (`pipeline/gazetteer.js`): the countries, states or
+provinces and geographic regions of Natural Earth (`pipeline/domain/ne-gazetteer.json`, provenance in
+`pipeline/domain/README.md`) whose label point lies in the domain, each with the bbox it opens. Without
+a domain every entry is kept. `core/schema.js` `validatePlaces` checks it and the publish validates it
+when present. Brazil build (2026-11-15): 51 entries (27 states, 22 regions, 2 countries), 5.8 KB.
+

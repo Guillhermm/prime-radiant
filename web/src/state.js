@@ -10,6 +10,7 @@ const NUM_RE = /^-?\d+(\.\d+)?$/;
 // final: with the defaults, the cap and the date span checks are off.
 export const defaultState = ({ span = null } = {}) => ({
   bbox: null,
+  name: null,
   from: span ? span.from : null,
   to: span ? span.to : null,
   view: DEFAULT_VIEW,
@@ -27,6 +28,16 @@ export const validateBbox = (bbox, { maxAreaDeg2 = Infinity } = {}) => {
   return null;
 };
 
+export const NAME_MAX = 60;
+
+// An area's name as it may travel in the link: control characters stripped, trimmed, at most
+// NAME_MAX characters (code points, so an accent or emoji is never cut in half). Null when nothing is left.
+export const cleanName = (raw) => {
+  if (typeof raw !== 'string') return null;
+  const name = [...raw.replace(/\p{Cc}/gu, '').trim()].slice(0, NAME_MAX).join('').trim();
+  return name || null;
+};
+
 const validateMonth = (m, span) => {
   if (typeof m !== 'string' || !MONTH_RE.test(m)) return 'date must be YYYY-MM';
   if (span && (m < span.from || m > span.to)) return `date outside the available span ${span.from} to ${span.to}`;
@@ -36,6 +47,7 @@ const validateMonth = (m, span) => {
 export const serializeHash = (state) => {
   const parts = [];
   if (state.bbox) parts.push(`aoi=bbox:${state.bbox.join(',')}`);
+  if (state.bbox && state.name) parts.push(`name=${encodeURIComponent(state.name)}`);
   if (state.from) parts.push(`from=${state.from}`);
   if (state.to) parts.push(`to=${state.to}`);
   parts.push(`view=${state.view}`, `layer=${state.layer}`);
@@ -61,6 +73,13 @@ export const parseHash = (hash, { maxAreaDeg2 = Infinity, span = null, views = V
       if (reason) fail('bbox', reason);
       else state.bbox = bbox;
     }
+  }
+
+  // A name only means something with an area; without one it is dropped quietly.
+  if (params.has('name') && state.bbox) {
+    const name = cleanName(params.get('name'));
+    if (name) state.name = name;
+    else fail('name', 'name is empty');
   }
 
   const dates = {};

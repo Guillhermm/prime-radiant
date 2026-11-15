@@ -19,6 +19,19 @@ test('manifest, fine and coarse tiles and the domain pass core/schema.js', () =>
   assert.deepEqual(Object.keys(data.coarse).sort(), Object.keys(data.tiles).sort());
 });
 
+test('overview: the newest full VIIRS year, and each hotspot is one of its cells with the same value', () => {
+  const o = data.overview;
+  assert.equal(o.sensor, 'viirs');
+  assert.equal(o.year, 2019);
+  assert.deepEqual(o.region, { id: 'ne10m-brazil', name: 'Brazil' });
+  assert.ok(o.hotspots.length > 0 && o.cells.length > 0);
+  for (const h of o.hotspots) assert.ok(o.cells.some((c) => c[0] === h.bbox[0] && c[1] === h.bbox[1] && c[2] === h.value));
+});
+test('places: the synthetic build ships the gazetteer entries inside Brazil, Pantanal among them', () => {
+  const names = data.places.entries.map((e) => e.name);
+  assert.ok(names.includes('Pantanal') && names.includes('Mato Grosso'));
+  assert.ok(!names.includes('Sahel') && !names.includes('Bolivia'));
+});
 test('manifest has the pipeline shape: noaa20 coverage, partial months, Brazil domain, satellite names', () => {
   const m = data.manifest;
   assert.deepEqual(m.coverage, { modis: ['2000-11', '2019-12'], viirs: ['2012-01', '2019-12'], noaa20: ['2018-04', '2019-12'] });

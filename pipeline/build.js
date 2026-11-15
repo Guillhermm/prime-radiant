@@ -1,7 +1,7 @@
 /**
  * Build CLI: FIRMS archive files -> tiles + manifest.
  *   node pipeline/build.js --in raw/country --in raw/firms-2026 --out data/ [--bbox w,s,e,n]
- *     [--domain pipeline/domain/brazil.geojson]
+ *     [--domain pipeline/domain/brazil.geojson] [--admin1 pipeline/domain/brazil-admin1.geojson]
  * With --domain, records outside the polygon are dropped (clipped_by_domain) after the bbox
  * prefilter and domain.json is written next to the manifest. Coverage still counts them.
  * Archive files only: NRT records (no `type` field) are skipped and counted. One year at a
@@ -19,6 +19,9 @@ import { readFirms, newStats } from './read.js';
 import { binRecords, createBinResult } from './bin.js';
 import { createCoverage, buildManifest, coverageIndexes } from './manifest.js';
 import { compareTileIds, writeTiles } from './write-tiles.js';
+import { regionOf, writeOverview } from './overview.js';
+import { createPlaces } from './places.js';
+import { writePlaces } from './gazetteer.js';
 
 const EXT = /\.(csv|csv\.gz|dbf)$/i;
 
@@ -41,16 +44,17 @@ export function inBbox([w, s, e, n], lon, lat) {
 
 /**
  * @param {{inputs: string[], outDir: string, bbox?: number[], month0?: string, dataVersion?: string,
- *   generatedAt?: string, baseUrl?: string, domainFile?: string}} o
+ *   generatedAt?: string, baseUrl?: string, domainFile?: string, admin1File?: string}} o
  */
-export async function build({ inputs, outDir, bbox, month0 = '2000-01', dataVersion, generatedAt = new Date().toISOString(), baseUrl = 'data/', domainFile }) {
+export async function build({ inputs, outDir, bbox, month0 = '2000-01', dataVersion, generatedAt = new Date().toISOString(), baseUrl = 'data/', domainFile, admin1File }) {
   const t0 = performance.now();
   if (bbox) checkBbox(bbox);
-  let clipper, domainBox, domainInfo;
+  let clipper, domainBox, domainInfo, region = null;
   if (domainFile) {
     const gj = JSON.parse(fs.readFileSync(domainFile, 'utf8'));
     const polys = polygonsOf(gj);
     clipper = createClipper(polys);
+    region = regionOf(gj);
     domainBox = bboxOfPolygons(polys);
     domainInfo = { id: gj.domain?.id ?? path.basename(domainFile, '.geojson'), version: String(gj.domain?.version ?? 'unknown'), file: 'domain.json', res: 0.1 };
   }
@@ -97,6 +101,9 @@ export async function build({ inputs, outDir, bbox, month0 = '2000-01', dataVers
   fs.mkdirSync(outDir, { recursive: true });
   if (clipper) fs.writeFileSync(path.join(outDir, 'domain.json'), `${JSON.stringify(clipper.domain)}\n`);
   fs.writeFileSync(path.join(outDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+  const places = admin1File ? createPlaces(JSON.parse(fs.readFileSync(admin1File, 'utf8'))) : null;
+  const overview = writeOverview(outDir, region, places);
+  const placeNames = writePlaces(outDir, clipper?.domain ?? null);
 
   const fcd = Object.fromEntries(Object.entries(into.counts).map(([fam, tiles]) =>
     [fam, Object.values(tiles).reduce((a, cells) => a + Object.values(cells).reduce((b, ms) => b + [...ms.values()].reduce((c, n) => c + n, 0), 0), 0)]));
@@ -106,6 +113,8 @@ export async function build({ inputs, outDir, bbox, month0 = '2000-01', dataVers
       detections_in: reader.read, accepted: reader.accepted, rejected: reader.rejected, clipped_by_bbox: clipped, clipped_by_domain: clippedByDomain,
       skipped: into.stats.skipped, bin_rejected: into.stats.rejected, duplicates: into.stats.duplicates,
       fire_cell_days: fcd, tiles: written.stats,
+      place_names: placeNames.entries.length,
+      overview: overview && { sensor: overview.sensor, year: overview.year, cells: overview.cells.length, hotspots: overview.hotspots.length },
       wall_seconds: +((performance.now() - t0) / 1000).toFixed(1),
       peak_rss_mb: Math.round(process.resourceUsage().maxRSS / 1024),
     },
@@ -120,7 +129,7 @@ function joinBbox(argv) {
 async function main() {
   const { values } = parseArgs({ args: joinBbox(process.argv.slice(2)), options: {
     in: { type: 'string', multiple: true }, out: { type: 'string' }, bbox: { type: 'string' },
-    domain: { type: 'string' }, month0: { type: 'string' }, 'data-version': { type: 'string' }, 'base-url': { type: 'string' },
+    domain: { type: 'string' }, admin1: { type: 'string' }, month0: { type: 'string' }, 'data-version': { type: 'string' }, 'base-url': { type: 'string' },
   } });
   if (!values.in?.length || !values.out) {
     console.error('usage: node pipeline/build.js --in <dir|file> [--in ...] --out <dir> [--bbox w,s,e,n] [--domain file.geojson] [--month0 YYYY-MM]');
@@ -129,7 +138,7 @@ async function main() {
   const bbox = values.bbox ? values.bbox.split(',').map(Number) : undefined;
   const { stats } = await build({
     inputs: values.in, outDir: values.out, bbox, month0: values.month0,
-    domainFile: values.domain, dataVersion: values['data-version'], baseUrl: values['base-url'],
+    domainFile: values.domain, admin1File: values.admin1, dataVersion: values['data-version'], baseUrl: values['base-url'],
   });
   console.log(JSON.stringify(stats, null, 2));
 }

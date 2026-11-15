@@ -22,7 +22,7 @@ jobs:
       - name: Download the FIRMS Brazil country files (about 3 GB)
         run: node tools/fetch-country.mjs --out raw/country --to 2025
       - name: Build tiles
-        run: node pipeline/build.js --in raw/country --out raw/build --domain pipeline/domain/brazil.geojson
+        run: node pipeline/build.js --in raw/country --out raw/build --domain pipeline/domain/brazil.geojson --admin1 pipeline/domain/brazil-admin1.geojson
       - name: Test
         run: node --test
         env:

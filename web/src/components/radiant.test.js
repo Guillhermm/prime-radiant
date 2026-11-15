@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { COMPACT, RADIANT, monthAngles, radiantLabel, radiantModel, ringRadii, sectorPath, selectionShape } from './radiant.js';
+import { COMPACT, PLACEHOLDER_CLASS, RADIANT, monthAngles, placeholderCells, stepSlice, radiantLabel, radiantModel, ringRadii, sectorPath, selectionShape } from './radiant.js';
 
 const cells = [];
 for (let y = 2001; y <= 2003; y++) for (let m = 1; m <= 12; m++) cells.push({ year: y, month: m, value: m === 2 && y === 2002 ? null : m * 10 });
@@ -76,4 +76,37 @@ test('classOf recolors slices (the anomaly ramp on the Anomalies tab); the defau
   assert.ok(radiantModel(two, { aoiCells: 100 }).slices.every((s) => s.cls.startsWith('rb rb-')));
   const m = radiantModel(two, { aoiCells: 100, classOf: (c) => `rd-${Math.floor(c.rank * 10)}` });
   assert.deepEqual(m.slices.map((s) => s.cls), ['rd-9', 'rd-1']);
+});
+
+test('placeholderCells covers every month of the record, across years', () => {
+  const c = placeholderCells({ from: '2000-11', to: '2002-02' });
+  assert.equal(c.length, 16);
+  assert.deepEqual(c[0], { year: 2000, month: 11, value: 0 });
+  assert.deepEqual(c.at(-1), { year: 2002, month: 2, value: 0 });
+  assert.deepEqual(placeholderCells({ from: '2010-05', to: '2010-05' }), [{ year: 2010, month: 5, value: 0 }]);
+});
+
+test('the placeholder model has the final geometry: same years and slices as the data', () => {
+  const span = placeholderCells({ from: '2000-11', to: '2002-02' });
+  const ph = radiantModel(span, { aoiCells: 1, classOf: () => PLACEHOLDER_CLASS });
+  const real = radiantModel(span.map((c) => ({ ...c, value: 5 })), { aoiCells: 10 });
+  assert.deepEqual(ph.years, real.years);
+  assert.deepEqual(ph.slices.map((s) => s.d), real.slices.map((s) => s.d));
+  assert.ok(ph.slices.every((s) => s.cls === 'rb rb-ph'));
+});
+
+test('stepSlice moves through time, by month and by year, and skips missing slices', () => {
+  // Nov 2000 to Feb 2002 with Jan 2001 missing.
+  const slices = placeholderCells({ from: '2000-11', to: '2002-02' }).filter((c) => !(c.year === 2001 && c.month === 1));
+  assert.deepEqual(stepSlice(slices, { year: 2000, month: 12 }, 'ArrowRight'), { year: 2001, month: 2 }, 'skips the gap, across the year');
+  assert.deepEqual(stepSlice(slices, { year: 2001, month: 2 }, 'ArrowLeft'), { year: 2000, month: 12 });
+  assert.deepEqual(stepSlice(slices, { year: 2001, month: 2 }, 'ArrowUp'), { year: 2002, month: 2 }, 'one ring out');
+  assert.deepEqual(stepSlice(slices, { year: 2001, month: 11 }, 'ArrowDown'), { year: 2000, month: 11 }, 'one ring in');
+  assert.deepEqual(stepSlice(slices, { year: 2001, month: 11 }, 'ArrowUp'), { year: 2001, month: 11 }, 'no Nov 2002: stays');
+  assert.deepEqual(stepSlice(slices, { year: 2002, month: 2 }, 'ArrowRight'), { year: 2002, month: 2 }, 'at the edge');
+  assert.deepEqual(stepSlice(slices, null, 'ArrowLeft'), { year: 2002, month: 2 }, 'starts at the latest month');
+  assert.deepEqual(stepSlice(slices, { year: 2001, month: 5 }, 'Home'), { year: 2000, month: 11 });
+  assert.deepEqual(stepSlice(slices, { year: 2001, month: 5 }, 'End'), { year: 2002, month: 2 });
+  assert.equal(stepSlice(slices, { year: 2001, month: 5 }, 'Enter'), null);
+  assert.equal(stepSlice([], null, 'ArrowLeft'), null);
 });

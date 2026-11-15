@@ -133,6 +133,16 @@
 .rb-4 { fill: var(--bin-4); }
 .rb-5 { fill: var(--bin-5); }
 .rb-6 { fill: var(--bin-6); }
+/* Placeholder before data: neutral rings in the final geometry. On reveal the same paths change
+   class, so the fill fades to the data color ring by ring (--ring is set per path). */
+.rb-ph { fill: var(--color-border); }
+.rb-gone { fill: var(--color-border); opacity: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .radiant-hero .rb { transition: fill 480ms var(--ease-std), opacity 480ms var(--ease-std); transition-delay: calc(var(--ring, 0) * 10ms); }
+}
+.radiant.is-interactive { cursor: pointer; border-radius: 50%; }
+.radiant.is-interactive:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 4px; }
+.radiant[aria-busy="true"] { cursor: progress; }
 .rad-sel-ground { fill: none; stroke: var(--color-surface); stroke-width: 6.5; stroke-linejoin: round; }
 .rad-sel { fill: none; stroke: var(--color-focus); stroke-width: 3.5; stroke-linejoin: round; }
 .rad-spoke { fill: none; stroke: var(--color-focus); stroke-opacity: 0.45; stroke-width: 0.6; stroke-dasharray: 1.5 1.5; }

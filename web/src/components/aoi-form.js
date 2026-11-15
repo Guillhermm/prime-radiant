@@ -1,5 +1,4 @@
 import { validateBbox } from '../state.js';
-import { PRESETS } from '../presets.js';
 import { h } from './h.js';
 
 export const FIELDS = [
@@ -37,14 +36,14 @@ export const parseBboxInputs = (inputs, { maxAreaDeg2 = Infinity } = {}) => {
   return { bbox, errors };
 };
 
-export const mountPresets = (container, { presets = PRESETS, onPick }) => {
+export const mountPresets = (container, { presets = [], onPick }) => {
   const group = h('div', { class: 'chips', role: 'group', 'aria-label': 'Example areas' },
     presets.map((p) => h('button', { type: 'button', class: 'chip', onclick: () => onPick(p) }, p.label)));
   container.append(group);
   return group;
 };
 
-export const mount = (container, { bbox = null, maxAreaDeg2 = Infinity, presets = PRESETS, onChange = () => {}, onPreset = () => {} } = {}) => {
+export const mount = (container, { bbox = null, maxAreaDeg2 = Infinity, presets = [], onChange = () => {}, onPreset = () => {} } = {}) => {
   const initial = bboxToInputs(bbox);
   const inputs = {};
   const msgs = {};
@@ -71,8 +70,8 @@ export const mount = (container, { bbox = null, maxAreaDeg2 = Infinity, presets 
   };
   for (const { key } of FIELDS) inputs[key].addEventListener('input', refresh);
 
-  const presetBox = h('div', { class: 'presets' }, h('span', { class: 'label' }, 'Try an example'));
-  mountPresets(presetBox, {
+  const presetBox = presets.length ? h('div', { class: 'presets' }, h('span', { class: 'label' }, 'Try an example')) : null;
+  if (presetBox) mountPresets(presetBox, {
     presets,
     onPick: (p) => {
       const v = bboxToInputs(p.bbox);
@@ -82,7 +81,7 @@ export const mount = (container, { bbox = null, maxAreaDeg2 = Infinity, presets 
     },
   });
 
-  container.append(h('fieldset', { class: 'aoi' }, h('legend', {}, 'Area'), row, bboxMsg), presetBox);
+  container.append(...[h('fieldset', { class: 'aoi' }, h('legend', {}, 'Area'), row, bboxMsg), presetBox].filter(Boolean));
   refresh();
   return {
     set(b) {
