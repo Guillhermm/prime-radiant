@@ -12,7 +12,7 @@ Deployed at https://primeradiant.zenus.systems (Vercel, from `main`; see [docs/d
 
 | Product line | Status |
 |---|---|
-| A. Burning calendar per area | built: core's counts, harmonization and median baseline (gate V1); real tiles built locally; R2 publish built, first publish pending |
+| A. Burning calendar per area | built: core's counts, harmonization and median baseline (gate V1); published to R2 and served in production |
 | B. Sensor comparison (MODIS, S-NPP, NOAA-20, harmonized) | built: core's R and K, validated at gate V1, applied to the harmonized series |
 | C. Anomalies against a multi-year baseline | built on real data: core's ranks, flags, flagged periods and year rank (gate V2) |
 | D. Live season from near-real-time data | Built: daily NRT job, Live view on real data over Brazil (gate V3, accepted with caveats); keyed proxy unused |
