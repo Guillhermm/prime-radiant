@@ -120,21 +120,23 @@ export function serializeLiveTile(t) {
 
 /**
  * Live manifest. `coverage` and `partial_days` are in "YYYY-MM-DD". The first day of a sensor's
- * coverage is partial (a rolling 24h/48h/7d file starts mid-day) and so is its last day when it
- * is the fetch day (still open).
+ * coverage is partial (a rolling 24h/48h/7d file starts mid-day), and so is its last day when it
+ * is the fetch day (still open) or earlier than the manifest's last day (the sensor stopped or
+ * lags mid-day: S-NPP ended 2026-11-02 15:40 UTC).
  * @param {{fetchedAt: string, days: Object<string, {first: string, last: string}>, tiles: string[],
  *   sources: object[], domain?: object, stats?: object, baseUrl?: string}} o
  */
 export function buildLiveManifest({ fetchedAt, days, tiles, sources, domain, stats, baseUrl = 'data/live/' }) {
   const coverage = {};
   const partial = {};
-  for (const s of SENSORS) {
-    const d = days[s];
-    coverage[s] = d ? [d.first, d.last] : null;
-    partial[s] = d ? [...new Set([d.first, ...(d.last === fetchedAt.slice(0, 10) ? [d.last] : [])])] : [];
-  }
+  for (const s of SENSORS) coverage[s] = days[s] ? [days[s].first, days[s].last] : null;
   const all = Object.values(coverage).filter(Boolean);
   if (!all.length) throw new Error('no NRT records for any sensor: coverage cannot be derived');
+  const lastDay = all.map((c) => c[1]).sort().at(-1);
+  for (const s of SENSORS) {
+    const d = days[s];
+    partial[s] = d ? [...new Set([d.first, ...(d.last === fetchedAt.slice(0, 10) || d.last < lastDay ? [d.last] : [])])] : [];
+  }
   return {
     schema: 1,
     kind: 'live',
@@ -143,7 +145,7 @@ export function buildLiveManifest({ fetchedAt, days, tiles, sources, domain, sta
     grid: { res: 0.1, tile_deg: 10 },
     granularity: 'day',
     day0: all.map((c) => c[0]).sort()[0],
-    last_day: all.map((c) => c[1]).sort().at(-1),
+    last_day: lastDay,
     coverage,
     partial_days: partial,
     satellites: SATELLITES,

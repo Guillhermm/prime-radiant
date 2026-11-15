@@ -133,7 +133,8 @@ tiles and a live manifest. `--fetched-at` is the time the files were fetched (de
   `0` inside it with no detection. Only the 0.1 degree level is written (no 1 degree). Validators: `validateLiveManifest`,
   `validateLiveTile` in `core/schema.js`. Manifest fields: `fetched_at`, `day0`, `last_day`, `coverage` (first and last day
   per sensor, from every accepted record before the domain clip), `partial_days` (the first day of each coverage, because a
-  rolling window starts mid-day, and the last day when it is the fetch day), `sources` (file, records, has_type),
+  rolling window starts mid-day, and the last day when it is the fetch day or earlier than `last_day`, i.e. the sensor stopped
+  or lags, as S-NPP on 2026-11-02), `sources` (file, records, has_type),
   `skipped`, `duplicates`, `clipped_by_domain`, `fire_cell_days`, `domain`, `citation` (NRT product DOIs), `caveats`.
 - **Limit:** coverage is the first to last day with a detection, so an outage day inside the range reads as 0, and
   there is no acquisition-day check as in the archive.

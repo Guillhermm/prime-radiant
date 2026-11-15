@@ -48,13 +48,13 @@ test('buildLiveTiles: null outside a sensor day coverage, 0 inside, rows sorted'
   assert.match(serializeLiveTile(t), /^\{\n {2}"cell": \[\d+,\d+\],\n {2}"day": \[0,1\],/);
 });
 
-test('buildLiveManifest: first day partial, last day partial only on the fetch day, no coverage throws', () => {
+test('buildLiveManifest: first day partial, last day partial on the fetch day or before the manifest last day, no coverage throws', () => {
   const days = { modis: { first: '2026-11-08', last: '2026-11-14' }, viirs: { first: '2026-11-09', last: '2026-11-15' } };
   const m = buildLiveManifest({ fetchedAt: '2026-11-15T09:00:00Z', days, tiles: [], sources: [{ file: 'a.csv' }] });
   assert.equal(m.day0, '2026-11-08');
   assert.equal(m.last_day, '2026-11-15');
   assert.deepEqual(m.coverage.noaa20, null);
-  assert.deepEqual(m.partial_days, { modis: ['2026-11-08'], viirs: ['2026-11-09', '2026-11-15'], noaa20: [] });
+  assert.deepEqual(m.partial_days, { modis: ['2026-11-08', '2026-11-14'], viirs: ['2026-11-09', '2026-11-15'], noaa20: [] }); // modis stopped a day early
   assert.throws(() => buildLiveManifest({ fetchedAt: '2026-11-15T09:00:00Z', days: {}, tiles: [], sources: [] }), /coverage/);
 });
 
