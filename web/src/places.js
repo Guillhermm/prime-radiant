@@ -60,6 +60,61 @@ export const hotspotRowsLabels = (hotspots = []) => {
 /** The hotspot whose square is `bbox`, or null. */
 export const hotspotAt = (overview, bbox) => (overview?.hotspots ?? []).find((hs) => sameBbox(hs.bbox, bbox)) ?? null;
 
+/** The named square at `bbox`: a hotspot, else one of a country's top squares (they carry places too), or null. */
+export const placeAt = (overview, bbox) => hotspotAt(overview, bbox)
+  ?? (overview?.countries ?? []).flatMap((c) => c.top ?? []).find((t) => sameBbox(t.bbox, bbox)) ?? null;
+
+/**
+ * What the hottest list shows for a scope: '' is the world. Without `countries` in overview.json (or
+ * with one only, a region build) it is today's hotspot list and no scope applies; with them the world lists countries by total and a
+ * country lists its top squares. An unknown country falls back to the world.
+ */
+export const scopeList = (overview, scope = '') => {
+  const countries = overview?.countries;
+  if (!Array.isArray(countries) || countries.length < 2) return { kind: 'hotspots', scope: '', items: overview?.hotspots ?? [] };
+  const c = scope ? countries.find((x) => x.country === scope) : null;
+  return c ? { kind: 'squares', scope: c.country, country: c, items: c.top ?? [] } : { kind: 'countries', scope: '', items: countries };
+};
+
+/** Pin ranks for the squares a list shows, keyed "west,south"; null for a list of countries. */
+export const listRanks = (list) => (list.kind === 'countries' ? null : new Map(list.items.map((x, i) => [`${x.bbox[0]},${x.bbox[1]}`, i + 1])));
+
+// A country wider than this many degrees (Russia, or one across the antimeridian) stays on the world view.
+const COUNTRY_MAX_WIDTH = 120;
+const COUNTRY_PAD = 1;
+
+/**
+ * The map window for a country, {west, north, width, height} in degrees: its box padded by a square
+ * and widened to the 2:1 map box, centered on it; null when the country is too wide to help.
+ */
+export const countryWindow = ([w, s, e, n]) => {
+  if (e - w > COUNTRY_MAX_WIDTH) return null;
+  let width = e - w + 2 * COUNTRY_PAD;
+  let height = n - s + 2 * COUNTRY_PAD;
+  if (width / height < ZOOM_ASPECT) width = height * ZOOM_ASPECT;
+  else height = width / ZOOM_ASPECT;
+  return { west: (w + e) / 2 - width / 2, north: (s + n) / 2 + height / 2, width, height };
+};
+
+const normName = (x) => x.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/&/g, 'and').replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim();
+
+/**
+ * The country of the browser language's region subtag ("pt-BR" is Brazil), when overview.json has
+ * fire data for it under the same English name; null otherwise. The match is exact after folding
+ * case, accents and punctuation: Natural Earth names such as "S. Sudan" are skipped, never guessed.
+ */
+export const regionCountry = (lang, countries, regionName = (r) => new Intl.DisplayNames(['en'], { type: 'region' }).of(r)) => {
+  if (!lang || !Array.isArray(countries)) return null;
+  let region;
+  try { region = new Intl.Locale(lang).region; } catch { return null; }
+  if (!region) return null;
+  let name;
+  try { name = regionName(region); } catch { return null; }
+  if (!name || name === region) return null;
+  const want = normName(name);
+  return countries.find((c) => normName(c.country) === want)?.country ?? null;
+};
+
 /** The ranked hotspots as example areas, labeled by place when the file names one, else by the center. */
 export const hotspotPresets = (overview) => (overview?.hotspots ?? []).map((hs, i) => ({
   id: `hotspot-${i + 1}`,

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { heroLead, outsideLine, outsideExport, bboxText, domainNote, errorState, liveStatus, recordDates, ribbonModel, screenState, stateModel } from './states.js';
+import { heroLead, outsideLine, outsideExport, bboxText, domainNote, errorState, liveStatus, recordDates, recordFacts, ribbonModel, screenState, stateModel } from './states.js';
 
 test('empty offers one chip per example area', () => {
   const m = stateModel({ kind: 'empty' }, { presets: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] });
@@ -66,8 +66,15 @@ test('errorState tells a validation failure from a connection failure', () => {
 
 test('first-run record dates come from the manifest, missing ones are skipped', () => {
   const d = recordDates({ coverage: { modis: ['2000-11', '2026-10'], viirs: ['2012-01', '2026-10'] }, last_month: '2026-10' });
-  assert.deepEqual(d, [{ v: 'Nov 2000', k: 'MODIS record starts' }, { v: 'Jan 2012', k: 'VIIRS record starts' }, { v: 'Oct 2026', k: 'latest month' }]);
+  assert.deepEqual(d.map(({ v, k }) => ({ v, k })), [{ v: 'Nov 2000', k: 'MODIS record starts' }, { v: 'Jan 2012', k: 'VIIRS record starts' }, { v: 'Oct 2026', k: 'latest month' }]);
   assert.deepEqual(recordDates(null), []);
+});
+
+test('recordFacts: the first-screen facts line from the manifest, never hard-coded', () => {
+  assert.deepEqual(recordFacts({ coverage: { modis: ['2000-11', '2025-12'], viirs: ['2012-01', '2025-12'] }, last_month: '2025-12' }),
+    ['MODIS from Nov 2000', 'VIIRS from Jan 2012', 'Latest Dec 2025']);
+  assert.deepEqual(recordFacts({ coverage: { viirs: ['2012-01', '2019-12'] }, last_month: '2019-12' }), ['VIIRS from Jan 2012', 'Latest Dec 2019']);
+  assert.deepEqual(recordFacts(null), []);
 });
 
 test('bboxText names hemispheres and drops trailing zeros', () => {

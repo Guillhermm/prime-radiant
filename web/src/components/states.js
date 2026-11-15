@@ -87,12 +87,15 @@ export const errorState = (err, { offline = false } = {}) => {
 
 const mon = (m) => (m ? `${MONTH_ABBR[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}` : null);
 
-/** The three record dates on the first-run screen, read from the manifest; missing ones are skipped. */
+/** The three record dates on the first-run screen, read from the manifest; missing ones are skipped. `f` is the facts-line label. */
 export const recordDates = (manifest) => [
-  { v: mon(manifest?.coverage?.modis?.[0]), k: 'MODIS record starts' },
-  { v: mon(manifest?.coverage?.viirs?.[0]), k: 'VIIRS record starts' },
-  { v: mon(manifest?.last_month), k: 'latest month' },
+  { v: mon(manifest?.coverage?.modis?.[0]), k: 'MODIS record starts', f: 'MODIS from' },
+  { v: mon(manifest?.coverage?.viirs?.[0]), k: 'VIIRS record starts', f: 'VIIRS from' },
+  { v: mon(manifest?.last_month), k: 'latest month', f: 'Latest' },
 ].filter((d) => d.v);
+
+/** The facts line under the first-screen lede, one string per fact: "MODIS from Nov 2000", "Latest Dec 2025". */
+export const recordFacts = (manifest) => recordDates(manifest).map((d) => `${d.f} ${d.v}`);
 
 const hemi = (v, pos, neg) => `${Number(Math.abs(v).toFixed(2))}°${v < 0 ? neg : pos}`;
 /** "19°S–12°S · 59°W–52°W" for a [west, south, east, north] box. */
@@ -151,6 +154,13 @@ export const heroLead = ({ overview = null, phone = false, first = 2000 } = {}) 
     : `Pick a square on the map or one of the hottest areas to preview its fire record since ${first}. Then open the full calendar.`;
 };
 
+// Each fact stays whole, so a narrow screen breaks the line between facts, never inside one.
+const factsEl = (manifest) => {
+  const facts = recordFacts(manifest);
+  if (!facts.length) return null;
+  return h('p', { class: 'hero-facts mono' }, facts.flatMap((f, i) => [i ? ' · ' : null, h('span', { text: f })]).filter(Boolean));
+};
+
 /**
  * The first screen: the copy, the preview card and the heat map plate (hero-place.js), plus the
  * example cards when there is no overview.json. Returns {view, refresh(), destroy()}: refresh() is
@@ -176,7 +186,7 @@ const emptyView = (deps) => {
       h('div', { class: 'hero-copy' },
         h('p', { class: 'eyebrow', text: 'MODIS + VIIRS · one harmonized record' }),
         h('h1', { class: 'hero-title' }, EMPTY_TITLE[0], h('em', { text: EMPTY_TITLE[1] })),
-        lead, leadPhone),
+        lead, leadPhone, factsEl(deps.manifest)),
       hp.preview, hp.plate),
     hp.bar);
   const addExamples = () => {

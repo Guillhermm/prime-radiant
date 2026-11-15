@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   heatBin, HEAT_LABELS, centerLabel, hotspotPresets, placeLabel, hotspotLabels, hotspotAt, valueLine, sensorValueLine, defaultArea, suggestionCaption,
   drawerModel, mapModel, dataRegionBbox, regionCaption, squareFor, stepSquare, squareText,
-  hotspotRowLabels, hotspotRowsLabels, isZoomable, zoomWindow, worldWindow, dotPins, inWindow, nearestSquare,
+  hotspotRowLabels, hotspotRowsLabels, isZoomable, zoomWindow, worldWindow, dotPins, inWindow, nearestSquare, scopeList, listRanks, countryWindow, regionCountry, placeAt,
 } from './places.js';
 
 const overview = {
@@ -170,4 +170,60 @@ test('nearestSquare: an ocean click lands on the closest square that burned, nev
   assert.equal(nearestSquare(mm, [-43.2, -6.5]).key, '-45,-7', 'the zero square next door is skipped');
   assert.equal(nearestSquare(mm, [-30, -6]).key, '-41,-6');
   assert.equal(nearestSquare(mapModel({ cells: [[0, 0, 0]] }), [0, 0]), null);
+});
+
+const withCountries = {
+  year: 2025, region: null, sensor: 'viirs', cells: [[-45, -7, 3391], [-44, -7, 10], [23, -8, 2500]],
+  hotspots: [{ bbox: [-45, -7, -44, -6], value: 3391, place: { country: 'Brazil', state: 'Maranhão' } }],
+  countries: [
+    { country: 'Brazil', value: 3401, bbox: [-45, -7, -43, -6], top: [{ bbox: [-45, -7, -44, -6], value: 3391, place: { country: 'Brazil', state: 'Maranhão' } }, { bbox: [-44, -7, -43, -6], value: 10, place: { country: 'Brazil', state: 'Piauí' } }] },
+    { country: 'Democratic Republic of the Congo', value: 2500, bbox: [23, -8, 24, -7], top: [{ bbox: [23, -8, 24, -7], value: 2500, place: { country: 'Democratic Republic of the Congo', state: 'Kasaï-Oriental' } }] },
+  ],
+};
+
+test('scopeList: hotspots without countries; countries for the world; a country lists its top squares', () => {
+  const plain = { ...withCountries, countries: undefined };
+  assert.deepEqual(scopeList(plain, 'Brazil'), { kind: 'hotspots', scope: '', items: plain.hotspots }, 'no countries, no scope');
+  const world = scopeList(withCountries, '');
+  assert.equal(world.kind, 'countries');
+  assert.deepEqual(world.items.map((c) => c.country), ['Brazil', 'Democratic Republic of the Congo']);
+  const br = scopeList(withCountries, 'Brazil');
+  assert.equal(br.kind, 'squares');
+  assert.equal(br.scope, 'Brazil');
+  assert.deepEqual(br.items.map((t) => t.place.state), ['Maranhão', 'Piauí']);
+  assert.equal(scopeList(withCountries, 'Atlantis').kind, 'countries', 'an unknown country falls back to the world');
+  assert.equal(scopeList({ ...withCountries, countries: withCountries.countries.slice(0, 1) }, 'Brazil').kind, 'hotspots', 'one country (a region build): no scope');
+});
+
+test('listRanks: pins follow the squares of the list, none for a list of countries', () => {
+  assert.equal(listRanks(scopeList(withCountries, '')), null);
+  assert.deepEqual([...listRanks(scopeList(withCountries, 'Brazil'))], [['-45,-7', 1], ['-44,-7', 2]]);
+});
+
+test('countryWindow: the box padded by a square and widened to 2:1; a country over 120 deg wide stays on the world view', () => {
+  assert.deepEqual(countryWindow([-74, -34, -34, 6]), { west: -96, north: 7, width: 84, height: 42 });
+  assert.deepEqual(countryWindow([10, 0, 30, 2]), { west: 9, north: 6.5, width: 22, height: 11 });
+  assert.equal(countryWindow([-180, 41, 180, 82]), null, 'Russia across the antimeridian');
+  assert.ok(countryWindow([20, 40, 140, 60]), '120 deg is still shown');
+});
+
+test('regionCountry: the language region when the data names it the same way, else nothing', () => {
+  const names = { BR: 'Brazil', CD: 'Congo - Kinshasa', SS: 'South Sudan', CI: 'Côte d’Ivoire' };
+  const of = (r) => names[r] ?? r;
+  const cs = [{ country: 'Brazil' }, { country: 'Democratic Republic of the Congo' }, { country: 'S. Sudan' }, { country: "Cote d'Ivoire" }];
+  assert.equal(regionCountry('pt-BR', cs, of), 'Brazil');
+  assert.equal(regionCountry('fr-CD', cs, of), null, 'different names are not guessed');
+  assert.equal(regionCountry('en-SS', cs, of), null);
+  assert.equal(regionCountry('fr-CI', cs, of), "Cote d'Ivoire", 'accents and punctuation fold');
+  assert.equal(regionCountry('pt', cs, of), null, 'no region subtag');
+  assert.equal(regionCountry('en-US', cs, of), null, 'no data for it');
+  assert.equal(regionCountry('not a tag!', cs, of), null);
+  assert.equal(regionCountry('pt-BR', undefined, of), null);
+  assert.equal(regionCountry('pt-BR', cs), 'Brazil', 'with the real Intl.DisplayNames');
+});
+
+test('placeAt: a hotspot, else a country top square, names a picked square', () => {
+  assert.equal(placeAt(withCountries, [-45, -7, -44, -6]).place.state, 'Maranhão');
+  assert.equal(placeAt(withCountries, [-44, -7, -43, -6]).place.state, 'Piauí');
+  assert.equal(placeAt(withCountries, [0, 0, 1, 1]), null);
 });

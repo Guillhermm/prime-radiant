@@ -1,5 +1,5 @@
-import { drawerModel, hotspotAt, hotspotLabels, hotspotRowsLabels, mapModel, PICK_HINT, sameBbox, squareFor, UNAVAILABLE, valueLine } from '../places.js';
-import { hotspotRow, legendEl, mountHeatMap, pressRows, swatch } from './heat-map.js';
+import { drawerModel, hotspotLabels, mapModel, placeAt, PICK_HINT, sameBbox, squareFor, UNAVAILABLE, valueLine } from '../places.js';
+import { hottestList, legendEl, mountHeatMap, swatch } from './heat-map.js';
 import { h } from './h.js';
 import { icon } from './icons.js';
 import { trapTab } from './focus-trap.js';
@@ -66,33 +66,28 @@ export const mount = (container, deps) => {
     const current = squareFor(model, deps.currentBbox());
     const sel = h('div', { class: 'ad-sel' });
     const primary = h('button', { type: 'button', class: 'btn btn-primary ad-primary', disabled: true, text: m.primary, onclick: () => commit() });
-    const rows = [];
+    let hot = null;
     const stage = (q) => {
       staged = q;
       map.select(q);
-      pressRows(rows, q?.bbox);
+      hot?.press(q?.bbox);
       primary.disabled = !q;
       if (!q) { sel.replaceChildren(h('span', { class: 'ad-hint', text: PICK_HINT })); return; }
-      const { label, coords } = hotspotLabels(hotspotAt(overview, q.bbox) ?? { bbox: q.bbox });
+      const { label, coords } = hotspotLabels(placeAt(overview, q.bbox) ?? { bbox: q.bbox });
       sel.replaceChildren(swatch(q.bin), h('span', { class: 'ad-sel-text' }, h('b', { text: label }), h('small', { text: coords ? `${coords} · ${valueLine(q.value, overview)}` : valueLine(q.value, overview) })));
     };
     const map = mountHeatMap(model, overview, { focus: current, onPick: (q) => stage(q) });
     mapCtl = map;
 
-    const rowLabels = hotspotRowsLabels(overview.hotspots ?? []);
-    const list = h('ol', { class: 'ad-rows' }, (overview.hotspots ?? []).map((hs, i) => {
-      const q = squareFor(model, hs.bbox) ?? { key: hs.bbox.join(), bbox: hs.bbox, value: hs.value, bin: 6 };
-      const row = hotspotRow({ hs, rank: i + 1, q, labels: rowLabels[i], overview, sub: m.rowSub, onClick: () => { stage(q); map.reveal(q); } });
-      rows.push(row);
-      return h('li', {}, row);
-    }));
+    hot = hottestList({ overview, model, map, limit: 10, title: m.listTitle, titleClass: 'ad-list-title', rowSub: m.rowSub, onPick: (q) => stage(q) });
+    hot.head.id = 'ad-list-title';
 
     // On phone CSS lifts the manual row above the list, as in the sheet mockup.
     body.append(
       h('div', { class: 'plate' }, ...map.nodes, legendEl(), m.border ? h('p', { class: 'plate-note', text: m.border }) : null),
       h('section', { class: 'ad-list', 'aria-labelledby': 'ad-list-title' },
-        h('div', { class: 'ad-sub' }, h('h3', { id: 'ad-list-title', text: m.listTitle }), h('span', { text: m.listSub })),
-        list),
+        h('div', { class: 'ad-sub' }, hot.head, h('span', { text: m.listSub })),
+        hot.list, hot.live),
       manualRow);
     foot.append(sel, h('button', { type: 'button', class: 'btn ad-cancel', text: 'Cancel', onclick: () => close() }), primary);
     stage(null);

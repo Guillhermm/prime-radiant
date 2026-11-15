@@ -1,6 +1,6 @@
-import { centerLabel, DATA_REGION_NAME, drawerModel, formatCount, hotspotAt, hotspotRowsLabels, mapModel, placeLabel, regionCaption, SENSOR_NAME, squareFor, UNAVAILABLE } from '../places.js';
+import { centerLabel, DATA_REGION_NAME, drawerModel, formatCount, mapModel, placeAt, placeLabel, regionCaption, SENSOR_NAME, squareFor, UNAVAILABLE } from '../places.js';
 import { cellLabel } from './calendar-grid.js';
-import { hotspotRow, legendEl, mountHeatMap, pressRows, swatch } from './heat-map.js';
+import { hottestList, legendEl, mountHeatMap, swatch } from './heat-map.js';
 import { h } from './h.js';
 import { icon, mark } from './icons.js';
 import * as radiant from './radiant.js';
@@ -37,7 +37,8 @@ export const previewModel = ({ kind, bbox = null, name = null, label = null, ove
   const rank = hotspots.findIndex((x) => x.bbox.join() === bbox.join()) + 1;
   const hs = rank ? hotspots[rank - 1] : null;
   const q = squareFor(model, bbox);
-  const p = hs?.place?.country ? hs.place : null;
+  const named = hs ?? placeAt(overview, bbox);
+  const p = named?.place?.country ? named.place : null;
   const note = {
     suggested: `Hottest 1° area in ${region ?? 'the data'}, ${year}`,
     pick: rank ? `Hotspot #${rank} in ${region ?? 'the data'}` : '1° area on the map',
@@ -214,28 +215,22 @@ const pendingSubject = { kind: 'pending' };
 const plateEl = (overview, model, deps, focus) => {
   const m = drawerModel(overview);
   const map = mountHeatMap(model, overview, { focus, onPick: (q) => deps.onPick(q) });
-  const rowLabels = hotspotRowsLabels(overview.hotspots ?? []);
-  const rows = (overview.hotspots ?? []).slice(0, 3).map((hs, i) => {
-    const q = squareFor(model, hs.bbox) ?? { key: hs.bbox.join(), bbox: hs.bbox, value: hs.value, bin: 6 };
-    return hotspotRow({ hs, rank: i + 1, q, labels: rowLabels[i], overview, sub: m.rowSub, onClick: () => { deps.onPick(q); map.reveal(q); } });
+  const hot = hottestList({
+    overview, model, map, limit: 3, title: `${m.listTitle}, ${overview.year}`, titleClass: 'hp-list-title', rowSub: m.rowSub, onPick: (q) => deps.onPick(q),
   });
-  const region = overview.region?.name ?? null;
-  const list = rows.length
-    ? h('ol', { class: 'ad-rows hp-rows' }, rows.map((r) => h('li', {}, r)))
-    : h('p', { class: 'hp-none', text: `No fire detected in ${region ?? 'the data'} in ${overview.year}.` });
   const el = h('section', { class: 'plate hero-plate', 'aria-labelledby': 'plate-title' },
     h('div', { class: 'hp-head' }, h('h2', { id: 'plate-title', text: `Where it burned in ${overview.year}` }), h('p', { class: 'hp-unit', text: m.unit })),
     h('div', { class: 'hp-body' },
       h('div', { class: 'hp-map' }, ...map.nodes, legendEl()),
       h('div', { class: 'hp-side' },
-        h('h3', { class: 'hp-list-title', text: `${m.listTitle}, ${overview.year}` }),
+        hot.head,
         h('p', { class: 'hp-list-sub', text: m.listSub }),
-        list,
+        hot.list, hot.live,
         manualEl(deps, 'hp-manual'))),
     m.border ? h('p', { class: 'plate-note', text: m.border }) : null);
   return {
     el,
-    select: (q, bbox) => { map.select(q); pressRows(rows, bbox); map.setArea(q ? null : bbox); },
+    select: (q, bbox) => { map.select(q); hot.press(bbox); map.setArea(q ? null : bbox); },
     reveal: map.reveal,
     start: map.start,
     stop: map.stop,
@@ -277,7 +272,7 @@ export const mountHeroPlace = (deps) => {
   let subject = null;
   let settled = false;
 
-  const nameOf = (s) => ({ bbox: s.bbox, name: s.name ?? placeLabel(hotspotAt(overview, s.bbox)) ?? (is1deg(s.bbox) ? centerLabel(s.bbox) : null) });
+  const nameOf = (s) => ({ bbox: s.bbox, name: s.name ?? placeLabel(placeAt(overview, s.bbox)) ?? (is1deg(s.bbox) ? centerLabel(s.bbox) : null) });
 
   const setSubject = (s, { fromPick = false } = {}) => {
     subject = s;

@@ -16,6 +16,8 @@ import { flagRuleText } from '../../core/periods.js';
 import { periodModel, periodsInRange, yearRankModel } from '../../web/src/components/anomaly-summary.js';
 import { parseHash } from '../../web/src/state.js';
 import { spanFromManifest } from '../../web/src/components/date-range.js';
+import { recordFacts } from '../../web/src/components/states.js';
+import { countriesOf } from '../../pipeline/overview.js';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const chrome = findChrome();
@@ -1177,6 +1179,7 @@ test('first-screen map with a global overview: zooms on a click, picks on the se
         await page.until(`document.querySelector('.hero-plate .hm-map.is-zoomable') && ${previewText('.pv-title')} === 'Kasaï-Oriental'`, 'a zoomable plate and hotspot 1 suggested');
         assert.equal(await page.evaluate(previewText('.pv-note')), `Hottest 1° area in the data, ${synthOverview.year}`);
         assert.equal(await page.evaluate(`document.querySelector('.hp-list-title').textContent`), `Hottest areas, ${synthOverview.year}`);
+        assert.equal(await page.evaluate(`document.querySelector('.hl-select')`), null, 'no countries in overview.json, no scope select');
         assert.equal(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`), true, `no horizontal scroll at ${width}`);
         // Hotspot 1 lies outside the synthetic tiles: every month is null, so no Radiant and no way in.
         await page.until(`!document.querySelector('.preview-card .pv-empty').hidden`, 'the no-record message');
@@ -1207,6 +1210,103 @@ test('first-screen map with a global overview: zooms on a click, picks on the se
         assert.deepEqual(page.problems, []);
       } finally { await page.close(); }
     }
+  } finally { synthOpts.overviewBody = null; }
+});
+
+
+// A global overview carrying countries (pipeline countriesOf), as production will once rebuilt with --admin1:
+// the synthetic Brazil, one square in the Congo, and Russia across the antimeridian (wider than 120 deg).
+const countriesOverview = () => {
+  const extra = [[23, -8, 2500], [100, 60, 20], [-170, 65, 30]];
+  const cells = [...synthOverview.cells, ...extra];
+  const placeOf = (w) => (w === 23 ? { country: 'Democratic Republic of the Congo', state: 'Kasaï-Oriental' }
+    : w === 100 || w === -170 ? { country: 'Russia', state: 'Siberia' } : { country: 'Brazil', state: 'Mato Grosso' });
+  const longest = { bbox: [23, -8, 24, -7], value: 2500, place: placeOf(23) };
+  return { ...synthOverview, region: null, cells, hotspots: [longest, ...synthOverview.hotspots.slice(0, 9)], countries: countriesOf(cells, (w) => placeOf(w)) };
+};
+
+const openAs = async (width, lang) => {
+  const page = await browser.newPage({ width, height: width < 600 ? 860 : 900, downloadDir });
+  await page.addInitScript(`Object.defineProperty(navigator, 'language', { value: ${JSON.stringify(lang)} })`);
+  await page.goto(`${synthBase}/web/`);
+  return page;
+};
+
+test('first screen: the facts line reads the manifest, quiet under the lede, two lines on phone before the card', { skip }, async () => {
+  const facts = recordFacts(synthFiles.get('/data/manifest.json')).join(' · ');
+  for (const width of [1280, 400]) {
+    const page = await open(width, '', synthBase);
+    try {
+      await page.until(`document.querySelector('.hero-facts')`, 'facts line');
+      assert.equal(await page.evaluate(`document.querySelector('.hero-facts').textContent`), facts);
+      assert.equal(await page.evaluate(`getComputedStyle(document.querySelector('.hero-facts')).fontFamily.includes('Fira Code')`), true, 'monospace');
+      assert.equal(await page.evaluate(`document.querySelector('.hero-facts').getBoundingClientRect().bottom <= document.querySelector(${JSON.stringify(width < 600 ? '.preview-card' : '.hp-slot')}).getBoundingClientRect().top`), true, 'above the card on phone, the plate on desktop');
+      const lines = await page.evaluate(`Math.round(document.querySelector('.hero-facts').getBoundingClientRect().height / parseFloat(getComputedStyle(document.querySelector('.hero-facts')).lineHeight))`);
+      assert.equal(lines, width < 600 ? 2 : 1);
+      assert.deepEqual(page.problems, []);
+    } finally { await page.close(); }
+  }
+});
+
+test('hottest list by country: World lists countries, a row or the select zooms to one and lists its squares, pins follow; your region leads', { skip }, async () => {
+  const ov = countriesOverview();
+  synthOpts.overviewBody = ov;
+  try {
+    for (const width of [1280, 400]) {
+      const page = await openAs(width, 'pt-BR');
+      try {
+        await page.until(`document.querySelector('.hero-plate .hl-select')`, 'the scope select');
+        assert.equal(await page.evaluate(`(() => { const s = document.querySelector('.hero-plate .hl-select'); return document.querySelector('label[for="' + s.id + '"]').textContent + '|' + s.value + '|' + s.selectedOptions[0].textContent; })()`), 'Hottest in||World');
+        assert.equal(await page.evaluate(`document.querySelector('.hero-plate .hl-year').textContent`), `, ${ov.year}`);
+        assert.equal(await page.evaluate(`(() => { const t = document.querySelector('.hero-plate .hl-title').getBoundingClientRect(); return document.querySelector('.hero-plate .hl-year').getBoundingClientRect().top < t.top + t.height / 2; })()`), true, 'one line: Hottest in [World], year');
+        assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.hero-plate .hl-select optgroup')].map((g) => g.label + ':' + [...g.children].map((o) => o.value).join('/'))`),
+          ['Your region:Brazil', `Countries by fire activity:${ov.countries.map((c) => c.country).join('/')}`]);
+        assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.hero-plate .hs-row')].map((r) => r.getAttribute('aria-label'))`),
+          ov.countries.slice(0, 3).map((c, i) => `Country ${i + 1}, ${c.country}, ${c.value.toLocaleString('en-US')} fire-cell-days in ${ov.year}`));
+        assert.equal(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`), true, `no horizontal scroll at ${width}`);
+
+        // A country row scopes the list: its top squares, the map zoomed to it, pins on those squares.
+        const brazil = ov.countries.find((c) => c.country === 'Brazil');
+        await page.evaluate(`[...document.querySelectorAll('.hero-plate .hs-row')].find((r) => r.title === 'Brazil').click()`);
+        await page.until(`document.querySelector('.hero-plate .hl-select').value === 'Brazil'`, 'Brazil scoped');
+        assert.equal(await page.evaluate(`document.activeElement.classList.contains('hl-select')`), true, 'focus on the select');
+        assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.hero-plate .hs-row')].map((r) => r.getAttribute('aria-label').split(',')[0])`), brazil.top.slice(0, 3).map((_, i) => `Hotspot ${i + 1}`));
+        assert.equal(await page.evaluate(`document.querySelectorAll('.hero-plate .hm-pin').length`), brazil.top.length);
+        assert.equal(await page.evaluate(`!document.querySelector('.hero-plate .hm-world').hidden && getComputedStyle(document.querySelector('.hero-plate .hm-pins')).display !== 'none'`), true, 'zoomed to Brazil, pins shown');
+        assert.ok(await page.evaluate(`document.querySelector('.hero-plate .hm').viewBox.baseVal.width`) < 1500, 'a window around Brazil, not the world');
+
+        // A square row picks as today and the card names it by its place.
+        await page.evaluate(`document.querySelectorAll('.hero-plate .hs-row')[1].click()`);
+        await page.until(`${previewText('.pv-tag')} === 'Your pick' && ${previewText('.pv-title')} === 'Mato Grosso'`, 'the square previewed');
+        assert.equal(await page.evaluate(`document.querySelectorAll('.hero-plate .hs-row')[1].getAttribute('aria-pressed')`), 'true');
+
+        // Russia spans the antimeridian: the whole map, its pins visible there.
+        await page.evaluate(`(() => { const s = document.querySelector('.hero-plate .hl-select'); s.value = 'Russia'; s.dispatchEvent(new Event('change')); })()`);
+        await page.until(`document.querySelector('.hero-plate .hm-world').hidden`, 'the world view for a country too wide');
+        assert.equal(await page.evaluate(`getComputedStyle(document.querySelector('.hero-plate .hm-pins')).display !== 'none' && document.querySelectorAll('.hero-plate .hm-pin').length`), ov.countries.find((c) => c.country === 'Russia').top.length);
+
+        // World again: countries, the hotspots' pins hidden at world level.
+        await page.evaluate(`(() => { const s = document.querySelector('.hero-plate .hl-select'); s.value = ''; s.dispatchEvent(new Event('change')); })()`);
+        await page.until(`document.querySelector('.hero-plate .hs-row').title === ${JSON.stringify(ov.countries[0].country)}`, 'countries again');
+        assert.equal(await page.evaluate(`getComputedStyle(document.querySelector('.hero-plate .hm-pins')).display`), 'none');
+        assert.deepEqual(page.problems, []);
+      } finally { await page.close(); }
+    }
+
+    // A region the data does not name the same way gets no group; the picker shares the list.
+    const page = await openAs(1280, 'en-SS');
+    try {
+      await page.until(`document.querySelector('.hero-plate .hl-select')`, 'the scope select');
+      assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.hero-plate .hl-select optgroup')].map((g) => g.label)`), ['Countries by fire activity']);
+      await settle(page);
+      await page.click('.areas-button');
+      await page.until(AREAS_OPEN, 'the picker');
+      await page.evaluate(`(() => { const s = document.querySelector('.area-drawer .hl-select'); s.value = 'Brazil'; s.dispatchEvent(new Event('change')); })()`);
+      assert.equal(await page.evaluate(`document.querySelectorAll('.area-drawer .hs-row').length`), ov.countries.find((c) => c.country === 'Brazil').top.length);
+      await page.evaluate(`document.querySelector('.area-drawer .hs-row').click()`);
+      await page.until(`!document.querySelector('.ad-primary').disabled`, 'a square staged from the country list');
+      assert.deepEqual(page.problems, []);
+    } finally { await page.close(); }
   } finally { synthOpts.overviewBody = null; }
 });
 
@@ -1303,6 +1403,8 @@ test('home Radiant: a placeholder at once, aria-busy, then the data on the same 
     assert.equal(ph.n, months, 'every month of the record is drawn');
     assert.match(ph.label, /loading/);
     await page.until(`${previewText('.pv-tag')} === 'Suggested' && document.querySelector('.hero-art figcaption').textContent.startsWith('2000–2019.')`, 'the caption, before the data');
+    // A web font swapping in late (a loaded machine) rewraps the caption; that is the font's shift, not the data's.
+    await page.until(`document.fonts.status === 'loaded'`, 'fonts');
     const box = await page.evaluate(`JSON.stringify(document.querySelector('.hero-art').getBoundingClientRect())`);
     assert.equal(await page.evaluate(`document.querySelectorAll('.hero-art .radiant .rb-ph').length`), months, 'still the placeholder while the tiles are held back');
     await page.until(HERO_READY, 'data on the Radiant', 30000);
