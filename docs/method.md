@@ -149,18 +149,37 @@ months, NOAA-20 for NOAA-20 x K months (`core/partial.js`).
 - With an all-zero history the median is 0: compare by difference or percentile rank,
   never by ratio.
 
-## 5b. Anomalies (M2-K1, gate V2 pending)
+## 5b. Anomalies (M2-K1, gate V2 fixes A2-A6 applied, re-check pending)
 
-- **Assumption**: a month's anomaly is its percentile rank against the same calendar
-  month in earlier years only, with the baseline's exclusions (partial months for the
-  supplying sensor, Terra-only months, null): rank = (below + equal / 2) / n, so ties
-  split evenly and 0.5 is the median. No rank when n < 9 earlier years.
-- **Assumption**: a month is flagged when rank >= 0.9 and n >= 9.
-- All-zero history: 0 gives rank 0.5 (not flagged); any value above 0 gives rank 1
-  (flagged). In sparse areas one fire-cell-day after nine zero years is flagged.
-- Year rank: complete years ranked by harmonized total (1 = most; ties share the better
-  rank). A year containing a partial or missing month is excluded, with its reason.
-- Implementation: `core/anomaly.js` (`anomaly`, `yearRank`); KPIs in `kpis().anomaly`.
+- **Rank (displayed)**: the percentile rank of a month against the same calendar month in
+  earlier years only, with the baseline's exclusions (partial months for the supplying
+  sensor, Terra-only months, null): rank = (below + equal / 2) / n, so ties split evenly
+  and 0.5 (50%) is typical. No rank when n < 9 earlier years. The rank is relative to this
+  archive and its years, not a standard climatology.
+- **Flag rule (A2)**: p = (count of earlier values >= v, plus 1) / (n + 1); a month is a
+  candidate when p <= 0.1 and n >= 9. Ties count against, so the false-flag rate is at
+  most 10% for every n. At n = 9 only a strict record passes; at 9-10 years a flag means a
+  record or near-record.
+- **Single-sensor confirmation (A3)**: a candidate is flagged only when the same p rule
+  also holds on the raw MODIS series alone (2002-08 on, months partial for MODIS excluded)
+  or on the raw VIIRS series alone (months partial for S-NPP excluded, n >= 9). Otherwise
+  the month is labeled `cross-era`: rank kept, flag false. Without the raw series
+  (`opts.sensors`) nothing can be confirmed, so every candidate is labeled `cross-era`.
+- **Sparse baseline (A5)**: a flag whose earlier pool has median 0 carries the label
+  `sparse-baseline` (one fire-cell-day after nine zero years flags).
+- All-zero history: 0 gives rank 0.5 (not flagged); any value above 0 gives rank 1.
+- **Year rank (A4)**: complete years ranked on two totals, as observed and with each
+  partial month multiplied by days in month / days observed (`manifest.acquisition_days`;
+  the supplying sensor's satellites, the minimum over them, a satellite month missing
+  inside its span counts 0 days). A year is ranked when both totals give the same rank
+  (1 = most; ties share the better rank), else it shows `rankRange` [best, worst] with its
+  reason. A year is excluded only for a null month, a Terra-only month, or a partial month
+  with no acquisition days.
+- Labels travel in `labels: string[][]` parallel to `values` on the anomaly Series;
+  `values` and `flags` keep the contract of the web layer. Caveats: `anomaly-*` items and
+  the flags `cross-era`, `sparse-baseline` in `core/caveats.js`.
+- Implementation: `core/anomaly.js` (`anomaly`, `yearRank`, `flagRule`); KPIs in
+  `kpis().anomaly` (`flagged`, `crossEra`, `yearRank` with `rankRange`, `reason`).
 
 ## 6. Caveats (shown on screen)
 

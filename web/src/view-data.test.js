@@ -115,7 +115,7 @@ test('synthetic Brazil record: MODIS × R before S-NPP, medians from 5 earlier y
 test('buildResult carries core\'s anomaly Series in the contract shape', () => {
   const r = result();
   assert.equal(r.anomaly.id, 'anomaly');
-  assert.deepEqual(r.anomaly.method, { id: 'percentile-rank', version: 1 });
+  assert.deepEqual(r.anomaly.method, { id: 'percentile-rank', version: 2 });
   assert.equal(r.anomaly.flags.length, r.anomaly.values.length);
   assert.ok(r.anomaly.values.every((v) => v === null)); // fixture has under 9 baseline years
   assert.ok(r.anomaly.flags.every((f) => f === false));

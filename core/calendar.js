@@ -58,15 +58,15 @@ const pickRatio = (r) => (r ? {
  * sources of the months with a value: 'MODIS x R', 'S-NPP', 'NOAA-20 x K'. `flags` counts the
  * months in range carrying each reason flag.
  *
- * `anomaly` (anomaly.js): `flagged` months in range, `yearRank` {year, rank, n} of the latest complete
- * year (null without one), `excludedYears` [{year, reason}] the years left out of the ranking, `latest` {month, rank, flagged} of the latest archived month in range.
+ * `anomaly` (anomaly.js): `flagged` months in range (rule and single-sensor confirmation, anomaly.js; pass `range.sensors` = {modis, viirs} raw Series, else none confirm), `crossEra` months in range that pass the rule but not the confirmation, `yearRank` {year, rank, n} of the latest complete
+ * year (null without one; `rank` is null with `rankRange` [best, worst] and `reason` when observed and scaled totals disagree), `excludedYears` [{year, reason}] the years left out of the ranking, `latest` {month, rank, flagged} of the latest archived month in range.
  *
  * @param {import('./index.js').Harmonized} harmonized result of harmonize()
  * @param {import('./index.js').Baseline|null} base
  * @param {object} manifest
- * @param {{from?: string, to?: string}} [range] defaults to the whole series
+ * @param {{from?: string, to?: string, sensors?: {modis?: object, viirs?: object}}} [range] defaults to the whole series
  */
-export function kpis(harmonized, base, manifest, { from, to } = {}) {
+export function kpis(harmonized, base, manifest, { from, to, sensors } = {}) {
   const { series } = harmonized;
   const cells = toCalendar(harmonized, base, manifest);
   const months = cells.map((_, i) => addMonths(series.start, i));
@@ -91,7 +91,7 @@ export function kpis(harmonized, base, manifest, { from, to } = {}) {
 
   const hasMedian = li >= 0 && base && base.series.values[li] !== null && base.series.values[li] !== undefined;
   const c = li >= 0 ? cells[li] : null;
-  const an = anomaly(harmonized, manifest);
+  const an = anomaly(harmonized, manifest, { sensors });
   const yr = yearRank(harmonized, manifest);
   const last = yr.years[yr.years.length - 1];
   return {
@@ -107,7 +107,8 @@ export function kpis(harmonized, base, manifest, { from, to } = {}) {
     flags,
     anomaly: {
       flagged: idx.filter((i) => an.flags[i]).length,
-      yearRank: last ? { year: last.year, rank: last.rank, n: yr.n } : null,
+      crossEra: idx.filter((i) => an.labels[i].includes('cross-era')).length,
+      yearRank: last ? { year: last.year, rank: last.rank, ...(last.rankRange ? { rankRange: last.rankRange, reason: last.reason } : {}), n: yr.n } : null,
       excludedYears: yr.excluded, // {year, reason}: why a year has no rank (gate V2 reviews the rule)
       latest: li >= 0 ? { month: months[li], rank: an.values[li], flagged: an.flags[li] } : null,
     },
