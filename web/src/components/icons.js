@@ -33,6 +33,7 @@ const ICONS = {
   live: [['circle', { cx: 12, cy: 12, r: 3 }], ['path', { d: 'M6.3 6.3a8 8 0 0 0 0 11.4M17.7 6.3a8 8 0 0 1 0 11.4' }]],
   // A map pin with a square in it: an area on the map.
   pin: [['path', { d: 'M12 2.5a7 7 0 0 1 7 7c0 5-7 12-7 12s-7-7-7-12a7 7 0 0 1 7-7z' }], ['rect', { x: 9.5, y: 7, width: 5, height: 5, rx: 1 }]],
+  refresh: [['path', { d: 'M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7' }]],
   globe: [['circle', { cx: 12, cy: 12, r: 9 }], ['path', { d: 'M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18' }]],
   install: [['rect', { x: 7, y: 3, width: 10, height: 18, rx: 2 }], ['path', { d: 'M12 7v6M9.5 10.5L12 13l2.5-2.5' }]],
 };

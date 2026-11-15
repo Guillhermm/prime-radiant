@@ -1,7 +1,7 @@
 // Pure parts of the service worker: what to precache, what to name the caches, how to route a request.
 // Paths are relative to the worker's scope (/web/), so the same list works on localhost and in production.
 // Bump CACHE_VERSION whenever a precached file changes so installed apps refetch the shell atomically.
-export const CACHE_VERSION = 'v22';
+export const CACHE_VERSION = 'v23';
 export const SHELL_CACHE = `pr-shell-${CACHE_VERSION}`;
 export const DATA_CACHE = `pr-data-${CACHE_VERSION}`;
 
@@ -19,7 +19,7 @@ export const SHELL_FILES = [
   'src/components/anomaly-layer.js', 'src/components/anomaly-summary.js', 'src/components/aoi-form.js', 'src/components/area-drawer.js', 'src/components/app-shell.js',
   'src/components/calendar-grid.js', 'src/components/caveat-strip.js', 'src/components/cell-detail.js',
   'src/components/data-table.js', 'src/components/date-range.js', 'src/components/export-image.js', 'src/components/export-menu.js',
-  'src/components/focus-trap.js', 'src/components/h.js', 'src/components/icons.js',
+  'src/components/focus-trap.js', 'src/components/h.js', 'src/components/heat-map.js', 'src/components/hero-place.js', 'src/components/icons.js',
   'src/components/legend.js', 'src/components/live-view.js', 'src/components/map-picker.js', 'src/components/sensors-view.js', 'src/components/segmented.js',
   'src/components/method-drawer.js', 'src/components/name-field.js', 'src/components/query-bar.js', 'src/components/radiant.js', 'src/components/states.js',
   'src/components/synthetic-band.js', 'src/components/theme-control.js', 'src/components/toast.js', 'src/components/popover.js', 'src/components/share-menu.js', 'src/components/offline-chip.js', 'src/components/verdict-row.js',

@@ -446,6 +446,11 @@ export const start = async (root = document.getElementById('app')) => {
     onRetry: () => run(store.get()),
     onDraw: (btn) => qb.open('map', btn),
     onCoords: (btn) => qb.open('area', btn),
+    // The first screen's map: a pick previews the area without touching the hash and becomes the
+    // area the tabs open; Open the calendar commits it.
+    currentArea: () => (lastArea ? { bbox: lastArea, name: lastName } : null),
+    onPreview: ({ bbox, name }) => { lastArea = bbox; lastName = name; },
+    onOpen: (area) => openExample(area, { view: 'calendar' }),
   });
   let shownState = null;
   const paintState = () => {

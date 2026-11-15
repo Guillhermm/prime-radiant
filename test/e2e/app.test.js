@@ -82,7 +82,9 @@ const open = async (width, query = '?fixtures=1', origin = base) => {
   return page;
 };
 
-const EXAMPLE = '.ex.chip-example';
+// An example card (fixture mode, no overview.json) or, with overview.json, the first screen's
+// "Open the calendar" on the suggestion: both open the first example area.
+const EXAMPLE = '.ex.chip-example, .pv-cta:not([disabled]):not([hidden])';
 const CALENDAR_READY = `document.querySelector('.view-calendar .cal-grid') && !document.querySelector('.view-calendar').hidden`;
 const focusedLabel = `document.activeElement.getAttribute('aria-label')`;
 
@@ -890,7 +892,7 @@ test('place picker from the header on Anomalies: keys and rows stage a pick, Use
     assert.equal(await page.evaluate(`document.querySelector('#ad-list-title').textContent`), region ? `Hottest in ${region}` : 'Hottest areas');
     assert.match(await page.evaluate(`document.querySelector('.ad-unit').textContent`), new RegExp(`^Fire-cell-days of 0\\.1° cells, summed per 1° square · VIIRS S-NPP ${synthOverview.year}`));
     assert.match(await page.evaluate(`document.querySelector('.plate-note').textContent`), /count only the part inside it\.$/);
-    assert.equal(await page.evaluate(`document.querySelectorAll('.hs-row').length`), synthOverview.hotspots.length);
+    assert.equal(await page.evaluate(`document.querySelectorAll('.area-drawer .hs-row').length`), synthOverview.hotspots.length);
     const fit = await page.evaluate(`(() => { const m = document.querySelector('.hm').getBoundingClientRect(), p = document.querySelector('.plate').getBoundingClientRect(); return [m.width / p.width, document.querySelector('.hm-sq').getBoundingClientRect().width]; })()`);
     assert.ok(fit[0] >= 0.6 && fit[1] >= 6, `the data spans ${fit[0]} of the plate, a square is ${fit[1]} px`);
     assert.equal(await page.evaluate(PINS_APART), true, 'pins apart');
@@ -903,10 +905,10 @@ test('place picker from the header on Anomalies: keys and rows stage a pick, Use
     await page.press('ArrowLeft');
     await page.press('Enter');
     await page.until(`!${primary}.disabled`, 'Enter stages the focused square');
-    assert.equal(await page.evaluate(`[...document.querySelectorAll('.hs-row[aria-pressed="true"]')].length`), 0, 'a plain square is not a hotspot row');
+    assert.equal(await page.evaluate(`[...document.querySelectorAll('.area-drawer .hs-row[aria-pressed="true"]')].length`), 0, 'a plain square is not a hotspot row');
 
-    await page.evaluate(`document.querySelectorAll('.hs-row')[1].click()`);
-    assert.equal(await page.evaluate(`document.querySelectorAll('.hs-row')[1].getAttribute('aria-pressed')`), 'true');
+    await page.evaluate(`document.querySelectorAll('.area-drawer .hs-row')[1].click()`);
+    assert.equal(await page.evaluate(`document.querySelectorAll('.area-drawer .hs-row')[1].getAttribute('aria-pressed')`), 'true');
     assert.match(await page.evaluate(`document.querySelector('.ad-sel').textContent`), new RegExp(`${second.value.toLocaleString('en-US')} fire-cell-days in ${synthOverview.year}`));
     await settle(page);
     await page.click('.ad-primary');
@@ -919,7 +921,7 @@ test('place picker from the header on Anomalies: keys and rows stage a pick, Use
     await settle(page);
     await page.click('.area-chip');
     await page.until(AREAS_OPEN, 'the pencil opens the drawer');
-    await page.evaluate(`document.querySelectorAll('.hs-row')[2].click()`);
+    await page.evaluate(`document.querySelectorAll('.area-drawer .hs-row')[2].click()`);
     await page.press('Escape');
     await page.until(`!document.querySelector('.area-drawer')`, 'Escape closes');
     assert.equal(await page.evaluate(`document.activeElement.classList.contains('area-chip')`), true, 'focus back on the chip');
@@ -936,27 +938,36 @@ test('place picker from the header on Anomalies: keys and rows stage a pick, Use
   } finally { await page.close(); }
 });
 
+const PREVIEW_READY = `document.querySelector('.preview-card .hero-art:not([aria-busy]) .radiant.is-interactive:not([aria-busy])')`;
+const previewText = (sel) => `document.querySelector('.preview-card ${sel}')?.textContent`;
+const centerOf = ([w, s]) => `${Math.abs(s + 0.5).toFixed(1)}°${s < 0 ? 'S' : 'N'} ${Math.abs(w + 0.5).toFixed(1)}°${w < 0 ? 'W' : 'E'}`;
+
 test('first run suggests hotspot 1 without writing the hash; Open calendar from Home; tabs open the last chosen area', { skip }, async () => {
   const [first, second] = synthOverview.hotspots;
   for (const width of [1280, 400]) {
     const page = await open(width, '', synthBase);
     try {
-      await page.until(`document.querySelector('.hero-art figcaption')?.textContent.startsWith('Suggested')`, 'the suggested Radiant');
+      await page.until(`${previewText('.pv-tag')} === 'Suggested' && ${PREVIEW_READY}`, 'the suggested preview');
       const region = synthOverview.region?.name;
-      assert.equal(await page.evaluate(`document.querySelector('.hero-art figcaption').textContent`), `Suggested: the 1° area with most VIIRS fire-cell-days in ${region ?? 'the data'}, ${synthOverview.year}. Rings are years, slices are months. Pick a month to open it in the calendar. Synthetic data.`);
+      assert.equal(await page.evaluate(previewText('.pv-note')), `Hottest 1° area in ${region ?? 'the data'}, ${synthOverview.year}`);
+      assert.equal(await page.evaluate(previewText('.pv-title')), first.place.state);
+      assert.match(await page.evaluate(previewText('.pv-value')), new RegExp(`^${first.value.toLocaleString('en-US')} fire-cell-days in ${synthOverview.year}VIIRS S-NPP$`));
+      assert.match(await page.evaluate(previewText('figcaption')), /^2000–2019\. Rings are years, newest outside; slices are months\. Pick a month to open it in the calendar\. Synthetic data\.$/);
       assert.equal(await page.evaluate('location.hash'), '', 'a suggestion is not written to the hash');
-      assert.equal(await page.evaluate(`document.querySelectorAll('${EXAMPLE}').length`), 3, 'the top three hotspots are the examples');
-      assert.equal(await page.evaluate(`document.querySelector('${EXAMPLE} .ex-v').textContent`), `${first.value.toLocaleString('en-US')} VIIRS fire-cell-days in ${synthOverview.year}`);
-      assert.match(await page.evaluate(`document.querySelector('${EXAMPLE} .ex-c').textContent`), /^\d+°[NS]–\d+°[NS] · \d+°[EW]–\d+°[EW]$/, 'the coordinate line is the range only');
+      assert.equal(await page.evaluate(`document.querySelectorAll('.ex.chip-example').length`), 0, 'the plate lists the hotspots instead of example cards');
+      assert.equal(await page.evaluate(`document.querySelectorAll('.hero-plate .hs-row').length`), 3, 'the top three hotspots on the plate');
+      assert.equal(await page.evaluate(`document.querySelector('.hero-plate .hs-row').getAttribute('aria-pressed')`), 'true', 'the suggestion is the pressed row');
+      assert.equal(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`), true, `no horizontal scroll at ${width}`);
       await settle(page);
       await page.click('.areas-button');
       await page.until(AREAS_OPEN, 'drawer from Home');
       assert.equal(await page.evaluate(`document.querySelector('.ad-primary').textContent`), 'Open calendar');
-      await page.evaluate(`document.querySelectorAll('.hs-row')[1].click()`);
+      await page.evaluate(`document.querySelectorAll('.area-drawer .hs-row')[1].click()`);
       await page.evaluate(`document.querySelector('.ad-primary').click()`);
       await page.until(`${CALENDAR_READY} && location.hash.includes(${JSON.stringify(bboxHash(second.bbox))})`, 'the calendar of the pick');
       await page.evaluate(`document.getElementById('tab-home').click()`);
       await page.until(`document.documentElement.classList.contains('is-first-run')`, 'home');
+      await page.until(`${previewText('.pv-tag')} === 'Current area'`, 'home previews the last chosen area');
       await settle(page);
       await page.evaluate(`document.getElementById('tab-sensors').click()`);
       await page.until(`!document.querySelector('.view-sensors').hidden`, 'Sensors');
@@ -964,6 +975,83 @@ test('first run suggests hotspot 1 without writing the hash; Open calendar from 
       assert.deepEqual(page.problems, []);
     } finally { await page.close(); }
   }
+});
+
+test('first-screen map: a pick previews the harmonized record without the hash, tabs open it, Open the calendar commits it', { skip }, async () => {
+  const third = synthOverview.hotspots[2];
+  const plain = synthOverview.cells.find((c) => !synthOverview.hotspots.some((hs) => hs.bbox[0] === c[0] && hs.bbox[1] === c[1]) && c[2] > 0);
+  const page = await open(1280, '', synthBase);
+  try {
+    await page.until(PREVIEW_READY, 'preview');
+    await settle(page);
+    await page.evaluate(`document.querySelectorAll('.hero-plate .hs-row')[2].click()`);
+    await page.until(`${previewText('.pv-tag')} === 'Your pick' && ${previewText('.pv-note')} === ${JSON.stringify(`Hotspot #3 in ${synthOverview.region.name}`)}`, 'hotspot 3 previewed');
+    assert.equal(await page.evaluate(previewText('.pv-title')), third.place.state);
+    assert.equal(await page.evaluate('location.hash'), '', 'a preview is not written to the hash');
+    assert.equal(await page.evaluate(`document.querySelectorAll('.hero-plate .hs-row')[2].getAttribute('aria-pressed')`), 'true');
+    await page.until(PREVIEW_READY, 'the Radiant of hotspot 3');
+    // The preview Radiant is the calendar's: the same harmonized cells as the calendar of that area
+    // (months the record leaves empty fade out of the placeholder as rb-gone).
+    const slices = await page.evaluate(`[...document.querySelectorAll('.preview-card .radiant path.rb:not(.rb-gone)')].map((p) => p.dataset.key + p.getAttribute('class')).join()`);
+
+    await page.click(`.hero-plate .hm-sq[data-key="${plain[0]},${plain[1]}"]`);
+    await page.until(`${previewText('.pv-note')} === '1° area on the map' && ${previewText('.pv-title')} === ${JSON.stringify(centerOf(plain))}`, 'a plain square previewed by its center');
+    assert.equal(await page.evaluate(`document.querySelector('.hero-plate .hm-sel-out').hasAttribute('hidden')`), false, 'the pick ring on the map');
+    await page.until(PREVIEW_READY, 'its Radiant');
+
+    // A tab opens the picked square, then Home shows it as the current area.
+    await settle(page);
+    await page.evaluate(`document.getElementById('tab-sensors').click()`);
+    await page.until(`!document.querySelector('.view-sensors').hidden && location.hash.includes(${JSON.stringify(bboxHash([plain[0], plain[1], plain[0] + 1, plain[1] + 1]))})`, 'Sensors on the pick');
+    await page.evaluate(`document.getElementById('tab-home').click()`);
+    await page.until(`${previewText('.pv-tag')} === 'Current area'`, 'Home previews it');
+
+    // Open the calendar: hotspot 3, named by its place, its Radiant the same as the preview's.
+    await page.evaluate(`document.querySelectorAll('.hero-plate .hs-row')[2].click()`);
+    await page.until(PREVIEW_READY, 'hotspot 3 again');
+    await settle(page);
+    await page.click('.pv-cta');
+    await page.until(`${CALENDAR_READY} && location.hash.includes(${JSON.stringify(bboxHash(third.bbox))})`, 'the calendar of hotspot 3');
+    assert.equal(await page.evaluate(`document.querySelector('.context h1').textContent`), `${third.place.state}, ${third.place.country}`);
+    await page.until(`document.querySelector('.radiant-card .radiant:not([aria-busy]) path.rb')`, 'the calendar Radiant');
+    const calSlices = await page.evaluate(`[...document.querySelectorAll('.radiant-card .radiant path.rb')].map((p) => p.dataset.key + p.getAttribute('class')).join()`);
+    assert.equal(calSlices, slices, 'the preview Radiant equals the calendar Radiant');
+    assert.deepEqual(page.problems, []);
+  } finally { await page.close(); }
+});
+
+test('first-screen map on phone: the selection bar appears when the card is off screen, its text scrolls back, Open commits', { skip }, async () => {
+  const second = synthOverview.hotspots[1];
+  const page = await open(400, '', synthBase);
+  try {
+    await page.until(PREVIEW_READY, 'preview');
+    await settle(page);
+    assert.equal(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`), true, 'no horizontal scroll at 400');
+    // The map scrolls under the bar, so on phone the bar is opaque in both themes.
+    for (const theme of ['light', 'dark']) {
+      await page.evaluate(`document.documentElement.dataset.theme = '${theme}'`);
+      assert.equal(await page.evaluate(`getComputedStyle(document.querySelector('.topbar')).getPropertyValue('--topbar-glass').trim()`), '100%', `opaque bar in ${theme}`);
+    }
+    await page.evaluate(`delete document.documentElement.dataset.theme`);
+    assert.equal(await page.evaluate(`getComputedStyle(document.querySelector('.topbar')).getPropertyValue('--topbar-glass').trim()`), '100%', 'opaque bar on the system theme');
+    // Card above the plate, plate below.
+    assert.ok(await page.evaluate(`document.querySelector('.preview-card').getBoundingClientRect().bottom <= document.querySelector('.hero-plate').getBoundingClientRect().top`));
+    await page.evaluate(`document.querySelectorAll('.hero-plate .hs-row')[1].scrollIntoView({ block: 'end' })`);
+    await page.until(`document.querySelector('.preview-card').getBoundingClientRect().bottom < 200`, 'the card scrolled away');
+    await page.evaluate(`document.querySelectorAll('.hero-plate .hs-row')[1].click()`);
+    await page.until(`!document.querySelector('.sel-bar').hidden`, 'the selection bar');
+    assert.match(await page.evaluate(`document.querySelector('.sel-bar').textContent`), new RegExp(`^${second.place.state}${second.value.toLocaleString('en-US')} in ${synthOverview.year} · Radiant updated aboveOpen$`));
+    assert.equal(await page.evaluate(`document.querySelector('.sel-bar').getAttribute('role')`), 'status');
+    await page.evaluate(`document.querySelector('.sb-text').click()`);
+    await page.until(`document.querySelector('.sel-bar').hidden`, 'the card in view hides the bar');
+    await page.evaluate(`document.querySelectorAll('.hero-plate .hs-row')[1].scrollIntoView({ block: 'end' })`);
+    await page.until(`document.querySelector('.preview-card').getBoundingClientRect().bottom < 200`, 'away again');
+    await page.evaluate(`document.querySelectorAll('.hero-plate .hs-row')[0].click()`);
+    await page.until(`!document.querySelector('.sel-bar').hidden`, 'the bar again');
+    await page.evaluate(`document.querySelector('.sb-open').click()`);
+    await page.until(`${CALENDAR_READY} && location.hash.includes(${JSON.stringify(bboxHash(synthOverview.hotspots[0].bbox))})`, 'Open goes to the calendar');
+    assert.deepEqual(page.problems, []);
+  } finally { await page.close(); }
 });
 
 test('a shared link wins over the suggestion, and is the area the tabs reopen after Home', { skip }, async () => {
@@ -1029,7 +1117,7 @@ test('global map: one click zooms so a square is at least 24 px, a second picks 
 
         const rows = await page.evaluate(`(() => {
           const lines = (el) => { const t = [...el.childNodes].find((n) => n.nodeType === 3); const r = document.createRange(); r.selectNodeContents(t); return new Set([...r.getClientRects()].map((x) => Math.round(x.top))).size; };
-          const all = [...document.querySelectorAll('.hs-row')];
+          const all = [...document.querySelectorAll('.area-drawer .hs-row')];
           return {
             heights: [...new Set(all.map((r) => Math.round(r.getBoundingClientRect().height)))],
             lines: all.flatMap((r) => [...r.querySelectorAll('.hs-name b, .hs-name small, .hs-val')].map(lines)),
@@ -1071,8 +1159,51 @@ test('global map: one click zooms so a square is at least 24 px, a second picks 
         await settle(page);
         await page.click('.areas-button');
         await page.until(AREAS_OPEN, 'open again');
-        await page.evaluate(`document.querySelectorAll('.hs-row')[0].click()`);
+        await page.evaluate(`document.querySelectorAll('.area-drawer .hs-row')[0].click()`);
         assert.equal(await page.evaluate(`document.querySelector('.hm-world').hidden`), false, 'the row zooms the map');
+        assert.deepEqual(page.problems, []);
+      } finally { await page.close(); }
+    }
+  } finally { synthOpts.overviewBody = null; }
+});
+
+test('first-screen map with a global overview: zooms on a click, picks on the second, generic copy without a region', { skip }, async () => {
+  const longest = { bbox: [23, -8, 24, -7], value: 2500, place: { country: 'Democratic Republic of the Congo', state: 'Kasaï-Oriental' } };
+  synthOpts.overviewBody = { ...synthOverview, region: null, cells: [...synthOverview.cells, [-120, 50, 3], [140, -30, 3], [23, -8, 2500]], hotspots: [longest, ...synthOverview.hotspots.slice(0, 9)] };
+  try {
+    for (const width of [1280, 400]) {
+      const page = await open(width, '', synthBase);
+      try {
+        await page.until(`document.querySelector('.hero-plate .hm-map.is-zoomable') && ${previewText('.pv-title')} === 'Kasaï-Oriental'`, 'a zoomable plate and hotspot 1 suggested');
+        assert.equal(await page.evaluate(previewText('.pv-note')), `Hottest 1° area in the data, ${synthOverview.year}`);
+        assert.equal(await page.evaluate(`document.querySelector('.hp-list-title').textContent`), `Hottest areas, ${synthOverview.year}`);
+        assert.equal(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`), true, `no horizontal scroll at ${width}`);
+        // Hotspot 1 lies outside the synthetic tiles: every month is null, so no Radiant and no way in.
+        await page.until(`!document.querySelector('.preview-card .pv-empty').hidden`, 'the no-record message');
+        assert.equal(await page.evaluate(previewText('.pv-empty')), 'No record for this area in the data.');
+        assert.equal(await page.evaluate(`document.querySelector('.preview-card .radiant-hero').hidden && document.querySelector('.pv-cta').disabled`), true);
+        assert.equal(await page.evaluate(`document.querySelector('.hero-plate .plate-note')`), null, 'no edge footnote without a region');
+        // World level: no rank pins, and the pick is one ring big enough to see.
+        assert.equal(await page.evaluate(`getComputedStyle(document.querySelector('.hero-plate .hm-pins')).display`), 'none');
+        assert.ok(await page.evaluate(`document.querySelector('.hero-plate .hm-sel-out').getBoundingClientRect().width`) >= 14, 'a ring of at least 14 px');
+        await settle(page);
+        // A click on the ocean zooms on the nearest square that burned.
+        await page.evaluate(`(() => { const r = document.querySelector('.hero-plate .hm').getBoundingClientRect();
+          document.querySelector('.hero-plate .hm').dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 2, clientY: r.top + 2 })); })()`);
+        await page.until(`!document.querySelector('.hero-plate .hm-world').hidden`, 'the ocean click zooms');
+        // The focus ring shows only on keyboard focus, so its place is read from its attributes.
+        assert.equal(await page.evaluate(`(() => { const vb = document.querySelector('.hero-plate .hm').viewBox.baseVal; const f = document.querySelector('.hero-plate .hm-focus-in');
+          const x = f.x.baseVal.value + f.width.baseVal.value / 2; const y = f.y.baseVal.value + f.height.baseVal.value / 2;
+          return !f.hasAttribute('hidden') && x > vb.x && x < vb.x + vb.width && y > vb.y && y < vb.y + vb.height; })()`), true, 'the nearest square in view, focused');
+        assert.notEqual(await page.evaluate(`getComputedStyle(document.querySelector('.hero-plate .hm-pins')).display`), 'none', 'pins come back zoomed in');
+        await page.click('.hero-plate .hm-world');
+        await page.until(`document.querySelector('.hero-plate .hm-world').hidden`, 'the whole map again');
+        const sq = synthOverview.cells.find((c) => !synthOverview.hotspots.some((hs) => hs.bbox[0] === c[0] && hs.bbox[1] === c[1]));
+        await page.click(`.hero-plate .hm-sq[data-key="${sq[0]},${sq[1]}"]`);
+        await page.until(`!document.querySelector('.hero-plate .hm-world').hidden`, 'the click zooms');
+        assert.ok(await page.evaluate(`document.querySelector('.hero-plate .hm-sq[data-key="${sq[0]},${sq[1]}"]').getBoundingClientRect().width`) >= 24, 'a square of at least 24 px');
+        await page.click(`.hero-plate .hm-sq[data-key="${sq[0]},${sq[1]}"]`);
+        await page.until(`${previewText('.pv-tag')} === 'Your pick' && ${previewText('.pv-title')} === ${JSON.stringify(centerOf(sq))}`, 'the second click previews it');
         assert.deepEqual(page.problems, []);
       } finally { await page.close(); }
     }
@@ -1171,7 +1302,7 @@ test('home Radiant: a placeholder at once, aria-busy, then the data on the same 
     const months = (Number(m[1].slice(0, 4)) - Number(m[0].slice(0, 4))) * 12 + Number(m[1].slice(5)) - Number(m[0].slice(5)) + 1;
     assert.equal(ph.n, months, 'every month of the record is drawn');
     assert.match(ph.label, /loading/);
-    await page.until(`document.querySelector('.hero-art figcaption').textContent.startsWith('Suggested')`, 'the caption, before the data');
+    await page.until(`${previewText('.pv-tag')} === 'Suggested' && document.querySelector('.hero-art figcaption').textContent.startsWith('2000–2019.')`, 'the caption, before the data');
     const box = await page.evaluate(`JSON.stringify(document.querySelector('.hero-art').getBoundingClientRect())`);
     assert.equal(await page.evaluate(`document.querySelectorAll('.hero-art .radiant .rb-ph').length`), months, 'still the placeholder while the tiles are held back');
     await page.until(HERO_READY, 'data on the Radiant', 30000);
@@ -1225,6 +1356,8 @@ test('home Radiant without overview.json: the whole data region, captioned as su
   try {
     await page.until(HERO_READY, 'the data region Radiant');
     assert.match(await page.evaluate(`document.querySelector('.hero-art figcaption').textContent`), /^The whole data region, 2000–2019\./);
+    assert.ok(await page.evaluate(`document.querySelector('.hp-missing') && !document.querySelector('.hero-plate')`), 'the plate gives way to the manual path');
+    assert.equal(await page.evaluate(`document.querySelector('.pv-cta').hidden`), true, 'no Open the calendar without an area');
     assert.equal(await page.evaluate(`document.querySelector('.hero-art .radiant').getAttribute('aria-label').startsWith('Fire calendar of Whole data region')`), true);
     await settle(page);
     await page.evaluate(`document.querySelector('.hero-art path[data-key="2010-8"]').dispatchEvent(new MouseEvent('click', { bubbles: true }))`);

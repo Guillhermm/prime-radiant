@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   heatBin, HEAT_LABELS, centerLabel, hotspotPresets, placeLabel, hotspotLabels, hotspotAt, valueLine, sensorValueLine, defaultArea, suggestionCaption,
   drawerModel, mapModel, dataRegionBbox, regionCaption, squareFor, stepSquare, squareText,
-  hotspotRowLabels, hotspotRowsLabels, isZoomable, zoomWindow, worldWindow, dotPins, inWindow,
+  hotspotRowLabels, hotspotRowsLabels, isZoomable, zoomWindow, worldWindow, dotPins, inWindow, nearestSquare,
 } from './places.js';
 
 const overview = {
@@ -66,13 +66,13 @@ test('copy names the region from the file, or stays generic without one', () => 
   const g = drawerModel({ ...overview, region: null, sensor: 'noaa20' });
   assert.equal(g.listTitle, 'Hottest areas');
   assert.equal(g.unit, 'Fire-cell-days of 0.1° cells, summed per 1° square · VIIRS NOAA-20 2025');
-  assert.match(g.border, /edge of the data domain/);
+  assert.equal(g.border, null, 'no region, no edge footnote');
   assert.equal(g.primary, 'Use this area');
   assert.equal(g.rowSub, null);
   assert.deepEqual(drawerModel(null), { title: 'Choose an area', unit: null, primary: 'Use this area' });
   assert.equal(suggestionCaption(overview), 'Suggested: the 1° area with most VIIRS fire-cell-days in Testland, 2025. Rings are years, slices are months.');
   assert.equal(suggestionCaption({ ...overview, region: null }), 'Suggested: the 1° area with most VIIRS fire-cell-days in the data, 2025. Rings are years, slices are months.');
-  for (const t of [m.unit, m.border, g.unit, suggestionCaption(overview)]) assert.doesNotMatch(t, /Brazil/);
+  for (const t of [m.unit, m.border, g.unit, suggestionCaption(overview)].filter(Boolean)) assert.doesNotMatch(t, /Brazil/);
 });
 
 test('map model: extent from the cells, squares with their class, hotspot ranks', () => {
@@ -163,4 +163,11 @@ test('a square is in the window only when all of it is', () => {
   assert.equal(inWindow(win, { w: 10, s: 0 }), false);
   assert.equal(inWindow(win, { w: 0, s: 5 }), false);
   assert.equal(inWindow(win, { w: 0, s: -6 }), false);
+});
+
+test('nearestSquare: an ocean click lands on the closest square that burned, never on a zero', () => {
+  const mm = mapModel({ cells: [[-45, -7, 3391], [-44, -7, 0], [-41, -6, 1999]] });
+  assert.equal(nearestSquare(mm, [-43.2, -6.5]).key, '-45,-7', 'the zero square next door is skipped');
+  assert.equal(nearestSquare(mm, [-30, -6]).key, '-41,-6');
+  assert.equal(nearestSquare(mapModel({ cells: [[0, 0, 0]] }), [0, 0]), null);
 });

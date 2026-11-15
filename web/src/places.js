@@ -108,7 +108,8 @@ export const drawerModel = (overview, { home = false } = {}) => {
     unit: `Fire-cell-days of 0.1° cells, summed per 1° square · ${source}${region ? ` · ${region}` : ''}`,
     listTitle: region ? `Hottest in ${region}` : 'Hottest areas',
     listSub: `Most fire activity in ${overview.year}, one sensor`,
-    border: `Squares on the edge of ${region ?? 'the data domain'} count only the part inside it.`,
+    // Only a region has an edge that cuts squares; the global grid has none.
+    border: region ? `Squares on the edge of ${region} count only the part inside it.` : null,
     rowSub: region,
     primary,
   };
@@ -202,6 +203,18 @@ export const zoomWindow = (model, [lon, lat], boxW) => {
     width,
     height,
   };
+};
+
+/** The square with fire nearest to [lon, lat] by its center, for a click that lands on the ocean; null when none burned. */
+export const nearestSquare = (model, [lon, lat]) => {
+  let best = null;
+  let bestD = Infinity;
+  for (const q of model.squares) {
+    if (!(q.value > 0)) continue;
+    const d = Math.hypot(q.w + 0.5 - lon, q.s + 0.5 - lat);
+    if (d < bestD) { best = q; bestD = d; }
+  }
+  return best;
 };
 
 /**

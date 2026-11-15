@@ -401,6 +401,9 @@
   --plate-text: #eef1f8;
   --plate-muted: #a4adc4;
   --plate-edge: rgb(255 255 255 / 0.08);
+  --plate-2: #1d2036;
+  --plate-line: rgb(255 255 255 / 0.12);
+  --plate-line-hover: rgb(255 255 255 / 0.24);
   --hm-0: #2a2d45;
   --hm-1: #972766;
   --hm-2: #c33b4f;

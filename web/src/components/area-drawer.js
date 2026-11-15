@@ -1,103 +1,8 @@
-import { centerLabel, drawerModel, hotspotAt, hotspotLabels, hotspotRowsLabels, dotPins, HEAT_LABELS, inWindow, isZoomable, worldWindow, ZOOM_ASPECT, mapModel, PICK_HINT, sameBbox, squareFor, squareText, stepSquare, UNAVAILABLE, valueLine, formatCount, zoomWindow } from '../places.js';
-import { bboxText } from './states.js';
+import { drawerModel, hotspotAt, hotspotLabels, hotspotRowsLabels, mapModel, PICK_HINT, sameBbox, squareFor, UNAVAILABLE, valueLine } from '../places.js';
+import { hotspotRow, legendEl, mountHeatMap, pressRows, swatch } from './heat-map.js';
 import { h } from './h.js';
-import { icon, svgEl } from './icons.js';
+import { icon } from './icons.js';
 import { trapTab } from './focus-trap.js';
-
-// SVG units per degree; the SVG scales to its box, so this only sets the stroke and pin proportions.
-const U = 10;
-
-const swatch = (bin) => h('i', { class: `hm-sw hm-b${bin}`, 'aria-hidden': 'true' });
-
-// CSS px per SVG unit the rings and pins were drawn at (Brazil filling a 22rem map); a zoomable map
-// scales them by its own units per px so they keep that size on screen at every zoom.
-const DRAWN_PX_PER_UNIT = 1.1;
-// Two numbered pins closer than this on screen would overlap; the lower rank becomes a dot.
-const PIN_GAP_PX = 22;
-
-/**
- * The heat map: squares, rank pins and the rings for selection, focus and hover, moved by `place`.
- * `setView(win)` shows a window in degrees (null: the whole map, or `world` when given) and
- * `setScale(k, pxPerUnit)` resizes the rings and pins by k and turns crowded pins into dots.
- */
-const mapSvg = (model, world = null) => {
-  const W = (model.east - model.west) * U;
-  const H = (model.north - model.south) * U;
-  const box = world ? { width: 1000 * ZOOM_ASPECT, height: 1000 } : { width: W, height: H };
-  const x = (q) => (q.w - model.west) * U;
-  const y = (q) => (model.north - q.s - 1) * U;
-  const svg = svgEl('svg', { class: 'hm', viewBox: `0 0 ${W} ${H}`, width: box.width, height: box.height, 'aria-hidden': 'true', focusable: 'false' });
-  const squares = svgEl('g', { class: 'hm-squares' });
-  for (const q of model.squares) {
-    squares.append(svgEl('rect', { x: x(q) + 0.5, y: y(q) + 0.5, width: U - 1, height: U - 1, rx: 1.8, class: `hm-sq hm-b${q.bin}`, 'data-key': q.key }));
-  }
-  const ring = (cls, pad, stroke, dash = null) => ({ el: svgEl('rect', { class: cls, hidden: '' }), pad, stroke, dash });
-  const rings = {
-    sel: [ring('hm-ring hm-sel-in', 1.6, 2.6), ring('hm-ring hm-sel-out', 4.6, 2.2)],
-    focus: [ring('hm-ring hm-focus-in', 1.6, 2.6), ring('hm-ring hm-focus-out', 4.6, 2.2)],
-    hover: [ring('hm-ring hm-hover', 1.3, 1.6, [3, 2])],
-  };
-  const at = { sel: null, focus: null, hover: null };
-  let k = 1;
-  const pins = svgEl('g', { class: 'hm-pins' });
-  const pinEls = [];
-  for (const [key, rank] of model.ranks) {
-    const q = model.byKey.get(key);
-    if (!q) continue;
-    const cx = x(q) + U - 0.5;
-    const cy = y(q) + 0.5;
-    const t = svgEl('text', { x: cx, y: cy + 3 });
-    t.textContent = String(rank);
-    const pin = svgEl('g', { class: 'hm-pin' });
-    const circle = svgEl('circle', { cx, cy, r: 7 });
-    pin.append(circle, t);
-    pins.append(pin);
-    pinEls.push({ pin, circle, cx, cy, rank });
-  }
-  svg.append(squares, ...rings.hover.map((r) => r.el), ...rings.sel.map((r) => r.el), ...rings.focus.map((r) => r.el), pins);
-  const place = (which, q) => {
-    at[which] = q;
-    rings[which].forEach(({ el, pad, stroke, dash }) => {
-      if (!q) { el.setAttribute('hidden', ''); return; }
-      const p = pad * k;
-      el.setAttribute('x', x(q) - p);
-      el.setAttribute('y', y(q) - p);
-      el.setAttribute('width', U + 2 * p);
-      el.setAttribute('height', U + 2 * p);
-      el.setAttribute('rx', 3 * k);
-      el.setAttribute('stroke-width', stroke * k);
-      if (dash) el.setAttribute('stroke-dasharray', dash.map((d) => d * k).join(' '));
-      el.removeAttribute('hidden');
-    });
-  };
-  const setScale = (next, pxPerUnit) => {
-    k = next;
-    const vb = svg.viewBox.baseVal;
-    const shown = pinEls.filter(({ cx, cy }) => cx >= vb.x && cx <= vb.x + vb.width && cy >= vb.y && cy <= vb.y + vb.height);
-    const dots = dotPins(shown.map((p) => ({ rank: p.rank, x: p.cx * pxPerUnit, y: p.cy * pxPerUnit })), PIN_GAP_PX);
-    for (const { pin, circle, cx, cy, rank } of pinEls) {
-      if (k === 1) pin.removeAttribute('transform');
-      else pin.setAttribute('transform', `translate(${cx} ${cy}) scale(${k}) translate(${-cx} ${-cy})`);
-      pin.classList.toggle('is-dot', dots.has(rank));
-      circle.setAttribute('r', dots.has(rank) ? 3 : 7);
-    }
-    for (const which of Object.keys(at)) place(which, at[which]);
-  };
-  const setView = (win) => {
-    const v = win ?? world;
-    svg.setAttribute('viewBox', v ? `${(v.west - model.west) * U} ${(model.north - v.north) * U} ${v.width * U} ${v.height * U}` : `0 0 ${W} ${H}`);
-  };
-  /** [lon, lat] under a client point. */
-  const degAt = (clientX, clientY) => {
-    const pt = new DOMPoint(clientX, clientY).matrixTransform(svg.getScreenCTM().inverse());
-    return [model.west + pt.x / U, model.north - pt.y / U];
-  };
-  setView(null);
-  return { svg, place, setScale, setView, degAt, unitsWide: () => svg.viewBox.baseVal.width };
-};
-
-const legendEl = () => h('ul', { class: 'hm-legend', 'aria-label': 'Fire-cell-days per 1° square' },
-  HEAT_LABELS.map((label, bin) => h('li', {}, swatch(bin), label)));
 
 const skeletonEl = () => h('div', { class: 'ad-skeleton', 'aria-hidden': 'true' },
   h('span', { class: 'ad-sk-plate' }), h('span', { class: 'ad-sk-row' }), h('span', { class: 'ad-sk-row' }), h('span', { class: 'ad-sk-row' }));
@@ -112,8 +17,7 @@ export const mount = (container, deps) => {
   let returnTo = null;
   let open = false;
   let staged = null;
-  let announceTimer = 0;
-  let resizeObs = null;
+  let mapCtl = null;
 
   const button = h('button', {
     type: 'button', class: 'btn areas-button', 'aria-haspopup': 'dialog', 'aria-expanded': 'false', 'aria-label': 'Choose an area', 'data-tip': 'Choose an area',
@@ -159,128 +63,40 @@ export const mount = (container, deps) => {
       return { el: backdrop(panel), focusEl: title };
     }
 
-    const zoomable = isZoomable(model);
-    const { svg, place, setScale, setView, degAt, unitsWide } = mapSvg(model, zoomable ? worldWindow(model) : null);
-    const live = h('p', { class: 'sr-only', 'aria-live': 'polite' });
-    const readout = h('p', { class: 'hm-readout', 'aria-hidden': 'true' });
-    const readoutRow = h('div', { class: zoomable ? 'hm-bar is-zoomable' : 'hm-bar' }, readout);
-    const mapEl = h('div', {
-      class: zoomable ? 'hm-map is-zoomable' : 'hm-map', tabindex: '0', role: 'application', 'aria-roledescription': 'map',
-      'aria-label': `Fire map of ${overview.year}. Arrow keys move one square, Shift and an arrow five, Home goes to hotspot 1, Enter picks the square.`,
-    }, svg);
     const current = squareFor(model, deps.currentBbox());
-    let focusSq = current ?? stepSquare(model, null, 'Home');
-    const showReadout = (q) => {
-      readout.replaceChildren(...(q ? [swatch(q.bin), h('b', { text: centerLabel(q.bbox) }), ` ${valueLine(q.value, overview)}`] : []));
-    };
-    const rows = [];
     const sel = h('div', { class: 'ad-sel' });
     const primary = h('button', { type: 'button', class: 'btn btn-primary ad-primary', disabled: true, text: m.primary, onclick: () => commit() });
-
+    const rows = [];
     const stage = (q) => {
       staged = q;
-      place('sel', q);
-      rows.forEach((r) => r.setAttribute('aria-pressed', String(Boolean(q) && sameBbox(r._bbox, q.bbox))));
+      map.select(q);
+      pressRows(rows, q?.bbox);
       primary.disabled = !q;
-      showReadout(q);
       if (!q) { sel.replaceChildren(h('span', { class: 'ad-hint', text: PICK_HINT })); return; }
       const { label, coords } = hotspotLabels(hotspotAt(overview, q.bbox) ?? { bbox: q.bbox });
       sel.replaceChildren(swatch(q.bin), h('span', { class: 'ad-sel-text' }, h('b', { text: label }), h('small', { text: coords ? `${coords} · ${valueLine(q.value, overview)}` : valueLine(q.value, overview) })));
     };
-
-    // Two-level zoom for a map too wide to pick from (the global extent): a click on the whole map
-    // shows a window around it, "Show whole map" goes back. No wheel or pinch.
-    let zoomCenter = null;
-    let win = null;
-    const worldBtn = h('button', {
-      type: 'button', class: 'icon-btn hm-world', 'aria-label': 'Show whole map', 'data-tip': 'Show whole map', hidden: true,
-      onclick: () => { zoomTo(null); mapEl.focus(); },
-    }, icon('globe'));
-    if (zoomable) readoutRow.append(worldBtn);
-    const applyView = () => {
-      const box = svg.getBoundingClientRect();
-      if (!box.width) return;
-      if (zoomable) {
-        win = zoomCenter ? zoomWindow(model, zoomCenter, box.width) : null;
-        setView(win);
-      }
-      const pxPerUnit = box.width / unitsWide();
-      setScale(zoomable ? DRAWN_PX_PER_UNIT / pxPerUnit : 1, pxPerUnit);
-    };
-    const zoomTo = (center) => {
-      zoomCenter = center;
-      worldBtn.hidden = !center;
-      applyView();
-    };
-    const zoomToSquare = (q) => { if (zoomable && q) zoomTo([q.w + 0.5, q.s + 0.5]); };
-    resizeObs = new ResizeObserver(applyView);
-    resizeObs.observe(svg);
-
-    const moveFocus = (q, { follow = false } = {}) => {
-      focusSq = q;
-      if (follow && win && !inWindow(win, q)) zoomToSquare(q);
-      place('focus', q);
-      showReadout(q);
-      clearTimeout(announceTimer);
-      announceTimer = setTimeout(() => { live.textContent = squareText(model, q, overview); }, 150);
-    };
-
-    mapEl.addEventListener('keydown', (ev) => {
-      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); if (focusSq) stage(focusSq); return; }
-      const next = stepSquare(model, focusSq, ev.key, { by: ev.shiftKey ? 5 : 1 });
-      if (!next) return;
-      ev.preventDefault();
-      moveFocus(next, { follow: true });
-    });
-    mapEl.addEventListener('focus', () => { if (focusSq) moveFocus(focusSq); });
-    mapEl.addEventListener('blur', () => showReadout(staged));
-    const squareAt = (ev) => model.byKey.get(ev.target.closest?.('[data-key]')?.dataset.key) ?? null;
-    svg.addEventListener('pointermove', (ev) => {
-      const q = squareAt(ev);
-      place('hover', q);
-      showReadout(q ?? staged);
-    });
-    svg.addEventListener('pointerleave', () => { place('hover', null); showReadout(staged); });
-    svg.addEventListener('click', (ev) => {
-      const q = squareAt(ev);
-      if (zoomable && !win) {
-        if (q) { focusSq = q; place('focus', q); }
-        zoomTo(degAt(ev.clientX, ev.clientY));
-        return;
-      }
-      if (!q) return;
-      focusSq = q;
-      place('focus', q);
-      stage(q);
-    });
+    const map = mountHeatMap(model, overview, { focus: current, onPick: (q) => stage(q) });
+    mapCtl = map;
 
     const rowLabels = hotspotRowsLabels(overview.hotspots ?? []);
     const list = h('ol', { class: 'ad-rows' }, (overview.hotspots ?? []).map((hs, i) => {
       const q = squareFor(model, hs.bbox) ?? { key: hs.bbox.join(), bbox: hs.bbox, value: hs.value, bin: 6 };
-      const { title, sub, full } = rowLabels[i];
-      const onMap = model.byKey.has(q.key);
-      const row = h('button', {
-        type: 'button', class: 'hs-row', 'aria-pressed': 'false', title: full, 'aria-label': `Hotspot ${i + 1}, ${full}, ${valueLine(hs.value, overview)}`,
-        onclick: () => { stage(q); if (onMap) { focusSq = q; place('focus', q); zoomToSquare(q); } },
-      },
-        h('span', { class: 'hs-rank', text: String(i + 1) }),
-        h('span', { class: 'hs-name' }, h('b', { text: title }), h('small', { class: sub || m.rowSub ? '' : 'mono', text: sub ?? m.rowSub ?? bboxText(hs.bbox) })),
-        h('span', { class: 'hs-val' }, swatch(q.bin), formatCount(hs.value)));
-      row._bbox = hs.bbox;
+      const row = hotspotRow({ hs, rank: i + 1, q, labels: rowLabels[i], overview, sub: m.rowSub, onClick: () => { stage(q); map.reveal(q); } });
       rows.push(row);
       return h('li', {}, row);
     }));
 
     // On phone CSS lifts the manual row above the list, as in the sheet mockup.
     body.append(
-      h('div', { class: 'plate' }, mapEl, readoutRow, legendEl(), h('p', { class: 'plate-note', text: m.border }), live),
+      h('div', { class: 'plate' }, ...map.nodes, legendEl(), m.border ? h('p', { class: 'plate-note', text: m.border }) : null),
       h('section', { class: 'ad-list', 'aria-labelledby': 'ad-list-title' },
         h('div', { class: 'ad-sub' }, h('h3', { id: 'ad-list-title', text: m.listTitle }), h('span', { text: m.listSub })),
         list),
       manualRow);
     foot.append(sel, h('button', { type: 'button', class: 'btn ad-cancel', text: 'Cancel', onclick: () => close() }), primary);
     stage(null);
-    return { el: backdrop(panel), focusEl: mapEl };
+    return { el: backdrop(panel), focusEl: map.mapEl };
   };
 
   const backdrop = (panel) => h('div', { class: 'drawer-backdrop area-backdrop', onclick: (ev) => { if (ev.target === ev.currentTarget) close(); } }, panel);
@@ -291,10 +107,11 @@ export const mount = (container, deps) => {
   };
 
   const render = () => {
-    resizeObs?.disconnect();
-    resizeObs = null;
+    mapCtl?.stop();
+    mapCtl = null;
     const { el, focusEl } = build();
     container.replaceChildren(el);
+    mapCtl?.start();
     focusEl.focus();
   };
 
@@ -312,9 +129,8 @@ export const mount = (container, deps) => {
     if (!open) return;
     open = false;
     staged = null;
-    clearTimeout(announceTimer);
-    resizeObs?.disconnect();
-    resizeObs = null;
+    mapCtl?.stop();
+    mapCtl = null;
     container.replaceChildren();
     setExpanded(false);
     document.documentElement.classList.remove('drawer-open');
