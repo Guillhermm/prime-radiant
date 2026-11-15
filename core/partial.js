@@ -21,7 +21,9 @@ export function lastMonthIncomplete(ym, manifest) {
 export function supplier(ym, estimated, manifest) {
   if (!estimated) return 'viirs';
   if (inCoverage(manifest?.coverage?.viirs, ym) && inCoverage(manifest?.coverage?.noaa20, ym)
-    && (manifest?.partial_months?.viirs ?? []).includes(ym)) return 'noaa20'; // estimated inside S-NPP coverage: outage fill
+    && (KNOWN_PARTIAL_MONTHS.includes(ym) || (manifest?.partial_months?.viirs ?? []).includes(ym))) {
+    return 'noaa20'; // estimated inside S-NPP coverage: outage fill (same partial set as harmonize.js)
+  }
   const sEnd = manifest?.coverage?.viirs?.[1] ?? null;
   return sEnd !== null && ym > sEnd && inCoverage(manifest?.coverage?.noaa20, ym) ? 'noaa20' : 'modis';
 }
