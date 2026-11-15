@@ -57,13 +57,13 @@
       "brier_persistence_calibrated": 0.2258,
       "bss_constant": 0.1385,
       "bss_constant_ci": [
-        0.1173,
-        0.1616
+        0.1072,
+        0.172
       ],
       "bss_persistence": 0.0491,
       "bss_persistence_ci": [
-        0.0359,
-        0.0627
+        0.0321,
+        0.0662
       ],
       "auc": 0.7209,
       "auc_persistence": 0.6589
@@ -75,13 +75,13 @@
       "brier_persistence_calibrated": 0.226,
       "bss_constant": 0.1356,
       "bss_constant_ci": [
-        0.1149,
-        0.1607
+        0.1048,
+        0.1687
       ],
       "bss_persistence": 0.0458,
       "bss_persistence_ci": [
-        0.0325,
-        0.0617
+        0.0276,
+        0.0656
       ],
       "auc": 0.7174,
       "auc_persistence": 0.654

@@ -78,8 +78,8 @@ test('scores by hand: brier, skill, auc with ties, reliability bins', () => {
   assert.ok(sc.bss_constant_ci[0] <= sc.bss_constant_ci[1]);
 });
 
-test('bootstrapBss is seeded and collapses on identical blocks', () => {
-  const blocks = [1, 2, 3, 4].map((k) => ({ key: k, sm: 1, sc: 2, sp: 4, n: 1 }));
+test('bootstrapBss (crossed) is seeded and collapses on identical blocks', () => {
+  const blocks = [['a', 1], ['a', 2], ['b', 1], ['b', 2]].map(([tile, year]) => ({ tile, year, sm: 1, sc: 2, sp: 4 }));
   const a = bootstrapBss(blocks, { draws: 50 });
   assert.deepEqual(a, bootstrapBss(blocks, { draws: 50 }));
   assert.deepEqual(a.constant, [0.5, 0.5]);

@@ -139,18 +139,24 @@ function rng(seed) {
 }
 
 /**
- * Block bootstrap of the Brier skill scores: blocks ({key, sm, sc, sp, n}: sums of squared errors of
- * model, constant and calibrated persistence per tile x year) are resampled with replacement.
+ * Crossed bootstrap of the Brier skill scores: tiles and years are resampled independently with
+ * replacement, and a (tile, year) block enters with the product of its tile and year draw counts.
+ * Blocks are `{tile, year, sm, sc, sp}` (sums of squared errors of model, constant and calibrated
+ * persistence). Wider than resampling blocks, since neighbors and a bad year are shared.
  * @returns {{constant: [number, number], persistence: [number, number]}} 95% intervals (2.5th and 97.5th percentiles)
  */
 export function bootstrapBss(blocks, { draws = 1000, seed = 20261115 } = {}) {
   const next = rng(seed);
+  const tiles = [...new Set(blocks.map((b) => b.tile))], years = [...new Set(blocks.map((b) => b.year))];
   const c = [], p = [];
   for (let d = 0; d < draws; d++) {
+    const wt = new Map(), wy = new Map();
+    for (let k = 0; k < tiles.length; k++) { const t = tiles[Math.floor(next() * tiles.length)]; wt.set(t, (wt.get(t) ?? 0) + 1); }
+    for (let k = 0; k < years.length; k++) { const y = years[Math.floor(next() * years.length)]; wy.set(y, (wy.get(y) ?? 0) + 1); }
     let sm = 0, sc = 0, sp = 0;
-    for (let k = 0; k < blocks.length; k++) {
-      const b = blocks[Math.floor(next() * blocks.length)];
-      sm += b.sm; sc += b.sc; sp += b.sp;
+    for (const b of blocks) {
+      const w = (wt.get(b.tile) ?? 0) * (wy.get(b.year) ?? 0);
+      sm += w * b.sm; sc += w * b.sc; sp += w * b.sp;
     }
     c.push(1 - sm / sc); p.push(1 - sm / sp);
   }
@@ -168,7 +174,7 @@ export function scoreSet({ p, constant, persist, y, block }) {
   const sq = (a, i) => (a[i] - y[i]) ** 2;
   const groups = new Map();
   y.forEach((_, i) => {
-    const g = groups.get(block[i]) ?? groups.set(block[i], { key: block[i], sm: 0, sc: 0, sp: 0, n: 0 }).get(block[i]);
+    const g = groups.get(block[i]) ?? groups.set(block[i], { tile: block[i].split('|')[0], year: block[i].split('|')[1], sm: 0, sc: 0, sp: 0, n: 0 }).get(block[i]);
     g.sm += sq(p, i); g.sc += sq(constant, i); g.sp += sq(persist, i); g.n++;
   });
   const ci = bootstrapBss([...groups.values()]);

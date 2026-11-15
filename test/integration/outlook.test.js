@@ -50,6 +50,9 @@ test('outlook run is deterministic and writes tiles, manifest and report', () =>
   assert.equal(report.temporal.reliability.length, 10);
   assert.ok(Number.isFinite(report.temporal.bss_constant) && report.temporal.bss_persistence_ci.length === 2);
   assert.equal(tile.target_month, '2025-01');
+  assert.equal(tile.issued_at, '2025-03-05T00:00:00.000Z');
+  assert.equal(tile.based_on_data_to, '2024-12-31');
+  assert.ok(report.temporal_all.n >= report.temporal.n && report.temporal_all.bss_constant_ci.length === 2);
   assert.equal(a.manifest.mode, 'hindcast');
   fs.rmSync(dir, { recursive: true });
 });

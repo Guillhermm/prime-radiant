@@ -5,7 +5,7 @@
  * With --live, complete months after the archive's VIIRS (NOAA-20 x K from the live tiles, type-0 share,
  * missing days scaled by the daily share) extend the series, so the target is the month after the
  * latest complete month. Output: <out>/manifest.json, <out>/report.json,
- * <out>/tiles/<id>.json = {target_month, last_observed_month, cell[], p[], no_skill[]}. Deterministic; no network.
+ * <out>/tiles/<id>.json = {target_month, last_observed_month, issued_at, based_on_data_to, cell[], p[], no_skill[]}. Deterministic; no network.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -197,29 +197,34 @@ export function trainAndValidate(samples, zeroT, month0, { trainTo = '2020-12', 
   const model = fitLogistic(col(train, 'x'), col(train, 'y'), fit);
   const ref = calibrate(train);
   const head = test.filter((s) => s.med > NO_SKILL_MEDIAN);
+  const low = test.filter((s) => s.med <= NO_SKILL_MEDIAN);
   const tiles = [...new Set(samples.map((s) => s.tile))].sort();
-  const folded = [];
-  for (let f = 0; f < FOLDS; f++) {
-    const held = new Set(tiles.filter((_, i) => i % FOLDS === f));
-    const tr = train.filter((s) => !held.has(s.tile));
-    const te = head.filter((s) => held.has(s.tile));
-    if (!tr.length || !te.length) continue;
-    const m = fitLogistic(col(tr, 'x'), col(tr, 'y'), fit);
-    const r = calibrate(tr);
-    for (const s of te) folded.push({ s, p: predict(m, s.x), r });
-  }
-  const zero = zeroT.filter((T) => T >= b && T <= c).length;
-  const low = test.length - head.length;
-  return {
-    model, ref, counts: { train: train.length, test: head.length, train_from: addMonths(month0, Math.min(...col(train, 'T'))), train_to: trainTo },
-    no_skill_share_of_test: (zero + low) / (zero + test.length),
-    no_skill_test: { median_0: zero, median_le_1: low, skill_cells_months: head.length },
-    temporal: evaluate(model, ref, head, month0),
-    spatial: folded.length ? { folds: FOLDS, ...scoreSet({
+  const blocked = (set) => {
+    const folded = [];
+    for (let f = 0; f < FOLDS; f++) {
+      const held = new Set(tiles.filter((_, i) => i % FOLDS === f));
+      const tr = train.filter((s) => !held.has(s.tile));
+      const te = set.filter((s) => held.has(s.tile));
+      if (!tr.length || !te.length) continue;
+      const m = fitLogistic(col(tr, 'x'), col(tr, 'y'), fit);
+      const r = calibrate(tr);
+      for (const s of te) folded.push({ s, p: predict(m, s.x), r });
+    }
+    return folded.length ? { folds: FOLDS, ...scoreSet({
       p: folded.map((f) => f.p), constant: folded.map((f) => f.r.constant),
       persist: folded.map((f) => f.r.persistence[f.s.above]), y: folded.map((f) => f.s.y),
       block: folded.map((f) => `${f.s.tile}|${yearOf(month0, f.s.T)}`),
-    }) } : null,
+    }) } : null;
+  };
+  const zero = zeroT.filter((T) => T >= b && T <= c).length;
+  return {
+    model, ref, counts: { train: train.length, test: head.length, test_all: test.length, test_median_le_1: low.length, train_from: addMonths(month0, Math.min(...col(train, 'T'))), train_to: trainTo },
+    no_skill_share_of_test: (zero + low.length) / (zero + test.length),
+    no_skill_test: { median_0: zero, median_le_1: low.length, skill_cells_months: head.length },
+    temporal: evaluate(model, ref, head, month0),
+    spatial: blocked(head),
+    temporal_all: evaluate(model, ref, test, month0), spatial_all: blocked(test),
+    temporal_median_le_1: low.length ? evaluate(model, ref, low, month0) : null,
   };
 }
 
@@ -232,7 +237,7 @@ const skill = (s) => s && { n: s.n, brier: s.brier, brier_constant: s.brier_cons
  * `now` (default: the live fetch time, else the current time) decides forecast vs hindcast: the
  * output is a forecast only when the last observed month is the month before `now`'s month.
  */
-export function runOutlook({ dataDir, liveDir = null, outDir, modelOut, now = null, command = 'node pipeline/outlook.js', ...split }) {
+export function runOutlook({ dataDir, liveDir = null, outDir, modelOut, now = null, issuedAt = null, command = 'node pipeline/outlook.js', ...split }) {
   const { manifest, K, cells, live } = loadCells(dataDir, { liveDir });
   const { samples, forecast, zeroT, lastMonth } = buildSamples(cells, manifest.month0);
   const v = trainAndValidate(samples, zeroT, manifest.month0, split);
@@ -251,8 +256,11 @@ export function runOutlook({ dataDir, liveDir = null, outDir, modelOut, now = nu
   const report = { method: OUTLOOK_METHOD, status: 'experimental', dataVersion: manifest.dataVersion, K: round(K, 4),
     test: { from: split.testFrom ?? '2022-01', to: split.testTo ?? '2025-12' }, counts: v.counts,
     no_skill_share_of_test: round(v.no_skill_share_of_test), no_skill_test: v.no_skill_test, references: model.references,
-    live_months: live?.list ?? null, temporal: roundDeep(v.temporal), spatial: roundDeep(v.spatial) };
-  const stamp = { target_month: target, last_observed_month: lastMonth };
+    live_months: live?.list ?? null, temporal: roundDeep(v.temporal), spatial: roundDeep(v.spatial),
+    temporal_all: roundDeep(v.temporal_all), spatial_all: roundDeep(v.spatial_all), temporal_median_le_1: roundDeep(v.temporal_median_le_1) };
+  const issued = issuedAt ?? ref.toISOString();
+  const through = dayStr(dayNum(`${addMonths(lastMonth, 1)}-01`) - 1);
+  const stamp = { target_month: target, last_observed_month: lastMonth, issued_at: issued, based_on_data_to: through };
   const byTile = new Map();
   let sumP = 0, noSkill = 0;
   for (const f of forecast) {
@@ -265,7 +273,7 @@ export function runOutlook({ dataDir, liveDir = null, outDir, modelOut, now = nu
   }
   const outManifest = { schema: 1, status: 'experimental', mode, ...stamp,
     ...(mode === 'hindcast' ? { hindcast_note: `latest complete month is ${complete}; the newest data this output has is ${lastMonth}` } : {}),
-    dataVersion: manifest.dataVersion, generated_at: new Date().toISOString(), grid: { res: 1, tile_deg: 10 },
+    dataVersion: manifest.dataVersion, grid: { res: 1, tile_deg: 10 },
     tiles: [...byTile.keys()].sort(), cells: forecast.length, no_skill_cells: noSkill, no_skill_share: round(forecast.length ? noSkill / forecast.length : 0),
     mean_p: round(forecast.length ? sumP / forecast.length : null), skill: model.metrics, no_skill_share_of_test: round(v.no_skill_share_of_test), method: OUTLOOK_METHOD };
   if (outDir) {
@@ -285,11 +293,12 @@ async function main() {
     process.exit(2);
   }
   const command = `node pipeline/outlook.js --data ${values.data}${values.live ? ` --live ${values.live}` : ''} --out ${values.out}${values['model-out'] ? ` --model-out ${values['model-out']}` : ''}`;
-  const { report, manifest } = runOutlook({ dataDir: values.data, liveDir: values.live, outDir: values.out, modelOut: values['model-out'], command });
+  const { report, manifest } = runOutlook({ dataDir: values.data, liveDir: values.live, issuedAt: new Date().toISOString(), outDir: values.out, modelOut: values['model-out'], command });
   const strip = (s) => s && { ...s, reliability: undefined };
   console.log(JSON.stringify({ mode: manifest.mode, target_month: manifest.target_month, last_observed_month: manifest.last_observed_month,
     cells: manifest.cells, mean_p: manifest.mean_p, no_skill_share: manifest.no_skill_share, no_skill_share_of_test: report.no_skill_share_of_test,
-    counts: report.counts, references: report.references, live_months: report.live_months, temporal: strip(report.temporal), spatial: strip(report.spatial) }, null, 2));
+    counts: report.counts, references: report.references, live_months: report.live_months, temporal: strip(report.temporal), spatial: strip(report.spatial),
+    temporal_all: strip(report.temporal_all), spatial_all: strip(report.spatial_all), temporal_median_le_1: strip(report.temporal_median_le_1) }, null, 2));
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
