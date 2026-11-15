@@ -192,9 +192,19 @@ months are left out. 14 years, 168 months. Command (2 minutes), after a Brazil b
 `node pipeline/daily-share.js --in raw/country --years 2012-2025 --domain pipeline/domain/brazil.geojson --manifest raw/build-brazil/manifest.json --out core/data/daily-share.json`.
 Day 14: July 0.350, September 0.471, November 0.501 (the mathematician's check: about 0.36, 0.48, 0.50).
 
+## Static-source mask (gate G2)
+
+Every build runs a first pass over the VIIRS files that builds the mask of `pipeline/static-mask.js` (docs/gates/G2.md),
+then drops type-0 records in masked cells (`static_masked` and `static_mask` in the build stats; `--no-static-mask` turns
+it off). Brazil, full archive 2000-2025 (local build, 2026-11-15): 3,498 typed and 1,237 persistent cells, 267,951 records
+masked; fire-cell-days MODIS -0.44%, S-NPP -0.81%, NOAA-20 -0.83%, steady by year (MODIS -0.30% to -0.52%, S-NPP -0.73% to
+-0.92%); Brazil-wide ratio of sums S-NPP/MODIS 2013-2021 2.520 to 2.512.
+The live type-0 share (`core/data/type0-share.json`) was derived without the mask, so live values over Brazil sit about
+0.8% above the masked archive, well inside the live band.
+
 ## Global build (M4-K1)
 
-Science check: docs/gates/G1.md (accepted with caveats, except the type filter, which keeps gas flares; the app tags the global extent preliminary).
+Science check: docs/gates/G1.md (accepted with caveats, except the type filter, which keeps gas flares; the app tags the global extent preliminary). Fix: the static-source mask above (gate G2), applied from the first global build after 2026-11-15 18:00.
 
 `node tools/fetch-country.mjs --scope global --out raw/global`, then
 `node pipeline/build.js --in raw/global --out raw/build --admin1 <ne_10m_admin_1_states_provinces.geojson>`

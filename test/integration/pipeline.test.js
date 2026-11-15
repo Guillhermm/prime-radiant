@@ -91,10 +91,29 @@ test('a day gap in one satellite marks the month partial; excluded-type records 
   const rows = days.map((d) => `40.05,-9.95,${d},0212,N20,0`);
   rows.push('40.05,-9.95,2023-05-10,0212,N20,2'); // type 2 on the gap day: acquired, not counted
   fs.writeFileSync(f, hdr + rows.join('\n') + '\n');
-  const { manifest, stats } = await build({ ...opts, inputs: [f, path.join(root, 'firms-viirs-50.csv')], outDir: tmp() });
+  const { manifest, stats } = await build({ ...opts, inputs: [f, path.join(root, 'firms-viirs-50.csv')], outDir: tmp(), staticMask: false });
   assert.deepEqual(manifest.partial_months.noaa20, ['2023-05']);
   assert.equal(manifest.acquisition_days.NOAA20['2023-05'], 30);
   assert.equal(stats.fire_cell_days.noaa20, 29);
+});
+
+test('static-source mask: type-0 records next to a typed detection, or persistent over two years, are dropped', async () => {
+  const dir = tmp();
+  const hdr = 'latitude,longitude,acq_date,acq_time,satellite,type\n';
+  const may = (y) => Array.from({ length: 12 }, (_, i) => `${y}-05-${String(i + 1).padStart(2, '0')}`);
+  // A flare at 42.555,-8.555: typed once in 2023, type 0 on other days in a neighboring 0.01 cell.
+  fs.writeFileSync(path.join(dir, 'flare_2023.csv'), hdr + ['42.555,-8.555,2023-05-01,0212,N20,2', '42.565,-8.555,2023-05-02,0212,N20,0'].join('\n') + '\n');
+  // A persistent site: 12 days in 2022 and 2023. A fire burning 12 days in 2023 only is kept.
+  fs.writeFileSync(path.join(dir, 'site_2022.csv'), hdr + may(2022).map((d) => `40.155,-9.555,${d},0212,N20,0`).join('\n') + '\n');
+  fs.writeFileSync(path.join(dir, 'site_2023.csv'), hdr + [...may(2023).map((d) => `40.155,-9.555,${d},0212,N20,0`), ...may(2023).map((d) => `40.355,-9.355,${d},0213,N20,0`)].join('\n') + '\n');
+  const { stats } = await build({ ...opts, inputs: [dir, path.join(root, 'firms-viirs-50.csv')], outDir: tmp() });
+  assert.equal(stats.static_masked, 1 + 24);
+  assert.equal(stats.static_mask.typed_cells, 9);
+  assert.equal(stats.static_mask.persistent_cells, 1);
+  const off = await build({ ...opts, inputs: [dir, path.join(root, 'firms-viirs-50.csv')], outDir: tmp(), staticMask: false });
+  assert.equal(off.stats.static_masked, 0);
+  // The 2022 days fall before month0 and were never binned: 1 flare day and 12 site days leave the counts.
+  assert.equal(stats.fire_cell_days.noaa20, off.stats.fire_cell_days.noaa20 - 1 - 12);
 });
 
 test('NRT records never count as acquisition days', async () => {

@@ -7,6 +7,8 @@
  * Archive files only: NRT records (no `type` field) are skipped and counted. One year at a
  * time: files are grouped by the year in their name (or their folder), and the dedupe set of
  * a year is dropped once its files are binned. Files with no year in either come last.
+ * A first pass over the same files builds the static-source mask (pipeline/static-mask.js); type-0
+ * records in a masked cell are dropped and counted as static_masked. `staticMask: false` skips it.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -24,6 +26,7 @@ import { regionOf, writeOverview } from './overview.js';
 import { createPlaces } from './places.js';
 import { writePlaces } from './gazetteer.js';
 import { writeGlobalLevel } from './levels.js';
+import { createMaskBuilder, maskKey, STATIC_MASK } from './static-mask.js';
 
 const EXT = /\.(csv|csv\.gz|zip|dbf)$/i;
 
@@ -46,9 +49,9 @@ export function inBbox([w, s, e, n], lon, lat) {
 
 /**
  * @param {{inputs: string[], outDir: string, bbox?: number[], month0?: string, dataVersion?: string,
- *   generatedAt?: string, baseUrl?: string, domainFile?: string, admin1File?: string}} o
+ *   generatedAt?: string, baseUrl?: string, domainFile?: string, admin1File?: string, staticMask?: boolean}} o
  */
-export async function build({ inputs, outDir, bbox, month0 = '2000-01', dataVersion, generatedAt = new Date().toISOString(), baseUrl = 'data/', domainFile, admin1File }) {
+export async function build({ inputs, outDir, bbox, month0 = '2000-01', dataVersion, generatedAt = new Date().toISOString(), baseUrl = 'data/', domainFile, admin1File, staticMask = true }) {
   const t0 = performance.now();
   if (bbox) checkBbox(bbox);
   let clipper, domainBox, domainInfo, region = null;
@@ -69,6 +72,27 @@ export async function build({ inputs, outDir, bbox, month0 = '2000-01', dataVers
   }
   const order = [...groups.keys()].sort((a, b) => (a === null) - (b === null) || String(a).localeCompare(String(b)));
 
+  const inArea = (rec) => (!bbox || inBbox(bbox, rec.lon, rec.lat))
+    && (!clipper || (inBbox(domainBox, rec.lon, rec.lat) && clipper.contains(rec.lon, rec.lat)));
+  let mask = null;
+  let maskStats = null;
+  if (staticMask) {
+    const mb = createMaskBuilder();
+    for (const y of order) {
+      // MODIS seeds nothing (pipeline/static-mask.js); its files are named modis_* by FIRMS.
+      for (const f of groups.get(y).filter((g) => !/^modis/i.test(path.basename(g)))) {
+        const rs = newStats();
+        rs.allTypes = true;
+        mb.startFile();
+        // Typed sources outside the area still mask their neighbors inside it.
+        for await (const rec of readFirms(f, rs)) if (rec.hasType && (rec.type !== 0 || inArea(rec))) mb.add(rec);
+        mb.endFile();
+      }
+    }
+    ({ mask, stats: maskStats } = mb.finish());
+  }
+  let staticMasked = 0;
+
   const into = createBinResult();
   const store = createStore();
   const coverage = createCoverage();
@@ -84,6 +108,7 @@ export async function build({ inputs, outDir, bbox, month0 = '2000-01', dataVers
           if (rec.hasType && rec.utcDay.slice(0, 7) >= month0) coverage.add(rec);
           if (bbox && !inBbox(bbox, rec.lon, rec.lat)) { clipped++; continue; }
           if (clipper && !(inBbox(domainBox, rec.lon, rec.lat) && clipper.contains(rec.lon, rec.lat))) { clippedByDomain++; continue; }
+          if (mask && rec.hasType && mask.has(maskKey(rec.lat, rec.lon))) { staticMasked++; continue; }
           yield rec;
         }
       };
@@ -134,6 +159,7 @@ export async function build({ inputs, outDir, bbox, month0 = '2000-01', dataVers
     manifest,
     stats: {
       detections_in: reader.read, accepted: reader.accepted, rejected: reader.rejected, clipped_by_bbox: clipped, clipped_by_domain: clippedByDomain,
+      static_masked: staticMasked, static_mask: maskStats && { ...STATIC_MASK, ...maskStats },
       skipped: into.stats.skipped, bin_rejected: into.stats.rejected, duplicates: into.stats.duplicates,
       fire_cell_days: fcd, tiles: written.stats,
       place_names: placeNames.entries.length,
@@ -152,7 +178,7 @@ function joinBbox(argv) {
 async function main() {
   const { values } = parseArgs({ args: joinBbox(process.argv.slice(2)), options: {
     in: { type: 'string', multiple: true }, out: { type: 'string' }, bbox: { type: 'string' },
-    domain: { type: 'string' }, admin1: { type: 'string' }, month0: { type: 'string' }, 'data-version': { type: 'string' }, 'base-url': { type: 'string' },
+    domain: { type: 'string' }, admin1: { type: 'string' }, 'no-static-mask': { type: 'boolean', default: false }, month0: { type: 'string' }, 'data-version': { type: 'string' }, 'base-url': { type: 'string' },
   } });
   if (!values.in?.length || !values.out) {
     console.error('usage: node pipeline/build.js --in <dir|file> [--in ...] --out <dir> [--bbox w,s,e,n] [--domain file.geojson] [--month0 YYYY-MM]');
@@ -161,7 +187,7 @@ async function main() {
   const bbox = values.bbox ? values.bbox.split(',').map(Number) : undefined;
   const { stats } = await build({
     inputs: values.in, outDir: values.out, bbox, month0: values.month0,
-    domainFile: values.domain, admin1File: values.admin1, dataVersion: values['data-version'], baseUrl: values['base-url'],
+    domainFile: values.domain, admin1File: values.admin1, staticMask: !values['no-static-mask'], dataVersion: values['data-version'], baseUrl: values['base-url'],
   });
   console.log(JSON.stringify(stats, null, 2));
 }

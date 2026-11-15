@@ -28,6 +28,11 @@ not checked end to end), **assumption** (a choice the team made) or **unverified
   MODIS series at 2018 that is not a change in burning. Default kept: `type = 0`, step
   stated. Option for V1: a static-source cell mask built from 2018+ type 2 and applied
   to every year.
+- **Static-source mask (gate G2, docs/gates/G2.md, accepted with caveats; thresholds are an
+  assumption)**: type 0 still holds gas flares (gate G1). Every build drops type-0 records in
+  0.01 degree cells that hold or neighbor a VIIRS type 1 or 2 detection, or where VIIRS type 0
+  falls on at least 10 days of a year in at least 2 years (`pipeline/static-mask.js`). MODIS
+  does not seed the mask; the mask applies to every sensor and year.
 - No confidence filter. **Supported**: FIRMS gives no fixed cutoff, and the MODIS 0-100
   score and VIIRS l/n/h classes come from different tests (FIRMS FAQ). R absorbs a
   steady false-alarm excess over the overlap. Optional sensitivity check at V1:
@@ -212,7 +217,8 @@ months, NOAA-20 for NOAA-20 x K months (`core/partial.js`).
    undercount. A global build has no domain and does not show this caveat.
 10. A global build (no domain) shows `global-extent`, tagged preliminary: only Brazil was validated, type 0
    keeps some gas flares and industrial sources, R was not checked by region, cells shrink toward the
-   poles, days are UTC (docs/gates/G1.md).
+   poles, days are UTC (docs/gates/G1.md). The static-source mask (gate G2) removes most flares from the
+   next build on; the caveat is revised once that build is published and checked.
 
 ## 6b. Live comparison (M3-K3, gate V3 accepted with caveats on 2026-11-15)
 
@@ -262,4 +268,4 @@ months, NOAA-20 for NOAA-20 x K months (`core/partial.js`).
 | Q6 | Group R by biome instead of tiles | Open, physicist |
 | Q7 | 25% CI half-width and 5-year minimums | Kept at V1; results near the line depend on the draws |
 | Q8 | Static-source mask vs the 2018 typing step | Open, V1 |
-| Q9 | VIIRS C2 v2 type-0 mislabeling (unverified lead) | Open, reviewer |
+| Q9 | VIIRS C2 v2 type-0 mislabeling | Verified (VIIRS 375 m guide 1.2, 6.1; fixed in v3); handled by the static-source mask, gate G2 |

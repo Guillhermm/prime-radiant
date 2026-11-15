@@ -5,7 +5,8 @@
 //           lat, lon, utcDay: 'YYYY-MM-DD', hasType, daynight? ('D'|'N', only when the file has the column) }
 // Rows that fail validation are never yielded and never silent: they are counted by
 // reason in `stats.rejected`. type != 0 is rejected as 'type_excluded' when the file has a
-// type field; files without one (NRT) yield records with hasType = false.
+// type field; files without one (NRT) yield records with hasType = false. With `stats.allTypes`
+// every valid type is yielded with its code in `type` (the static-source pass, pipeline/static-mask.js).
 import fs from 'node:fs';
 import zlib from 'node:zlib';
 import readline from 'node:readline';
@@ -73,10 +74,11 @@ export function normalize(f, stats) {
   stats.seen?.(sat[1], f.date, hasType); // acquisition days: any type, before the type filter
   if (hasType) {
     if (!/^\d+$/.test(f.type)) return reject(stats, 'type_invalid');
-    if (Number(f.type) !== 0) return reject(stats, 'type_excluded');
+    if (Number(f.type) !== 0 && !stats.allTypes) return reject(stats, 'type_excluded');
   }
   stats.accepted++;
   const rec = { sensor: sat[0], satellite: sat[1], lat, lon, utcDay: f.date, hasType };
+  if (stats.allTypes && hasType) rec.type = Number(f.type);
   if (f.daynight !== undefined) rec.daynight = f.daynight; // 'D' or 'N' when the file has the column
   return rec;
 }
