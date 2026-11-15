@@ -500,6 +500,8 @@ test('example, apply, docked panel follows arrow keys, Method drawer and CSV exp
     await page.click('.method-button');
     await page.until(`document.querySelector('.drawer-panel[aria-modal="true"]')`, 'About drawer opens');
     assert.equal(await page.evaluate(`document.querySelector('.method-button').getAttribute('aria-expanded')`), 'true');
+    assert.deepEqual(await page.evaluate(`(() => { const sec = document.querySelector('.drawer-panel .logo-section'); return [sec.querySelector('h3').textContent, sec.contains(document.querySelector('.flame-key')), sec.querySelector('.logo-lead').textContent.includes('not a data scale'), document.querySelector('.drawer-panel .lead').nextElementSibling?.classList.contains('flame-key') ?? false]; })()`),
+      ['The logo', true, true, false], 'the mark has its own section, apart from the data colors');
     for (let i = 0; i < 6; i++) await page.press('Tab');
     assert.equal(await page.evaluate(`document.querySelector('.drawer-panel').contains(document.activeElement)`), true, 'focus stays in the drawer');
     await page.press('Escape');
@@ -1262,6 +1264,7 @@ test('first-screen map with a global overview: clicks zoom in levels until a squ
         await page.until(`!document.querySelector('.preview-card .pv-empty').hidden`, 'the no-record message');
         assert.equal(await page.evaluate(previewText('.pv-empty')), 'No record for this area in the data.');
         assert.equal(await page.evaluate(`document.querySelector('.preview-card .radiant-hero').hidden && document.querySelector('.pv-cta').disabled`), true);
+        assert.deepEqual(await page.evaluate(`(() => { const c = getComputedStyle(document.querySelector('.pv-cta')); const i = document.createElement('i'); i.style.color = getComputedStyle(document.documentElement).getPropertyValue('--color-surface-2'); document.body.append(i); const want = getComputedStyle(i).color; i.remove(); return [c.opacity, c.backgroundColor === want]; })()`), ['1', true], 'disabled is neutral, not a faded blue');
         assert.equal(await page.evaluate(`document.querySelector('.hero-plate .plate-note')`), null, 'no edge footnote without a region');
         // World level: no rank pins, and the pick is one ring big enough to see.
         assert.equal(await page.evaluate(`getComputedStyle(document.querySelector('.hero-plate .hm-pins')).display`), 'none');
@@ -1324,6 +1327,7 @@ test('record strip: the preview card ends with the sensors on one axis from the 
       assert.equal(await page.evaluate(`document.querySelector('.pv-cta').getBoundingClientRect().bottom <= document.querySelector('.pv-record').getBoundingClientRect().top`), true, 'under the button');
       assert.equal(await page.evaluate(`(() => { const c = document.querySelector('.preview-card').getBoundingClientRect(); return [...document.querySelectorAll('.pv-record *')].every((e) => { const r = e.getBoundingClientRect(); return r.left >= c.left && r.right <= c.right; }); })()`), true, `inside the card at ${width}`);
       assert.equal(await page.evaluate(`document.querySelector('.hero-copy').textContent.includes('VIIRS from')`), false, 'no facts line in the hero');
+      assert.equal(await page.evaluate(`(() => { const root = getComputedStyle(document.documentElement); const bar = (k) => getComputedStyle(document.querySelector('.pr-' + k + ' .pr-bar')).backgroundColor; const tok = (k) => { const i = document.createElement('i'); i.style.color = root.getPropertyValue('--sensor-' + k); document.body.append(i); const c = getComputedStyle(i).color; i.remove(); return c; }; return bar('modis') === tok('modis') && bar('viirs') === tok('viirs') && bar('modis') !== bar('viirs'); })()`), true, 'lanes in the sensor colors');
       assert.equal(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`), true);
       assert.deepEqual(page.problems, []);
     } finally { await page.close(); }

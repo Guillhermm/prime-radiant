@@ -34,6 +34,8 @@ const ICONS = {
   // A map pin with a square in it: an area on the map.
   pin: [['path', { d: 'M12 2.5a7 7 0 0 1 7 7c0 5-7 12-7 12s-7-7-7-12a7 7 0 0 1 7-7z' }], ['rect', { x: 9.5, y: 7, width: 5, height: 5, rx: 1 }]],
   refresh: [['path', { d: 'M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7' }]],
+  // An eraser on its baseline: clearing, where an X reads as closing.
+  eraser: [['path', { d: 'M14.5 4.5l5 5-8.5 8.5H7l-3-3a1.4 1.4 0 0 1 0-2z' }], ['path', { d: 'M9.5 9.5l5 5M11 18h9' }]],
   // A folded paper map: three panels.
   map: [['path', { d: 'M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z' }], ['path', { d: 'M9 4v14M15 6v14' }]],
   globe: [['circle', { cx: 12, cy: 12, r: 9 }], ['path', { d: 'M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18' }]],

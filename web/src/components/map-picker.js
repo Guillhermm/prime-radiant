@@ -70,7 +70,7 @@ export const mount = (container, { bbox = null, onChange = () => {}, skipTo = '#
   const status = h('p', { class: 'map-status', role: 'status' });
   const tool = (cls, ic, label, attrs) => h('button', { type: 'button', class: `icon-btn map-tool ${cls}`, 'aria-label': label, 'data-tip': label, ...attrs }, icon(ic));
   const draw = tool('map-draw', 'drawArea', 'Draw a rectangle', { 'aria-pressed': 'false' });
-  const clear = tool('map-clear', 'close', 'Clear area', {});
+  const clear = tool('map-clear', 'eraser', 'Clear area', {});
   const toggle = tool('map-toggle', 'map', 'Show map', { 'aria-expanded': 'false', 'aria-controls': 'map-body' });
   const done = h('button', { type: 'button', class: 'btn btn-primary map-done' }, 'Done');
   const cancel = h('button', { type: 'button', class: 'btn btn-ghost map-cancel' }, 'Cancel');

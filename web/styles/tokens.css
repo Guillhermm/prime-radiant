@@ -13,6 +13,10 @@
   color-scheme: dark;
 
   --color-bg: #0c0d17;
+  /* The mark's own fills (web/icons/mark.svg), the same in both themes; not data colors. */
+  --mark-left: #9b6cf2;
+  --mark-right: #f68013;
+  --mark-core: #fbba1f;
   --color-surface: #151622;
   --color-surface-2: #1d2036;
   --color-text: #eef1f8;
