@@ -1,4 +1,4 @@
-import { centerLabel, drawerModel, hotspotAt, hotspotLabels, hotspotRowLabels, HEAT_LABELS, inWindow, isZoomable, mapModel, PICK_HINT, sameBbox, squareFor, squareText, stepSquare, UNAVAILABLE, valueLine, formatCount, zoomWindow } from '../places.js';
+import { centerLabel, drawerModel, hotspotAt, hotspotLabels, hotspotRowsLabels, dotPins, HEAT_LABELS, inWindow, isZoomable, worldWindow, ZOOM_ASPECT, mapModel, PICK_HINT, sameBbox, squareFor, squareText, stepSquare, UNAVAILABLE, valueLine, formatCount, zoomWindow } from '../places.js';
 import { bboxText } from './states.js';
 import { h } from './h.js';
 import { icon, svgEl } from './icons.js';
@@ -12,18 +12,21 @@ const swatch = (bin) => h('i', { class: `hm-sw hm-b${bin}`, 'aria-hidden': 'true
 // CSS px per SVG unit the rings and pins were drawn at (Brazil filling a 22rem map); a zoomable map
 // scales them by its own units per px so they keep that size on screen at every zoom.
 const DRAWN_PX_PER_UNIT = 1.1;
+// Two numbered pins closer than this on screen would overlap; the lower rank becomes a dot.
+const PIN_GAP_PX = 22;
 
 /**
  * The heat map: squares, rank pins and the rings for selection, focus and hover, moved by `place`.
- * `setView(win)` shows a window in degrees (null: the whole map) and `setScale(k)` resizes the rings
- * and pins by k.
+ * `setView(win)` shows a window in degrees (null: the whole map, or `world` when given) and
+ * `setScale(k, pxPerUnit)` resizes the rings and pins by k and turns crowded pins into dots.
  */
-const mapSvg = (model) => {
+const mapSvg = (model, world = null) => {
   const W = (model.east - model.west) * U;
   const H = (model.north - model.south) * U;
+  const box = world ? { width: 1000 * ZOOM_ASPECT, height: 1000 } : { width: W, height: H };
   const x = (q) => (q.w - model.west) * U;
   const y = (q) => (model.north - q.s - 1) * U;
-  const svg = svgEl('svg', { class: 'hm', viewBox: `0 0 ${W} ${H}`, width: W, height: H, 'aria-hidden': 'true', focusable: 'false' });
+  const svg = svgEl('svg', { class: 'hm', viewBox: `0 0 ${W} ${H}`, width: box.width, height: box.height, 'aria-hidden': 'true', focusable: 'false' });
   const squares = svgEl('g', { class: 'hm-squares' });
   for (const q of model.squares) {
     squares.append(svgEl('rect', { x: x(q) + 0.5, y: y(q) + 0.5, width: U - 1, height: U - 1, rx: 1.8, class: `hm-sq hm-b${q.bin}`, 'data-key': q.key }));
@@ -46,9 +49,10 @@ const mapSvg = (model) => {
     const t = svgEl('text', { x: cx, y: cy + 3 });
     t.textContent = String(rank);
     const pin = svgEl('g', { class: 'hm-pin' });
-    pin.append(svgEl('circle', { cx, cy, r: 7 }), t);
+    const circle = svgEl('circle', { cx, cy, r: 7 });
+    pin.append(circle, t);
     pins.append(pin);
-    pinEls.push({ pin, cx, cy });
+    pinEls.push({ pin, circle, cx, cy, rank });
   }
   svg.append(squares, ...rings.hover.map((r) => r.el), ...rings.sel.map((r) => r.el), ...rings.focus.map((r) => r.el), pins);
   const place = (which, q) => {
@@ -66,22 +70,29 @@ const mapSvg = (model) => {
       el.removeAttribute('hidden');
     });
   };
-  const setScale = (next) => {
+  const setScale = (next, pxPerUnit) => {
     k = next;
-    for (const { pin, cx, cy } of pinEls) {
+    const vb = svg.viewBox.baseVal;
+    const shown = pinEls.filter(({ cx, cy }) => cx >= vb.x && cx <= vb.x + vb.width && cy >= vb.y && cy <= vb.y + vb.height);
+    const dots = dotPins(shown.map((p) => ({ rank: p.rank, x: p.cx * pxPerUnit, y: p.cy * pxPerUnit })), PIN_GAP_PX);
+    for (const { pin, circle, cx, cy, rank } of pinEls) {
       if (k === 1) pin.removeAttribute('transform');
       else pin.setAttribute('transform', `translate(${cx} ${cy}) scale(${k}) translate(${-cx} ${-cy})`);
+      pin.classList.toggle('is-dot', dots.has(rank));
+      circle.setAttribute('r', dots.has(rank) ? 3 : 7);
     }
     for (const which of Object.keys(at)) place(which, at[which]);
   };
-  const setView = (win) => svg.setAttribute('viewBox', win
-    ? `${(win.west - model.west) * U} ${(model.north - win.north) * U} ${win.width * U} ${win.height * U}`
-    : `0 0 ${W} ${H}`);
+  const setView = (win) => {
+    const v = win ?? world;
+    svg.setAttribute('viewBox', v ? `${(v.west - model.west) * U} ${(model.north - v.north) * U} ${v.width * U} ${v.height * U}` : `0 0 ${W} ${H}`);
+  };
   /** [lon, lat] under a client point. */
   const degAt = (clientX, clientY) => {
     const pt = new DOMPoint(clientX, clientY).matrixTransform(svg.getScreenCTM().inverse());
     return [model.west + pt.x / U, model.north - pt.y / U];
   };
+  setView(null);
   return { svg, place, setScale, setView, degAt, unitsWide: () => svg.viewBox.baseVal.width };
 };
 
@@ -148,10 +159,11 @@ export const mount = (container, deps) => {
       return { el: backdrop(panel), focusEl: title };
     }
 
-    const { svg, place, setScale, setView, degAt, unitsWide } = mapSvg(model);
     const zoomable = isZoomable(model);
+    const { svg, place, setScale, setView, degAt, unitsWide } = mapSvg(model, zoomable ? worldWindow(model) : null);
     const live = h('p', { class: 'sr-only', 'aria-live': 'polite' });
     const readout = h('p', { class: 'hm-readout', 'aria-hidden': 'true' });
+    const readoutRow = h('div', { class: zoomable ? 'hm-bar is-zoomable' : 'hm-bar' }, readout);
     const mapEl = h('div', {
       class: zoomable ? 'hm-map is-zoomable' : 'hm-map', tabindex: '0', role: 'application', 'aria-roledescription': 'map',
       'aria-label': `Fire map of ${overview.year}. Arrow keys move one square, Shift and an arrow five, Home goes to hotspot 1, Enter picks the square.`,
@@ -184,12 +196,16 @@ export const mount = (container, deps) => {
       type: 'button', class: 'icon-btn hm-world', 'aria-label': 'Show whole map', 'data-tip': 'Show whole map', hidden: true,
       onclick: () => { zoomTo(null); mapEl.focus(); },
     }, icon('globe'));
+    if (zoomable) readoutRow.append(worldBtn);
     const applyView = () => {
       const box = svg.getBoundingClientRect();
       if (!box.width) return;
-      win = zoomCenter ? zoomWindow(model, zoomCenter, box.width, box.height) : null;
-      setView(win);
-      setScale(unitsWide() / box.width * DRAWN_PX_PER_UNIT);
+      if (zoomable) {
+        win = zoomCenter ? zoomWindow(model, zoomCenter, box.width) : null;
+        setView(win);
+      }
+      const pxPerUnit = box.width / unitsWide();
+      setScale(zoomable ? DRAWN_PX_PER_UNIT / pxPerUnit : 1, pxPerUnit);
     };
     const zoomTo = (center) => {
       zoomCenter = center;
@@ -197,10 +213,8 @@ export const mount = (container, deps) => {
       applyView();
     };
     const zoomToSquare = (q) => { if (zoomable && q) zoomTo([q.w + 0.5, q.s + 0.5]); };
-    if (zoomable) {
-      resizeObs = new ResizeObserver(applyView);
-      resizeObs.observe(svg);
-    }
+    resizeObs = new ResizeObserver(applyView);
+    resizeObs.observe(svg);
 
     const moveFocus = (q, { follow = false } = {}) => {
       focusSq = q;
@@ -240,9 +254,10 @@ export const mount = (container, deps) => {
       stage(q);
     });
 
+    const rowLabels = hotspotRowsLabels(overview.hotspots ?? []);
     const list = h('ol', { class: 'ad-rows' }, (overview.hotspots ?? []).map((hs, i) => {
       const q = squareFor(model, hs.bbox) ?? { key: hs.bbox.join(), bbox: hs.bbox, value: hs.value, bin: 6 };
-      const { title, sub, full } = hotspotRowLabels(hs);
+      const { title, sub, full } = rowLabels[i];
       const onMap = model.byKey.has(q.key);
       const row = h('button', {
         type: 'button', class: 'hs-row', 'aria-pressed': 'false', title: full, 'aria-label': `Hotspot ${i + 1}, ${full}, ${valueLine(hs.value, overview)}`,
@@ -258,7 +273,7 @@ export const mount = (container, deps) => {
 
     // On phone CSS lifts the manual row above the list, as in the sheet mockup.
     body.append(
-      h('div', { class: 'plate' }, mapEl, zoomable ? worldBtn : null, readout, legendEl(), h('p', { class: 'plate-note', text: m.border }), live),
+      h('div', { class: 'plate' }, mapEl, readoutRow, legendEl(), h('p', { class: 'plate-note', text: m.border }), live),
       h('section', { class: 'ad-list', 'aria-labelledby': 'ad-list-title' },
         h('div', { class: 'ad-sub' }, h('h3', { id: 'ad-list-title', text: m.listTitle }), h('span', { text: m.listSub })),
         list),

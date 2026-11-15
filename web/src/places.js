@@ -46,6 +46,17 @@ export const hotspotRowLabels = (hs) => {
   return { title: p.state ?? p.country, sub: p.country, full };
 };
 
+/**
+ * Row labels for the whole hotspot list: a heading that repeats (three "Mato Grosso") gets the
+ * square's center on its second line, "Brazil · 10.5°S 55.5°W", so every row reads differently.
+ */
+export const hotspotRowsLabels = (hotspots = []) => {
+  const rows = hotspots.map(hotspotRowLabels);
+  const seen = new Map();
+  for (const r of rows) seen.set(r.title, (seen.get(r.title) ?? 0) + 1);
+  return rows.map((r, i) => (r.sub && seen.get(r.title) > 1 ? { ...r, sub: `${r.sub} · ${centerLabel(hotspots[i].bbox)}` } : r));
+};
+
 /** The hotspot whose square is `bbox`, or null. */
 export const hotspotAt = (overview, bbox) => (overview?.hotspots ?? []).find((hs) => sameBbox(hs.bbox, bbox)) ?? null;
 
@@ -157,21 +168,54 @@ const SQUARE_DEG = 0.9;
 
 export const isZoomable = (model) => Boolean(model) && model.east - model.west > ZOOM_MIN_EXTENT;
 
+// A zoomable map is drawn in a 2:1 box: the shape of the largest zoom window.
+export const ZOOM_ASPECT = 2;
+const WORLD_PAD = 2;
+
 /**
- * The zoomed window in degrees, {west, north, width, height}, for a map box of boxW x boxH CSS px:
- * same shape as the box, centered on [lon, lat] and kept inside the extent.
+ * The whole-map view of a zoomable map, {west, north, width, height} in degrees: the squares'
+ * extent (pins sit on squares) padded by two squares, widened to the 2:1 box.
  */
-export const zoomWindow = (model, [lon, lat], boxW, boxH) => {
-  const pxPerDeg = Math.max(boxW / ZOOM_MAX_WIDTH, MIN_SQUARE_PX / SQUARE_DEG);
-  const width = Math.min(boxW / pxPerDeg, model.east - model.west);
-  const height = Math.min(boxH / pxPerDeg, model.north - model.south);
+export const worldWindow = (model) => {
+  let width = model.east - model.west + 2 * WORLD_PAD;
+  let height = model.north - model.south + 2 * WORLD_PAD;
+  const cx = (model.west + model.east) / 2;
+  const cy = (model.south + model.north) / 2;
+  if (width / height < ZOOM_ASPECT) width = height * ZOOM_ASPECT;
+  else height = width / ZOOM_ASPECT;
+  return { west: cx - width / 2, north: cy + height / 2, width, height };
+};
+
+/**
+ * The zoomed window in degrees, {west, north, width, height}, for a 2:1 map box boxW CSS px wide:
+ * whole squares only (integer edges, an even width and half of it as height), at most 20 x 10 and
+ * narrower when a 0.9 deg square would fall under 24 px, centered on [lon, lat] and kept inside the extent.
+ */
+export const zoomWindow = (model, [lon, lat], boxW) => {
+  const fit = Math.min(ZOOM_MAX_WIDTH, (boxW * SQUARE_DEG) / MIN_SQUARE_PX);
+  const width = Math.max(2, 2 * Math.floor(fit / 2));
+  const height = Math.min(width / ZOOM_ASPECT, model.north - model.south);
   const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
   return {
-    west: clamp(lon - width / 2, model.west, model.east - width),
-    north: clamp(lat + height / 2, model.south + height, model.north),
+    west: clamp(Math.round(lon - width / 2), model.west, model.east - width),
+    north: clamp(Math.round(lat + height / 2), model.south + height, model.north),
     width,
     height,
   };
+};
+
+/**
+ * Pins drawn as plain dots: going down the ranks, a pin whose center is under `minPx` from a
+ * numbered pin of a higher rank loses its number. `pins` are {rank, x, y} in CSS px.
+ */
+export const dotPins = (pins, minPx = 22) => {
+  const numbered = [];
+  const dots = new Set();
+  for (const p of [...pins].sort((a, b) => a.rank - b.rank)) {
+    if (numbered.some((n) => Math.hypot(n.x - p.x, n.y - p.y) < minPx)) dots.add(p.rank);
+    else numbered.push(p);
+  }
+  return dots;
 };
 
 /** Whether the whole 1 deg square lies inside a zoom window. */

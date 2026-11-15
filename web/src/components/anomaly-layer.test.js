@@ -107,7 +107,9 @@ test('extremes: Low and High only for an exact 0 or 1, a record against earlier 
   const { anomalyTableModel } = await import('./anomaly-layer.js');
   assert.equal(anomalyCellModel({ cell: cell(2024, 10, 1, { rank: 0 }) }, 1000).text, 'Low');
   assert.equal(anomalyCellModel({ cell: cell(2024, 10, 9, { rank: 1 }) }, 1000).text, 'High');
-  assert.equal(anomalyCellModel({ cell: cell(2024, 10, 9, { rank: 1 }) }, 1000).short, '100', 'the phone keeps digits');
+  assert.equal(anomalyCellModel({ cell: cell(2024, 10, 9, { rank: 1 }) }, 1000).short, 'H', 'the phone shows H, never 100');
+  assert.equal(anomalyCellModel({ cell: cell(2024, 10, 1, { rank: 0 }) }, 1000).short, 'L', 'and L, never 0');
+  assert.equal(anomalyCellModel({ cell: cell(2024, 10, 5, { rank: 0.5 }) }, 1000).short, '50');
   assert.equal(anomalyCellModel({ cell: cell(2024, 10, 9, { rank: 0.996 }) }, 1000).text, '100th');
   const t = anomalyTableModel([cell(2022, 10, 1, { rank: 0 }), cell(2023, 10, 5, { rank: 0.5 }), cell(2024, 10, 9, { rank: 1, flagged: true }), cell(2021, 10, null)]);
   assert.deepEqual(t.rows.map((r) => r.cells[9]), ['record high, flagged', '50th', 'record low', 'No data']);

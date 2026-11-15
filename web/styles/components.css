@@ -205,7 +205,8 @@
 .div-8 { background: var(--div-above-3); color: var(--div-above-3-text); }
 .div-9 { background: var(--div-above-4); color: var(--div-above-4-text); }
 .div-10 { background: var(--div-above-5); color: var(--div-above-5-text); }
-.div-norank { background: var(--color-surface); color: var(--color-text); outline-style: dashed; }
+/* No rank: an empty dotted box, so it never reads as a flag (a solid 2px ring). */
+.div-norank { background: transparent; color: var(--color-text-muted); border: 1px dotted var(--color-border); }
 /* Flag: a 2px ring in the text color with a ground line inside it, so it shows on pale and dark
    classes alike, plus a corner notch top-left (the estimated notch sits top-right). */
 .cal-cell.is-flagged, .swatch.mark-flagged { box-shadow: inset 0 0 0 2px var(--color-text), inset 0 0 0 3px var(--color-bg); }
@@ -248,13 +249,25 @@
 .period-when { font-weight: 600; font-variant-numeric: tabular-nums lining-nums; }
 .period-meta { color: var(--color-text-muted); font-size: 0.8125rem; }
 .period-none { margin: 0.75rem 0 0; }
-.flag-rule { margin: 0.75rem 0 0; max-inline-size: 70ch; }
+.flag-lead { margin: 0.75rem 0 0; max-inline-size: 70ch; font-size: 0.875rem; }
+.flag-rule { margin-block-start: 0.5rem; }
 .year-rank .fact { border-block-end: 0; padding-block-end: 0; }
 .year-rank .hint { margin: 0.5rem 0 0; }
 .year-rank .v { font-size: 2rem; }
-.caveat-list { display: grid; gap: 0.25rem; margin: 0.5rem 0 0; padding: 0; list-style: none; }
-.caveat-list summary { cursor: pointer; padding-block: 0.25rem; font-size: 0.875rem; }
-.caveat-list p { margin: 0.25rem 0 0.5rem 1rem; color: var(--color-text-muted); font-size: 0.8125rem; max-inline-size: 70ch; }
+.caveat-list { margin: 0.5rem 0 0; padding: 0; list-style: none; }
+/* Disclosures as rows between hairlines, a chevron at the end that turns when open. */
+.disclosure-list > li, .disclosure-list > .disclosure { border-block-end: 1px solid var(--color-border); }
+.disclosure-list > :first-child { border-block-start: 1px solid var(--color-border); }
+.disclosure > summary {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; min-block-size: 2.75rem; cursor: pointer; list-style: none;
+  color: var(--color-text); font-size: 0.875rem; font-weight: 500;
+}
+.disclosure > summary::-webkit-details-marker { display: none; }
+.disclosure > summary:hover { color: var(--color-accent); }
+.disclosure-chevron { flex: none; inline-size: 1rem; block-size: 1rem; color: var(--color-text-muted); }
+.disclosure[open] .disclosure-chevron { rotate: 180deg; }
+.disclosure p { margin: 0 0 0.75rem; color: var(--color-text-muted); font-size: 0.8125rem; max-inline-size: 70ch; }
+@media (prefers-reduced-motion: no-preference) { .disclosure-chevron { transition: rotate var(--dur-1) var(--ease-std); } }
 .chart-stamp-html { display: block; margin-block-end: 0.25rem; text-align: end; color: var(--sensor-viirs); font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.08em; }
 @media (max-width: 40rem) {
   .anomaly-answer { grid-template-columns: minmax(0, 1fr); }

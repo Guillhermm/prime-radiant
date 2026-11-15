@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   heatBin, HEAT_LABELS, centerLabel, hotspotPresets, placeLabel, hotspotLabels, hotspotAt, valueLine, sensorValueLine, defaultArea, suggestionCaption,
   drawerModel, mapModel, dataRegionBbox, regionCaption, squareFor, stepSquare, squareText,
-  hotspotRowLabels, isZoomable, zoomWindow, inWindow,
+  hotspotRowLabels, hotspotRowsLabels, isZoomable, zoomWindow, worldWindow, dotPins, inWindow,
 } from './places.js';
 
 const overview = {
@@ -126,16 +126,34 @@ test('zoom: only an extent wider than 40 degrees', () => {
   assert.equal(isZoomable(null), false);
 });
 
-test('zoom window: 20 x 10 at most, narrower to keep a square at 24 px, kept inside the extent', () => {
+test('zoom window: whole squares, 20 x 10 at most, narrower to keep a square at 24 px, kept inside the extent', () => {
   // 600 px wide: 30 px per degree already, so the full 20 x 10 window.
-  assert.deepEqual(zoomWindow(world, [0, 0], 600, 300), { west: -10, north: 5, width: 20, height: 10 });
-  // 344 px (a phone): 24 px / 0.9 deg sets the scale, about 12.9 deg wide.
-  const phone = zoomWindow(world, [0, 0], 344, 172);
-  assert.ok(Math.abs(phone.width - 12.9) < 0.01 && Math.abs(phone.height - 6.45) < 0.01);
-  assert.ok((344 / phone.width) * 0.9 >= 24 - 1e-9);
+  assert.deepEqual(zoomWindow(world, [0, 0], 600), { west: -10, north: 5, width: 20, height: 10 });
+  // 344 px (a phone) fits 12.9 deg at 24 px per 0.9 deg square: 12 x 6, on integer edges.
+  assert.deepEqual(zoomWindow(world, [0.3, 0.4], 344), { west: -6, north: 3, width: 12, height: 6 });
+  assert.ok((344 / 12) * 0.9 >= 24);
   // At the corners it slides back inside the extent.
-  assert.deepEqual(zoomWindow(world, [-179, 53], 600, 300), { west: -180, north: 54, width: 20, height: 10 });
-  assert.deepEqual(zoomWindow(world, [179, -59], 600, 300), { west: 160, north: -50, width: 20, height: 10 });
+  assert.deepEqual(zoomWindow(world, [-179, 53], 600), { west: -180, north: 54, width: 20, height: 10 });
+  assert.deepEqual(zoomWindow(world, [179, -59], 600), { west: 160, north: -50, width: 20, height: 10 });
+});
+
+test('whole-map view: the squares padded by two, widened to 2:1', () => {
+  assert.deepEqual(worldWindow({ west: -68, east: -34, south: -34, north: 6 }), { west: -95, north: 8, width: 88, height: 44 });
+  assert.deepEqual(worldWindow({ west: -180, east: 180, south: -60, north: 70 }), { west: -182, north: 96, width: 364, height: 182 });
+});
+
+test('pins: a lower rank within 22 px of a numbered pin becomes a dot', () => {
+  const pins = [{ rank: 3, x: 10, y: 0 }, { rank: 1, x: 0, y: 0 }, { rank: 2, x: 30, y: 0 }, { rank: 4, x: 45, y: 0 }];
+  // 3 is 10 px from 1; 2 is 30 px from 1; 4 is 15 px from 2.
+  assert.deepEqual([...dotPins(pins)].sort(), [3, 4]);
+  assert.deepEqual([...dotPins(pins, 5)], []);
+});
+
+test('repeated hotspot names add the center to the second line', () => {
+  const mt = (w, s) => ({ bbox: [w, s, w + 1, s + 1], place: { country: 'Brazil', state: 'Mato Grosso' } });
+  const rows = hotspotRowsLabels([mt(-56, -11), { bbox: [-53, -9, -52, -8], place: { country: 'Brazil', state: 'Pará' } }, mt(-60, -16)]);
+  assert.deepEqual(rows.map((r) => r.sub), ['Brazil · 10.5°S 55.5°W', 'Brazil', 'Brazil · 15.5°S 59.5°W']);
+  assert.equal(new Set(rows.map((r) => `${r.title} ${r.sub}`)).size, 3);
 });
 
 test('a square is in the window only when all of it is', () => {

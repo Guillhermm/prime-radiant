@@ -74,7 +74,8 @@ export const anomalyCellModel = (m, aoiCells) => {
     cls: cell.value === null ? 'nodata' : ranked ? `div-${cls}` : 'div-norank',
     label: anomalyLabel(cell, aoiCells),
     text: ranked ? extremeWord(cell.rank) ?? ordinal(Math.round(cell.rank * 100)) : '',
-    short: ranked ? String(Math.round(cell.rank * 100)) : '',
+    // The phone's two-character cells: L and H for the extremes, so no cell reads "0" or "100".
+    short: ranked ? ({ 0: 'L', 1: 'H' })[cell.rank] ?? String(Math.round(cell.rank * 100)) : '',
     flagged: ranked && cell.flagged === true,
     bin: binClass(cell.value, aoiCells),
   };

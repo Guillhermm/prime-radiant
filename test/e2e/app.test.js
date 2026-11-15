@@ -891,6 +891,11 @@ test('place picker from the header on Anomalies: keys and rows stage a pick, Use
     assert.match(await page.evaluate(`document.querySelector('.ad-unit').textContent`), new RegExp(`^Fire-cell-days of 0\\.1° cells, summed per 1° square · VIIRS S-NPP ${synthOverview.year}`));
     assert.match(await page.evaluate(`document.querySelector('.plate-note').textContent`), /count only the part inside it\.$/);
     assert.equal(await page.evaluate(`document.querySelectorAll('.hs-row').length`), synthOverview.hotspots.length);
+    const fit = await page.evaluate(`(() => { const m = document.querySelector('.hm').getBoundingClientRect(), p = document.querySelector('.plate').getBoundingClientRect(); return [m.width / p.width, document.querySelector('.hm-sq').getBoundingClientRect().width]; })()`);
+    assert.ok(fit[0] >= 0.6 && fit[1] >= 6, `the data spans ${fit[0]} of the plate, a square is ${fit[1]} px`);
+    assert.equal(await page.evaluate(PINS_APART), true, 'pins apart');
+    const texts = await page.evaluate(`[...document.querySelectorAll('.hs-row .hs-name')].map((n) => n.textContent)`);
+    assert.equal(new Set(texts).size, texts.length, 'every row reads differently');
     const primary = `document.querySelector('.ad-primary')`;
     assert.deepEqual(await page.evaluate(`[${primary}.textContent, ${primary}.disabled, document.querySelector('.ad-hint').textContent]`), ['Use this area', true, 'Pick a square or a hotspot']);
 
@@ -978,6 +983,26 @@ test('a shared link wins over the suggestion, and is the area the tabs reopen af
   } finally { await page.close(); }
 });
 
+// Map geometry checks, run in the page: numbered pins never overlap; every square that shows is
+// whole inside the map; the globe button covers no square.
+const PINS_APART = `(() => {
+  const m = document.querySelector('.hm').getBoundingClientRect();
+  const r = [...document.querySelectorAll('.hm-pin:not(.is-dot) circle')].map((c) => c.getBoundingClientRect())
+    .filter((b) => b.right > m.left && b.left < m.right && b.bottom > m.top && b.top < m.bottom);
+  return r.every((a, i) => r.slice(i + 1).every((b) => a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top));
+})()`;
+const SQUARES_WHOLE = `(() => {
+  const m = document.querySelector('.hm').getBoundingClientRect();
+  return [...document.querySelectorAll('.hm-sq')].map((q) => q.getBoundingClientRect())
+    .filter((b) => b.right > m.left + 0.5 && b.left < m.right - 0.5 && b.bottom > m.top + 0.5 && b.top < m.bottom - 0.5)
+    .every((b) => b.left >= m.left - 0.5 && b.right <= m.right + 0.5 && b.top >= m.top - 0.5 && b.bottom <= m.bottom + 0.5);
+})()`;
+const GLOBE_CLEAR = `(() => {
+  const g = document.querySelector('.hm-world').getBoundingClientRect();
+  return [...document.querySelectorAll('.hm-sq')].map((q) => q.getBoundingClientRect())
+    .every((b) => b.right <= g.left || g.right <= b.left || b.bottom <= g.top || g.bottom <= b.top);
+})()`;
+
 test('global map: one click zooms so a square is at least 24 px, a second picks it; rows stay two lines; a map pick is named by its center', { skip }, async () => {
   // The synthetic overview stretched to the whole globe, with a long place name as hotspot 1.
   const longest = { bbox: [23, -8, 24, -7], value: 2500, place: { country: 'Democratic Republic of the Congo', state: 'Kasaï-Oriental' } };
@@ -998,6 +1023,9 @@ test('global map: one click zooms so a square is at least 24 px, a second picks 
         await page.until(`${AREAS_OPEN}?.classList.contains('is-zoomable')`, 'a zoomable map');
         await settle(page);
         assert.equal(await page.evaluate(`document.querySelector('.hm-world').hidden`), true, 'no way back before zooming');
+        assert.equal(await page.evaluate(PINS_APART), true, `pins apart on the whole map at ${width}`);
+        const texts = await page.evaluate(`[...document.querySelectorAll('.hs-row .hs-name')].map((n) => n.textContent)`);
+        assert.equal(new Set(texts).size, texts.length, `every row reads differently (${texts})`);
 
         const rows = await page.evaluate(`(() => {
           const lines = (el) => { const t = [...el.childNodes].find((n) => n.nodeType === 3); const r = document.createRange(); r.selectNodeContents(t); return new Set([...r.getClientRects()].map((x) => Math.round(x.top))).size; };
@@ -1018,6 +1046,9 @@ test('global map: one click zooms so a square is at least 24 px, a second picks 
         await page.until(`!document.querySelector('.hm-world').hidden`, 'the click zooms');
         const size = await page.evaluate(`${sq}.getBoundingClientRect().width`);
         assert.ok(size >= 24, `a square is ${size} px at ${width}`);
+        assert.equal(await page.evaluate(SQUARES_WHOLE), true, `no square cut by the map edge at ${width}`);
+        assert.equal(await page.evaluate(PINS_APART), true, `pins apart zoomed in at ${width}`);
+        assert.equal(await page.evaluate(GLOBE_CLEAR), true, `the globe button covers no square at ${width}`);
         assert.equal(await page.evaluate(`document.querySelector('.ad-primary').disabled`), true, 'the zooming click picks nothing');
 
         // A key that takes the focus out of the window recenters it there.
@@ -1026,7 +1057,7 @@ test('global map: one click zooms so a square is at least 24 px, a second picks 
 
         await page.click('.hm-world');
         await page.until(`document.querySelector('.hm-world').hidden && document.activeElement.classList.contains('hm-map')`, 'the whole map again, focus on it');
-        assert.equal(await page.evaluate(`document.querySelector('.hm').viewBox.baseVal.width`), 3600);
+        assert.ok(await page.evaluate(`document.querySelector('.hm').viewBox.baseVal.width`) > 3600, 'the squares plus their padding');
 
         await page.click(`.hm-sq[data-key="${plain[0]},${plain[1]}"]`);
         await page.until(`!document.querySelector('.hm-world').hidden`, 'zoom');
@@ -1237,7 +1268,12 @@ test('real data: Anomalies on core ranks with no Preview, the Counts | vs median
     await page.until(`!document.querySelector('.view-anomalies').hidden && document.querySelector('.flag-periods')`, 'Anomalies view');
     assert.doesNotMatch(await page.evaluate(`document.querySelector('.view-anomalies').textContent`), /Preview|placeholder/i);
     assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.flag-periods .period')].map((b) => b.getAttribute('aria-label'))`), periods.map((p) => p.name));
-    assert.equal(await page.evaluate(`document.querySelector('.flag-rule').textContent`), flagRuleText());
+    assert.match(await page.evaluate(`document.querySelector('.flag-lead').textContent`), /^Flagged: a record or near-record/);
+    assert.equal(await page.evaluate(`document.querySelector('.flag-rule summary').textContent`), 'How a month is flagged');
+    assert.equal(await page.evaluate(`document.querySelector('.flag-rule details').open`), false, 'the full rule waits in a disclosure');
+    assert.equal(await page.evaluate(`document.querySelector('.flag-rule p').textContent`), flagRuleText().replaceAll('<=', '≤'));
+    assert.equal(await page.evaluate(`getComputedStyle(document.querySelector('.anomaly-caveats summary')).listStyleType`), 'none', 'no default triangle');
+    assert.ok(await page.evaluate(`document.querySelector('.anomaly-caveats summary .disclosure-chevron') !== null`), 'a chevron instead');
     const rank = yearRankModel(result.yearRank, { from, to });
     assert.equal(await page.evaluate(`document.querySelector('.year-rank .v').textContent`), rank.value);
     assert.equal(await page.evaluate(`document.querySelector('.year-rank .k').textContent`), `Rank of ${rank.year}`);

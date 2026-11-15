@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { caveat } from '../../../core/caveats.js';
-import { anomalyCaveats, periodLabel, periodModel, periodsInRange, yearRankModel } from './anomaly-summary.js';
+import { anomalyCaveats, flagRule, FLAG_LEAD, periodLabel, periodModel, periodsInRange, yearRankModel } from './anomaly-summary.js';
 
 // 2018-11 to 2019-04: flagged Dec 2018 to Feb 2019 (crossing the year) and Apr 2019.
 const series = {
@@ -65,4 +65,10 @@ test('anomaly caveats: the anomaly kind and the flag items the rule produces, no
   const list = ['unit-fire-cell-days', 'anomaly-rule', 'anomaly-small-n', 'cross-era', 'estimated', 'viirs-era-record'].map((id) => caveat(id));
   assert.deepEqual(anomalyCaveats(list).map((c) => c.id), ['anomaly-rule', 'anomaly-small-n', 'cross-era', 'viirs-era-record']);
   assert.ok(anomalyCaveats(list).every((c) => !c.preliminary), 'gate V2 passed');
+});
+
+test('the flag rule: a plain lead line, then core\'s rule with typeset comparison signs', () => {
+  assert.match(FLAG_LEAD, /^Flagged: a record or near-record/);
+  assert.match(flagRule(), /p ≤ 0\.1/);
+  assert.doesNotMatch(flagRule(), /<=|>=/);
 });

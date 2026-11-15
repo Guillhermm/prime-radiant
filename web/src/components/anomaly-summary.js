@@ -3,6 +3,7 @@ import { addMonths } from '../../../core/months.js';
 import { MONTH_ABBR, formatCount, monthLabel } from '../format.js';
 import { ordinal } from './anomaly-layer.js';
 import { h } from './h.js';
+import { icon } from './icons.js';
 
 const SENSOR_NAMES = { modis: 'MODIS', viirs: 'VIIRS' };
 // Flag explanations that only exist because of the anomaly rule; the rest of the flag items describe counts.
@@ -70,6 +71,16 @@ export const yearRankModel = (yr, { from = null, to = null } = {}) => {
 /** core's caveats that explain the ranks and flags, in catalog order. */
 export const anomalyCaveats = (caveats = []) => caveats.filter((c) => c.kind === 'anomaly' || ANOMALY_FLAG_IDS.has(c.id));
 
+/** The plain one-line reading of a flag, ahead of the full rule. */
+export const FLAG_LEAD = 'Flagged: a record or near-record for that calendar month, confirmed on MODIS or VIIRS alone.';
+
+/** core's rule text with the comparison signs typeset. */
+export const flagRule = () => flagRuleText().replaceAll('<=', '≤').replaceAll('>=', '≥');
+
+/** A closed disclosure in the app's style: the summary row with a chevron, the body under it. */
+export const disclosure = (summary, ...body) => h('details', { class: 'disclosure' },
+  h('summary', {}, h('span', { text: summary }), icon('chevron', 'disclosure-chevron')), ...body);
+
 /** Flagged periods card. onSelect receives {year, month} of a period's first month. */
 export const periodsCard = (periods, { onSelect }) => {
   const rows = periods.map(periodModel);
@@ -81,7 +92,8 @@ export const periodsCard = (periods, { onSelect }) => {
         h('button', { type: 'button', class: 'period', 'aria-label': m.name, onclick: () => onSelect(m.first) },
           h('span', { class: 'period-when', text: m.label }), h('span', { class: 'period-meta', text: m.meta })))))
       : h('p', { class: 'period-none', text: 'No month in this range is flagged.' }),
-    h('p', { class: 'hint flag-rule', text: flagRuleText() }));
+    h('p', { class: 'flag-lead', text: FLAG_LEAD }),
+    h('div', { class: 'disclosure-list flag-rule' }, disclosure('How a month is flagged', h('p', { text: flagRule() }))));
 };
 
 /** Compact rank card in the facts card's row pattern. */
@@ -99,5 +111,5 @@ export const yearRankCard = (m) => h('article', { class: 'card year-rank', 'aria
 /** Each caveat as a disclosure: the short line always visible, the full text on open. */
 export const caveatList = (list) => [
   h('h2', { text: 'About these ranks' }),
-  h('ul', { class: 'caveat-list' }, list.map((c) => h('li', { 'data-caveat': c.id }, h('details', {}, h('summary', { text: c.short }), h('p', { text: c.long }))))),
+  h('ul', { class: 'caveat-list disclosure-list' }, list.map((c) => h('li', { 'data-caveat': c.id }, disclosure(c.short, h('p', { text: c.long }))))),
 ];
