@@ -7,16 +7,18 @@ Before recording: open the URL once and let it load; press Reload if the app off
 | Time | Screen | Say (about 75 words, about 2.5 a second) |
 |---|---|---|
 | 0:00 | Logo and home, still. | We are Prime Radiant. |
-| 0:02 | Home: the world heat map. | Since 2000, satellites count fires, but MODIS and VIIRS count differently, so the record breaks in 2012. |
-| 0:05 | Hover the hottest list, then the Radiant on the right. | Prime Radiant: one fire calendar for any place on Earth, from 2000 to today. |
-| 0:10 | Click a hotspot, "Open the calendar", then a bright month; switch to Sensors for one second; Export menu open. | Pick any area. We harmonize NASA FIRMS hotspots from MODIS, Suomi NPP and NOAA-20 onto one scale; Sensors shows how. Compare each month with its median, and export. |
-| 0:20 | Live tab on a Brazilian area with a full chart, then Anomalies. | Next: this season against two decades as it happens, so responders spot an unusual month while it unfolds, anywhere. |
+| 0:02 | Home: the world heat map. | The MODIS sensor has counted fires since 2000. Its successor, VIIRS, sees more of them, so their records don't line up. |
+| 0:05 | Hover the hottest list, then the Radiant on the right. | Prime Radiant: twenty-five years of fire on one calendar, for any place on Earth. |
+| 0:10 | Click a hotspot, "Open the calendar", then a bright month; Export menu open. | Pick an area. We put NASA FIRMS hotspots from MODIS and VIIRS on one scale, so 2005 compares with 2025. See each month against its usual level, and export. |
+| 0:20 | Live tab on a Brazilian area with a full chart, then Anomalies. | Next: this season against past years as it happens, so responders spot an unusual month while it unfolds. |
 | 0:28 | Logo with the URL. | primeradiant.zenus.systems |
 
 Notes:
 
 - Data credit to show or say: NASA FIRMS (LANCE / ESDIS), MODIS Collection 6.1 and VIIRS 375 m; map tiles © OpenStreetMap contributors.
-- "So the record breaks in 2012": over Brazil VIIRS counts about 2.5 times what MODIS counts (`docs/data.md`, R 2.51 on the masked Brazil build). Say "about two and a half times" only if there is time.
+- "Sees more of them": VIIRS pixels are 375 m against about 1 km for MODIS; over Brazil VIIRS counts about 2.5 times what MODIS counts for the same area and month (`docs/data.md`, R 2.51 on the masked Brazil build). Joined without harmonization, the record would jump in 2012, when VIIRS data starts, without more fire.
+- "Twenty-five years": MODIS from November 2000 to the latest archive month, December 2025.
+- "Against past years": the Live band uses the VIIRS-era years, 2012 on.
 - Live outside Brazil shows a running total without past-year comparison until a whole month of live data is in; record Live on one of the Brazilian example links the Live view offers.
 - The fire outlook is not in the app; do not mention it as a feature.
 - Fallback without network: `npm run mock && npm run serve`, and say the data is synthetic; better to re-record later than to show synthetic numbers as real.
