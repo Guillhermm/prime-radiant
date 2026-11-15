@@ -6,7 +6,7 @@ burning-activity calendar per area. Built for the NASA Space Apps Challenge 2026
 
 ## Status
 
-Web app (Guilherme's track) built on fixture and synthetic demo data, redesigned to design 3 (not yet re-validated by QA): first-run screen with example areas, latest-month verdict with the Radiant (a polar year-by-month view), calendar grid with year totals and a median row, selected-month panel (docked on desktop, sheet on phone), area and period chips, caveats, method drawer, one-click CSV export, plus the Sensors, Anomalies and Live tabs. The numbers come from `core/` (Kaue's track): fire-cell-days per month over a Brazil domain, MODIS scaled to VIIRS-equivalent with the ratio R and NOAA-20 continuing S-NPP with K, and the median baseline, all accepted at science gate V1 ([docs/gates/V1.md](docs/gates/V1.md)). Calendar and Sensors are always on. Anomalies and Live still run on placeholder numbers labeled Preview: they show on synthetic data or with `?preview=1`, and stay hidden with real data. Comparisons with the median (delta, rank, typical year) keep a Preview tag; V1 did not cover them. An area outside Brazil shows an outside-domain state, never zeros.
+Web app (Guilherme's track) built on fixture and synthetic demo data, redesigned to design 3: first-run screen with example areas, latest-month verdict with the Radiant (a polar year-by-month view), calendar grid with year totals and a median row, selected-month panel (docked on desktop, sheet on phone), area and period chips, caveats, method drawer, one-click CSV export, plus the Sensors, Anomalies and Live tabs. The numbers come from `core/` (Kaue's track): fire-cell-days per month over a Brazil domain, MODIS scaled to VIIRS-equivalent with the ratio R and NOAA-20 continuing S-NPP with K, and the median baseline, all accepted at science gate V1 ([docs/gates/V1.md](docs/gates/V1.md)). Calendar and Sensors are always on. Anomalies and Live still run on placeholder numbers labeled Preview: they show on synthetic data or with `?preview=1`, and stay hidden with real data. Comparisons with the median (delta, rank, typical year) keep a Preview tag; V1 did not cover them. An area outside Brazil shows an outside-domain state, never zeros.
 
 Deployed at https://primeradiant.zenus.systems (Vercel, built from `main`; see [docs/deploy.md](docs/deploy.md)). Production serves synthetic data generated at build time and shows a "Synthetic demo data" band: no fire count on it is real until the pipeline publishes real tiles (planned). The live proxy is deployed without `MAP_KEY` (it answers 503) and the app does not call it yet: the Live tab shows placeholder data. Judges: [docs/demo.md](docs/demo.md). Plan: [docs/roadmap.md](docs/roadmap.md).
 
@@ -19,7 +19,7 @@ Deployed at https://primeradiant.zenus.systems (Vercel, built from `main`; see [
 
 ## Run
 
-Requires Node.js 22 or later. No real data exists yet, so generate synthetic demo data first (written to the gitignored `data/`, about 17 MB, labeled "Synthetic demo data" in the app):
+Requires Node.js 22 or later. Real tiles are built locally by the pipeline and are not hosted, so generate synthetic demo data first (written to the gitignored `data/`, about 17 MB, labeled "Synthetic demo data" in the app):
 
 ```sh
 npm run mock && npm run serve

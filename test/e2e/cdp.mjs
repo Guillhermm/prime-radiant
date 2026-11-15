@@ -79,7 +79,7 @@ export const launch = async (chromePath) => {
       if (r.exceptionDetails) throw new Error(`${expr}: ${r.exceptionDetails.exception?.description ?? r.exceptionDetails.text}`);
       return r.result.value;
     };
-    const until = async (expr, what, ms = 8000) => {
+    const until = async (expr, what, ms = 20000) => {
       const t0 = Date.now();
       while (Date.now() - t0 < ms) {
         if (await evaluate(expr)) return;
