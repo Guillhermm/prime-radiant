@@ -478,6 +478,14 @@ Off the critical path thanks to the contract: the whole web track (runs on fixtu
 - Tests: integration test that chunked and one-pass builds agree on the fixtures.
 - Files: `pipeline/build.js`, `tools/fetch-country.mjs`, `.github/workflows/publish-data.yml`, `docs/data.md`.
 
+**M4-K2 Fire outlook (machine learning), proposed, not decided** · L · depends: M2 (C) done, a decision by the humans on scope and stack
+- Status: idea under discussion (2026-11-15), nothing built. To be discussed before it is sliced.
+- What it would predict: not individual ignitions (in Brazil most are human), but expected activity per 0.1 deg cell and per month, for example the chance that next month lands above the cell's median. Shown as an experimental layer on the calendar and the map.
+- Simplest route first: climatology (the calendar's median) is the baseline any model must beat; then logistic regression or gradient-boosted trees (LightGBM or XGBoost) on our lagged fire-cell-days plus free drivers (CHIRPS rainfall, ERA5 temperature and humidity, MODIS NDVI). A spatiotemporal neural network only if the simple model falls short.
+- Cost: money near zero (training fits a laptop; predictions precomputed monthly and published as tiles to R2, so serving stays static). Time: L at least, mostly in aligning the climate data to our grid and in validation without leakage (train on the past, test on the future, spatial blocks).
+- Open for the humans: training needs Python (scikit-learn or LightGBM) outside the app, while the repository is JavaScript with zero dependencies; the browser would only read precomputed tiles.
+- Gate: a Second Foundation gate before anything is shown, with the skill score against climatology visible next to the layer. Check first what INPE (Risco de Fogo) and GWIS already publish.
+
 ## 11. Cut list (in order, A and B stay complete)
 
 1. M3-G2 keyed proxy (cron path covers D).
