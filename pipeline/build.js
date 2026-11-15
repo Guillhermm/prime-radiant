@@ -26,7 +26,7 @@ import { regionOf, writeOverview } from './overview.js';
 import { createPlaces } from './places.js';
 import { writePlaces } from './gazetteer.js';
 import { writeGlobalLevel } from './levels.js';
-import { createMaskBuilder, maskKey, STATIC_MASK } from './static-mask.js';
+import { createMaskBuilder, maskKey, serializeMask, STATIC_MASK } from './static-mask.js';
 
 const EXT = /\.(csv|csv\.gz|zip|dbf)$/i;
 
@@ -145,6 +145,8 @@ export async function build({ inputs, outDir, bbox, month0 = '2000-01', dataVers
   const written = writeTileSet(tileIds, countsFor, coverageIndexes(manifest), outDir);
   fs.mkdirSync(outDir, { recursive: true });
   if (clipper) fs.writeFileSync(path.join(outDir, 'domain.json'), `${JSON.stringify(clipper.domain)}\n`);
+  // The live job applies the same mask to near-real-time records, which carry no type.
+  if (mask) fs.writeFileSync(path.join(outDir, 'static-mask.json'), serializeMask(mask));
   fs.writeFileSync(path.join(outDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   const places = admin1File ? createPlaces(JSON.parse(fs.readFileSync(admin1File, 'utf8'))) : null;
   writeGlobalLevel(outDir);

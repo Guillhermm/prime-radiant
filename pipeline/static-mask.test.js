@@ -72,3 +72,10 @@ test('records without a type are ignored', () => {
   const { stats } = run([['2024', [{ lat: 0, lon: 0, utcDay: '2024-01-01', hasType: false }]]]);
   assert.equal(stats.cells, 0);
 });
+
+test('the mask file round-trips and rejects a foreign file', async () => {
+  const { serializeMask, parseMask } = await import('./static-mask.js');
+  const mask = new Set([maskKey(31.805, 6.105), maskKey(-10, -50), maskKey(0, 0)]);
+  assert.deepEqual([...parseMask(serializeMask(mask))].sort(), [...mask].sort());
+  assert.throws(() => parseMask('{"schema":2}'), /unexpected/);
+});

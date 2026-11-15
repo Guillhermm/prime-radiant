@@ -61,6 +61,8 @@ export const mergeLive = (prev, next) => {
   const nm = next.manifest;
   // A build over another domain (or none) cannot be merged day by day: start again from the new one.
   if (prev && (prev.manifest.domain?.id ?? null) !== (nm.domain?.id ?? null)) prev = null;
+  // Nor can masked and unmasked counts (static-source mask, gate G2) be mixed.
+  if (prev && !prev.manifest.static_mask !== !nm.static_mask) prev = null;
   if (!prev) return { manifest: nm, tiles: new Map(Object.entries(next.tiles)) };
   const pm = prev.manifest;
   const from = keepFrom(nm.last_day);
@@ -112,7 +114,7 @@ export const mergeLive = (prev, next) => {
   const sources = [...nm.sources, ...(pm.merged_sources ?? []), { file: `live ${pm.fetched_at}`, records: null, has_type: false }];
   const manifest = buildLiveManifest({
     fetchedAt: nm.fetched_at, days, dayCounts, tiles: tileIds, sources: nm.sources, domain: nm.domain, baseUrl: nm.base_url,
-    stats: { merged_from: pm.fetched_at, merged_sources: sources.slice(nm.sources.length).slice(-60) },
+    stats: { merged_from: pm.fetched_at, merged_sources: sources.slice(nm.sources.length).slice(-60), ...(nm.static_mask ? { static_mask: nm.static_mask } : {}), ...(nm.share_domain ? { share_domain: nm.share_domain } : {}) },
   });
   for (const s of SENSORS) manifest.partial_days[s] = [...new Set([...manifest.partial_days[s], ...forcedPartial[s]])].filter((d) => source[s].has(d)).sort();
   const cov = Object.fromEntries(SENSORS.map((s) => [s, manifest.coverage[s]?.map(dayNumber) ?? null]));
@@ -152,7 +154,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
     if (!next) throw new Error(`live-merge: no manifest in ${values.next}`);
     const merged = mergeLive(prev, next);
     const out = writeLive(merged, values.out);
-    if (merged.manifest.domain) fs.copyFileSync(path.join(values.next, merged.manifest.domain.file), path.join(values.out, merged.manifest.domain.file));
+    for (const d of [merged.manifest.domain, merged.manifest.share_domain]) if (d) fs.copyFileSync(path.join(values.next, d.file), path.join(values.out, d.file));
     console.log(JSON.stringify({ prev: prev?.manifest.fetched_at ?? null, ...out }));
   })().catch((e) => { console.error(e.message); process.exit(1); });
 }

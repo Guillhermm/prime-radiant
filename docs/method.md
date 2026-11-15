@@ -245,16 +245,23 @@ months, NOAA-20 for NOAA-20 x K months (`core/partial.js`).
   Brazil). This replaces the earlier d/N scaling, which was 20-28% too high in Jun-Aug.
 - **Low confidence**: K not usable (method 4.2), more than a third of the days so far missing, or an area under 2,000 in-domain 0.1 degree cells (about 20,000 km2, a Foundation choice not
   yet validated; the Pantanal was 25-30% off either way).
-- **Type filter**: live values are multiplied by the archive's type-0 share of their calendar month,
+- **Type filter**: with the static-source mask (gate G2) published next to the archive tiles, the live
+  job drops NRT records in masked cells instead (manifest `static_mask`), and no type scaling is applied.
+  Measured on 2024 VIIRS archive cell-days outside the mask, all types over type 0 only: Algeria 1.0035,
+  Iraq 1.0009, Nigeria 1.0003, Angola 1.0000, India 1.0007, Brazil 1.0015 (gate V5). Without the mask,
+  live values are multiplied by the archive's type-0 share of their calendar month,
   `core/data/type0-share.json` (S-NPP archive 2012-2025 over Brazil, 0.94 in April to 0.99 in October;
-  an assumption, stated on screen). Without the table `liveComparison` keeps the values and states the
+  an assumption, stated on screen). Without either, `liveComparison` keeps the values and states the
   per-month bias (`typeBiasStatement`).
 - **Live starting mid-month**: days of the current month before the first live day are not observed
   (`daysNotObserved`), skipped like a missing day, and the band uses only the days counted. Under 7
   counted days (`LIVE_MIN_COUNTED_DAYS`) the month is null with a reason; otherwise it is low confidence.
-- **Extent**: Brazil only (the live build is clipped to the Brazil domain); the type shares, the share
-  table and the partial-day rule were measured there. Partial days are found on global record counts,
-  before the clip.
+- **Extent**: with the mask, the whole world (gate V5). The share table was measured over Brazil
+  (manifest `share_domain`, `share-domain.json`): an area with at least half its 0.1 degree cells in
+  Brazil gets the month to date; any other area is compared by whole past months only, because fires
+  ramp differently within a month elsewhere (gate V5: an even split reads Punjab's October 2-3 times low).
+  Without the mask, Brazil only (the live build is clipped to the Brazil domain). Partial days are found
+  on global record counts, before any clip.
 - **Wording**: approximate; NOAA-20 scaled to S-NPP; near-real-time; unfiltered by type; last complete
   day; S-NPP NRT ended 2026-11-02; FIRMS documentation says an Earthdata Login is required; the
   archive follows after a 2-3 month lag (FIRMS FAQ). Caveat items `live-*` in `core/caveats.js`.

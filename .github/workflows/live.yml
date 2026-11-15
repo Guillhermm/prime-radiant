@@ -1,7 +1,8 @@
 name: live
 # Daily near-real-time update (docs/deploy.md, "Live data"): downloads the FIRMS NOAA-20 NRT 7-day
-# file (keyless), builds daily tiles clipped to Brazil (gate V3 measured the live method there),
-# merges them into the live data already published and publishes the result under live/ in R2.
+# file (keyless), builds daily tiles worldwide with the archive's static-source mask (gate G2) when
+# the published data version has one, else clipped to Brazil (gate V3), merges them into the live
+# data already published and publishes the result under live/ in R2.
 # A failed step leaves the published live data as it was.
 on:
   schedule:
@@ -30,7 +31,13 @@ jobs:
           wc -l raw/nrt/J1_VIIRS_C2_Global_7d.csv
       - name: Build, merge with the published live data
         run: |
-          node pipeline/live.js --in raw/nrt --out raw/live-new --domain pipeline/domain/brazil.geojson
+          VERSION="$(curl -fsS https://data.primeradiantdata.com/manifest.json | node -e 'let s="";process.stdin.on("data",(c)=>s+=c).on("end",()=>console.log(JSON.parse(s).dataVersion))')"
+          if curl -fsS -o raw/static-mask.json "https://data.primeradiantdata.com/v/$VERSION/static-mask.json"; then
+            node pipeline/live.js --in raw/nrt --out raw/live-new --mask raw/static-mask.json --mask-version "$VERSION" --share-domain pipeline/domain/brazil.geojson
+          else
+            echo "no static mask in $VERSION: Brazil only"
+            node pipeline/live.js --in raw/nrt --out raw/live-new --domain pipeline/domain/brazil.geojson
+          fi
           node pipeline/live-merge.js --prev https://data.primeradiantdata.com --next raw/live-new --out raw/live
       - name: Test
         run: node --test 'pipeline/*.test.js' 'core/*.test.js' 'test/integration/*.test.js'

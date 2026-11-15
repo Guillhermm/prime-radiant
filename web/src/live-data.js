@@ -8,12 +8,25 @@ export const loadLiveTables = (fetchFn = fetch) => (tables ??= Promise.all(['dai
   return (await res.json()).share;
 })).then(([share, type0]) => ({ share, type0 })).catch(() => { tables = null; return null; }));
 
+/** Type shares of 1: a live build with the static-source mask (gate G2) needs no type scaling. */
+const NO_TYPE_SCALING = Array(12).fill(1);
+
+/** The season without its last month, the current one, still open; null when no month is left. */
+const wholeMonths = (season) => {
+  const n = (season?.live.values.length ?? 0) - 1;
+  if (n <= 0) return null;
+  const cut = (a) => a.slice(0, n);
+  return { ...season, live: { ...season.live, values: cut(season.live.values) }, band: Object.fromEntries(Object.entries(season.band).map(([k, v]) => [k, cut(v)])),
+    daysCounted: cut(season.daysCounted), daysMissing: cut(season.daysMissing) };
+};
+
 /** Live view's sentence for a reason core or the loader gives for showing no comparison. */
 export const LIVE_REASONS = {
   unavailable: 'Live data unavailable.',
   outside: 'Live data covers Brazil only, where its method was checked. This area has no live comparison.',
   noK: 'No NOAA-20 to S-NPP ratio for this area, so live values cannot be put in archive units.',
   noDays: 'No complete live day for this area yet.',
+  wholeMonths: 'Outside Brazil, live data is compared by whole months only, and no whole month of live data is in yet.',
 };
 
 /**
@@ -25,14 +38,28 @@ export const LIVE_REASONS = {
  */
 export const liveInput = ({ result, live, share, type0, now = new Date() }) => {
   if (!live) return { reason: LIVE_REASONS.unavailable, fetched_at: null };
-  const { manifest: lm, domain, tiles } = live;
+  const { manifest: lm, domain, shareDomain = null, tiles } = live;
   const fetchedAt = lm.fetched_at;
   const cells = domain ? seriesForAoi(result.bbox, {}, result.manifest, { res: 0.1, domain }).domain.inside : null;
   if (cells === 0) return { reason: LIVE_REASONS.outside, fetched_at: fetchedAt };
   const K = result.harmonized.K;
   if (!K || !Number.isFinite(K.value) || K.value <= 0) return { reason: LIVE_REASONS.noK, fetched_at: fetchedAt };
+  // A global live build: the measured shares hold where most of the area lies in their region.
+  let measured = true;
+  if (!domain && lm.share_domain) {
+    const d = shareDomain ? seriesForAoi(result.bbox, {}, result.manifest, { res: 0.1, domain: shareDomain }).domain : null;
+    measured = d !== null && d.inside * 2 >= d.cells;
+  }
   const series = liveSeriesFromTiles(tiles, lm, result.bbox, { K, cells });
-  const cmp = liveComparison({ live: series, harmonized: result.harmonized.series, share, fetchedAt, now, partialMonths: result.partialMonths ?? [], type0Share: type0 });
+  const cmp = liveComparison({ live: series, harmonized: result.harmonized.series, share, fetchedAt, now,
+    partialMonths: result.partialMonths ?? [], type0Share: lm.static_mask ? NO_TYPE_SCALING : type0 });
+  // The share table was measured over Brazil; elsewhere fires ramp differently within a month (gate V5:
+  // Punjab in October reads 2-3 times low), so only whole past months are compared there.
+  if (!measured) {
+    cmp.month = null;
+    cmp.season = wholeMonths(cmp.season);
+    if (!cmp.season) return { reason: LIVE_REASONS.wholeMonths, fetched_at: fetchedAt };
+  }
   const view = cmp.month ?? cmp.season;
   if (!view) return { reason: cmp.reason ? `${LIVE_REASONS.noDays} (${cmp.reason}.)` : LIVE_REASONS.noDays, fetched_at: fetchedAt };
   const notes = [];

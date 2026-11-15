@@ -76,3 +76,23 @@ export const createMaskBuilder = ({ minDays = STATIC_MASK.minDays, minYears = ST
     },
   };
 };
+
+/** The mask as a file: sorted cell keys, delta-encoded (published next to the tiles for the live job). */
+export const serializeMask = (mask) => {
+  const keys = [...mask].sort((a, b) => a - b);
+  const cells = keys.map((k, i) => (i ? k - keys[i - 1] : k));
+  return `${JSON.stringify({ schema: 1, ...STATIC_MASK, count: keys.length, cells })}\n`;
+};
+
+export const parseMask = (text) => {
+  const m = JSON.parse(text);
+  if (m?.schema !== 1 || m.res !== RES || !Array.isArray(m.cells) || m.cells.length !== m.count) throw new Error('static mask: unexpected file');
+  const out = new Set();
+  let k = 0;
+  for (const d of m.cells) {
+    if (!Number.isInteger(d) || d < 0) throw new Error('static mask: bad cell');
+    k += d;
+    out.add(k);
+  }
+  return out;
+};

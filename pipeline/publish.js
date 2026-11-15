@@ -228,10 +228,11 @@ export const publishLive = async ({ dir, env, fetchFn = fetch, dryRun = false, l
     const e = validateLiveTile(read(rel), { manifest });
     if (e.length) throw new Error(`publish: ${rel} fails validation: ${e[0].code} ${e[0].path}`);
   }
-  if (manifest.domain) {
-    if (!files.includes(manifest.domain.file)) throw new Error(`publish: ${manifest.domain.file} is named in the live manifest but missing`);
-    const e = validateDomain(read(manifest.domain.file));
-    if (e.length) throw new Error(`publish: live ${manifest.domain.file} fails validation`);
+  for (const d of [manifest.domain, manifest.share_domain]) {
+    if (!d) continue;
+    if (!files.includes(d.file)) throw new Error(`publish: ${d.file} is named in the live manifest but missing`);
+    const e = validateDomain(read(d.file));
+    if (e.length) throw new Error(`publish: live ${d.file} fails validation`);
   }
   const version = manifest.fetched_at.replace(/\D/g, '').slice(0, 14);
   const prefix = `live/v/${version}/`;

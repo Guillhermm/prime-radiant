@@ -53,8 +53,8 @@ const DEFS = [
     'S-NPP near-real-time files ended on 2026-11-02, so live values are NOAA-20 detections multiplied by K to S-NPP equivalent units, the unit of the archive band.'],
   ['live-archive-lag', 'live', 'The archive follows later.',
     'The archive product replaces near-real-time data after a 2-3 month lag (FIRMS FAQ); live values for a month are provisional until then.'],
-  ['live-brazil', 'live', 'Live covers Brazil only.',
-    'The live comparison is built for Brazil, where its method was checked (gate V3): the within-month shares and the type-0 shares were measured there. Live data is clipped to Brazil, so an area outside it has no live comparison.'],
+  ['live-brazil', 'live', 'Live was checked over Brazil.',
+    'The live method was checked over Brazil (gate V3), where the within-month shares were measured. When the published data carries the static-source mask (gate G2), live data covers the whole world, the mask stands in for the type filter, and areas mostly outside Brazil are compared by whole past months only, because the within-month timing of fires was measured over Brazil. Without the mask, live data is clipped to Brazil and an area outside it has no live comparison.'],
   ['live-access', 'live', 'Live source may require a login.',
     'FIRMS documentation says an Earthdata Login is required for its files; they are served without one today. If that is enforced, live data becomes unavailable and the view says so.'],
   // flag explanations

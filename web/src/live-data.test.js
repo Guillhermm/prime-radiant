@@ -73,3 +73,29 @@ test('loadLiveTables fetches the daily-share and type-0 tables', async () => {
   assert.equal(ok.type0, type0);
   assert.equal(ok.share, share);
 });
+
+test('a global live build with the static mask: no type scaling, no type-bias note', () => {
+  const g = { ...lm, static_mask: { data_version: 'v1', cells: 10 } };
+  const out = liveInput({ result: result(), live: { manifest: g, domain: null, tiles: { x17y13: tile } }, share, type0, now });
+  assert.ok(Math.abs(out.live.values.at(-1) - 12 * 10 * 1.2) < 1e-9);
+  assert.equal(out.lowConfidence, false);
+});
+
+test('a global live build: inside the share region, month to date; outside, whole past months only', () => {
+  const g = { ...lm, static_mask: { data_version: 'v1', cells: 10 }, share_domain: { id: 'brazil', file: 'share-domain.json', res: 0.1 } };
+  const inside = liveInput({ result: result(), live: { manifest: g, domain: null, shareDomain: domain, tiles: { x17y13: tile } }, share, type0, now });
+  assert.equal(inside.live.step, 'day');
+  // A share region far away (one cell row near the South Pole): the area is not in it.
+  const far = { rows: { 5: [[0, 9]] } };
+  const away = liveInput({ result: result(), live: { manifest: g, domain: null, shareDomain: far, tiles: { x17y13: tile } }, share, type0, now });
+  assert.equal(away.reason, LIVE_REASONS.wholeMonths);
+  // Live from 2026-10-01 to 11-12: October is whole and compared, November is left out.
+  const long = { ...g, day0: '2026-10-01', coverage: { ...g.coverage, noaa20: ['2026-10-01', '2026-11-12'] } };
+  const t = { cell: Array(43).fill(0), day: [...Array(43).keys()], modis: Array(43).fill(null), viirs: Array(43).fill(null), noaa20: Array(43).fill(10) };
+  const oct = liveInput({ result: result(), live: { manifest: long, domain: null, shareDomain: far, tiles: { x17y13: t } }, share, type0, now });
+  assert.equal(oct.live.step, 'month');
+  assert.equal(oct.live.start, '2026-10');
+  assert.equal(oct.live.values.length, 1);
+  assert.ok(Math.abs(oct.live.values[0] - 31 * 10 * 1.2) < 1e-9);
+  assert.equal(oct.band.median.length, 1);
+});

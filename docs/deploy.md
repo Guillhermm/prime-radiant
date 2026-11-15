@@ -9,7 +9,7 @@
 - Build: none (`buildCommand: null`, no install step, no dependencies). The deploy uploads `web/`, `core/` and `api/`.
 - Data: `/data/*` is rewritten to the R2 bucket (see "Data hosting (H5)"), so production shows real FIRMS data once the first publish has run. Until then `/data/manifest.json` has nothing behind it and the app shows its load error. The synthetic generator (`npm run mock`) is for local use only; a synthetic manifest still turns on the "Synthetic demo data" band.
 - To check in the Vercel dashboard once (not checked): Project, Settings, Build and Deployment, Build Command is not set to `node tools/mock-data.mjs` by hand. `vercel.json` overrides it, but what `null` does there is not documented.
-- Live proxy `/api/live`: deployed with the site. `MAP_KEY` is not set on production, and the web app does not call the proxy yet (the Live tab runs on placeholder data): without it the function answers 503 `live proxy is not configured`. To enable: Vercel dashboard, Project, Settings, Environment Variables, add `MAP_KEY` (FIRMS map key) for Production, then redeploy (a variable change does not apply to existing deployments). Never put the key in the repo or in a `NEXT_PUBLIC`-style variable.
+- Live proxy `/api/live`: deployed with the site. `MAP_KEY` is not set on production, and the web app does not call it (the Live tab reads the published live data, see "Live data"): without it the function answers 503 `live proxy is not configured`. To enable: Vercel dashboard, Project, Settings, Environment Variables, add `MAP_KEY` (FIRMS map key) for Production, then redeploy (a variable change does not apply to existing deployments). Never put the key in the repo or in a `NEXT_PUBLIC`-style variable.
 
 ### Security pass, 2026-11-14
 
@@ -88,7 +88,8 @@ Status: live. `pipeline/publish.js` and the publish workflow are unit tested wit
 
 ## Live data (M3-K2)
 
-- Layout in the same bucket: `live/v/{fetched}/manifest.json`, `live/v/{fetched}/domain.json`, `live/v/{fetched}/tiles/0.1/*.json`
+- Layout in the same bucket: `live/v/{fetched}/manifest.json`, `live/v/{fetched}/domain.json` (Brazil-only builds) or
+  `share-domain.json` (worldwide builds), `live/v/{fetched}/tiles/0.1/*.json`
   (immutable, `{fetched}` is `fetched_at` as digits) and the root `live/manifest.json` (`max-age=300`, `base_url`
   `data/live/v/{fetched}/`). The app reads `/data/live/manifest.json` through the same `/data/` rewrite.
 - `node pipeline/publish.js --live --in <dir>` validates the live manifest and tiles, uploads, lists them back, writes the root

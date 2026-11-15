@@ -79,3 +79,18 @@ test('the fetch day is partial: its counts are null in the tile and the manifest
   assert.deepEqual(t.noaa20, [null, null, null, null, null, null]);
   assert.deepEqual(validateLiveTile(t, { manifest }), []);
 });
+
+test('static-source mask: records in a masked cell are dropped and counted; the manifest names the mask', async () => {
+  const { serializeMask, maskKey } = await import('../../pipeline/static-mask.js');
+  const plain = await buildLive({ ...opts, outDir: tmp() });
+  const maskFile = path.join(tmp(), 'static-mask.json');
+  // Cell 0 of x17y13 (lat 40.05, lon -9.95) holds records on all three days.
+  fs.writeFileSync(maskFile, serializeMask(new Set([maskKey(40.05, -9.95)])));
+  const { manifest, stats } = await buildLive({ ...opts, outDir: tmp(), maskFile, maskVersion: 'v-test' });
+  assert.ok(stats.static_masked > 0);
+  assert.deepEqual(manifest.static_mask, { data_version: 'v-test', cells: 1 });
+  const total = (s) => Object.values(s.fire_cell_days).reduce((a, b) => a + b, 0);
+  assert.ok(total(stats) < total(plain.stats));
+  assert.equal(plain.manifest.static_mask, undefined);
+  assert.deepEqual(validateLiveManifest(manifest), []);
+});

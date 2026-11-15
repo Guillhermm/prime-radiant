@@ -174,12 +174,14 @@ tiles and a live manifest. `--fetched-at` is the time the files were fetched (de
 
 `.github/workflows/live.yml` runs once a day (03:30 UTC) and on demand. FIRMS NRT is updated within about 3 hours and its
 text files hourly (FIRMS FAQ); the job polls once a day, well under the "at most hourly" limit. It downloads
-`J1_VIIRS_C2_Global_7d.csv` (NOAA-20 only, keyless, `User-Agent: prime-radiant-live-job`), builds it with
-`pipeline/live.js --domain pipeline/domain/brazil.geojson`, and merges it into the published live data with
+`J1_VIIRS_C2_Global_7d.csv` (NOAA-20 only, keyless, `User-Agent: prime-radiant-live-job`), reads the published data
+version's `static-mask.json` (written by every archive build since gate G2) and builds worldwide with
+`pipeline/live.js --mask static-mask.json --mask-version <version> --share-domain pipeline/domain/brazil.geojson`; when the
+published version has no mask it builds with `--domain pipeline/domain/brazil.geojson` (Brazil only) as before. It merges it into the published live data with
 `node pipeline/live-merge.js --prev https://data.primeradiantdata.com --next <new build> --out <dir>`: per sensor and day the
 new build wins, except its first day (cut mid-day by the rolling window), where the earlier build's day is kept; days
 before the 1st of the previous month are dropped; partial days are derived again on the merged daily record counts. A
-build over another domain is not merged. The first run has only the last 7 days, so the current month starts with days
+build over another domain, or a masked build after an unmasked one, is not merged. The first run has only the last 7 days, so the current month starts with days
 not observed (method 6b). Then the tests run and `pipeline/publish.js --live` publishes (docs/deploy.md, "Live data").
 
 ## Daily share table (gate V3, L1)

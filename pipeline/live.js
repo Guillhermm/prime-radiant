@@ -21,6 +21,7 @@ import { binRecords, createBinResult, dayNumber, familyOf } from './bin.js';
 import { SATELLITES } from './manifest.js';
 import { SENSORS, compareTileIds } from './write-tiles.js';
 import { inBbox } from './build.js';
+import { maskKey, parseMask } from './static-mask.js';
 
 const EXT = /\.(csv|csv\.gz|dbf)$/i;
 const DAY_MS = 864e5;
@@ -121,6 +122,8 @@ export function serializeLiveTile(t) {
 }
 
 /** A day is partial when a pass has under this share of the median of that pass over its neighbor days. */
+export const SHARE_DOMAIN_FILE = 'share-domain.json';
+
 export const PARTIAL_SHARE = 0.5;
 /** Neighbor days on each side (a 7-day window centered on the day, the day itself excluded). */
 export const PARTIAL_HALF_WINDOW = 3;
@@ -211,7 +214,7 @@ function listFiles(p) {
  * @param {{inputs: string[], outDir: string, fetchedAt: string, domainFile?: string, baseUrl?: string}} o
  *   `fetchedAt` is an ISO 8601 UTC time ("...Z"), passed in.
  */
-export async function buildLive({ inputs, outDir, fetchedAt, domainFile, baseUrl }) {
+export async function buildLive({ inputs, outDir, fetchedAt, domainFile, baseUrl, maskFile, maskVersion, shareDomainFile }) {
   if (!/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(fetchedAt ?? '')) throw new Error('fetchedAt must be an ISO 8601 UTC time ending in Z');
   let clipper, domainBox, domainInfo;
   if (domainFile) {
@@ -223,6 +226,16 @@ export async function buildLive({ inputs, outDir, fetchedAt, domainFile, baseUrl
   }
   const files = inputs.flatMap(listFiles);
   if (!files.length) throw new Error('no .csv, .csv.gz or .dbf files found in the inputs');
+  // NRT has no type field: the archive's static-source mask (gate G2) stands in for the type filter.
+  const mask = maskFile ? parseMask(fs.readFileSync(maskFile, 'utf8')) : null;
+  // Where the within-month shares (core/data/daily-share.json) were measured: no clip, the app reads it.
+  let shareDomain = null;
+  if (shareDomainFile) {
+    const gj = JSON.parse(fs.readFileSync(shareDomainFile, 'utf8'));
+    shareDomain = { clipper: createClipper(polygonsOf(gj)), id: gj.domain?.id ?? path.basename(shareDomainFile, '.geojson') };
+    shareDomain.domain = shareDomain.clipper.domain;
+  }
+  let staticMasked = 0;
 
   const into = createBinResult();
   const days = {};
@@ -252,6 +265,7 @@ export async function buildLive({ inputs, outDir, fetchedAt, domainFile, baseUrl
           c[pass] = (c[pass] ?? 0) + 1;
         }
         if (clipper && !(inBbox(domainBox, rec.lon, rec.lat) && clipper.contains(rec.lon, rec.lat))) { clippedByDomain++; continue; }
+        if (mask && mask.has(maskKey(rec.lat, rec.lon))) { staticMasked++; continue; }
         yield rec;
       }
     };
@@ -274,6 +288,8 @@ export async function buildLive({ inputs, outDir, fetchedAt, domainFile, baseUrl
       duplicates: into.stats.duplicates,
       clipped_by_domain: clippedByDomain,
       fire_cell_days: fcd,
+      ...(mask ? { static_masked: staticMasked, static_mask: { data_version: maskVersion ?? null, cells: mask.size } } : {}),
+      ...(shareDomain ? { share_domain: { id: shareDomain.id, file: SHARE_DOMAIN_FILE, res: 0.1 } } : {}),
     },
   });
   const cov = Object.fromEntries(SENSORS.map((s) => [s, manifest.coverage[s]?.map(dayNumber) ?? null]));
@@ -290,11 +306,12 @@ export async function buildLive({ inputs, outDir, fetchedAt, domainFile, baseUrl
     size.brotli += zlib.brotliCompressSync(text).length;
   }
   if (clipper) fs.writeFileSync(path.join(outDir, 'domain.json'), `${JSON.stringify(clipper.domain)}\n`);
+  if (shareDomain) fs.writeFileSync(path.join(outDir, SHARE_DOMAIN_FILE), `${JSON.stringify(shareDomain.domain)}\n`);
   fs.writeFileSync(path.join(outDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   return { manifest, stats: {
     detections_in: reader.read, rejected: reader.rejected, bin_rejected: into.stats.rejected,
     records_without_type: noType, skipped: into.stats.skipped, duplicates: into.stats.duplicates,
-    clipped_by_domain: clippedByDomain, fire_cell_days: fcd, tiles: size,
+    clipped_by_domain: clippedByDomain, static_masked: mask ? staticMasked : null, fire_cell_days: fcd, tiles: size,
     day0: manifest.day0, last_day: manifest.last_day,
   } };
 }
@@ -303,14 +320,16 @@ async function main() {
   const { values } = parseArgs({ options: {
     in: { type: 'string', multiple: true }, out: { type: 'string' }, domain: { type: 'string' },
     'fetched-at': { type: 'string' }, download: { type: 'string' }, 'base-url': { type: 'string' },
+    mask: { type: 'string' }, 'mask-version': { type: 'string' }, 'share-domain': { type: 'string' },
   } });
   if (!values.in?.length || !values.out) {
-    console.error('usage: node pipeline/live.js --in <dir|file> --out <dir> [--domain file.geojson] [--fetched-at ISO] [--download 24h|48h|7d]');
+    console.error('usage: node pipeline/live.js --in <dir|file> --out <dir> [--domain file.geojson] [--mask static-mask.json --mask-version V] [--share-domain file.geojson] [--fetched-at ISO] [--download 24h|48h|7d]');
     process.exit(2);
   }
   const fetchedAt = values['fetched-at'] ?? new Date().toISOString().replace(/\.\d+Z$/, 'Z');
   if (values.download) await downloadNrt({ fetch, urls: nrtUrls(values.download), dir: values.in[0] });
-  const { stats } = await buildLive({ inputs: values.in, outDir: values.out, fetchedAt, domainFile: values.domain, baseUrl: values['base-url'] });
+  const { stats } = await buildLive({ inputs: values.in, outDir: values.out, fetchedAt, domainFile: values.domain, baseUrl: values['base-url'],
+    maskFile: values.mask, maskVersion: values['mask-version'], shareDomainFile: values['share-domain'] });
   console.log(JSON.stringify(stats, null, 2));
 }
 

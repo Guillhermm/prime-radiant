@@ -97,3 +97,13 @@ test('an earlier build over another domain is not merged', () => {
   const m = mergeLive({ ...prev, manifest: { ...prev.manifest, domain: { id: 'other', version: '1', file: 'domain.json', res: 0.1 } } }, next);
   assert.equal(m.manifest.day0, '2026-11-05');
 });
+
+test('masked and unmasked builds are not merged; the mask is carried through a merge', () => {
+  const prev = build({ first: '2026-11-01', last: '2026-11-04', fetchedAt: '2026-11-04T06:00:00Z' });
+  const next = build({ first: '2026-11-04', last: '2026-11-06', fetchedAt: '2026-11-06T06:00:00Z' });
+  const sm = { data_version: 'v1', cells: 10 };
+  assert.equal(mergeLive(prev, { ...next, manifest: { ...next.manifest, static_mask: sm } }).manifest.day0, '2026-11-04');
+  const both = mergeLive({ ...prev, manifest: { ...prev.manifest, static_mask: sm } }, { ...next, manifest: { ...next.manifest, static_mask: sm } });
+  assert.equal(both.manifest.day0, '2026-11-01');
+  assert.deepEqual(both.manifest.static_mask, sm);
+});

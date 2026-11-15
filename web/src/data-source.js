@@ -224,7 +224,10 @@ export const createDataSource = ({ manifestUrl, root = '', withOverview = true, 
         if (validateLiveManifest(m).length) return null;
         const url = domainUrl(m, root);
         const d = url ? await getJson(url) : null;
-        return { manifest: m, domain: d && !validateDomain(d).length ? d : null };
+        // A global live build names the region its within-month shares were measured in.
+        const sUrl = m.share_domain ? domainUrl({ ...m, domain: m.share_domain }, root) : null;
+        const sd = sUrl ? await getJson(sUrl) : null;
+        return { manifest: m, domain: d && !validateDomain(d).length ? d : null, shareDomain: sd && !validateDomain(sd).length ? sd : null };
       })().catch((err) => { liveManifestPromise = null; throw err; });
       const lm = await liveManifestPromise;
       if (!lm) return null;
@@ -238,7 +241,7 @@ export const createDataSource = ({ manifestUrl, root = '', withOverview = true, 
         }
         tiles[id] = liveTileCache.get(id);
       }
-      return { manifest: lm.manifest, domain: lm.domain, tiles };
+      return { manifest: lm.manifest, domain: lm.domain, shareDomain: lm.shareDomain, tiles };
     } catch {
       return null;
     }
