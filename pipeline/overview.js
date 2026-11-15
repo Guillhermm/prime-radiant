@@ -3,7 +3,8 @@
  * of one VIIRS sensor over the newest full calendar year) and a ranked list of hotspots kept apart.
  * One sensor, observed counts only, so no harmonization factor enters the map.
  *   node pipeline/overview.js --in <build dir> [--domain file.geojson] [--admin1 file.geojson]
- * With an admin-1 file, each hotspot carries `place: {country, state}` (pipeline/places.js).
+ * With an admin-1 file, each hotspot carries `place: {country, state}` (pipeline/places.js), and
+ * `countries` ranks the countries by the same numbers (countriesOf).
  * Reads manifest.json and tiles/1/*.json from the build and writes overview.json next to them.
  */
 import fs from 'node:fs';
@@ -16,6 +17,7 @@ import { validateOverview } from '../core/schema.js';
 import { createPlaces } from './places.js';
 
 export const HOTSPOTS = 10;
+export const COUNTRY_HOTSPOTS = 3;
 export const MIN_APART_DEG = 3;
 // S-NPP first: on a tie it is the sensor R and the calendar are built on.
 const SENSORS = ['viirs', 'noaa20'];
@@ -78,14 +80,41 @@ export const buildOverview = (manifest, coarse, region = null, places = null) =>
     return [Math.round(lon - 0.5), Math.round(lat - 0.5), value];
   }).sort((a, b) => a[1] - b[1] || a[0] - b[0]);
   const partial = (manifest.partial_months?.[sensor] ?? []).filter((m) => m.startsWith(`${year}-`));
+  const named = (h) => {
+    const place = places?.(h.bbox[0], h.bbox[1]);
+    return place ? { ...h, place } : h;
+  };
   return {
     schema: 1, dataVersion: manifest.dataVersion, region, sensor, year, res: 1, unit: 'fire-cell-days',
     partial_months: partial, cells,
-    hotspots: pickHotspots(cells).map((h) => {
-      const place = places?.(h.bbox[0], h.bbox[1]);
-      return place ? { ...h, place } : h;
-    }),
+    hotspots: pickHotspots(cells).map(named),
+    ...(places ? { countries: countriesOf(cells, places) } : {}),
   };
+};
+
+/**
+ * Countries ranked by the overview's fire-cell-days. A square belongs to the country of the state
+ * holding most of its fine-cell centers (pipeline/places.js), so border squares count once, whole.
+ * Each country: {country, value, bbox (its squares), top: its COUNTRY_HOTSPOTS hottest squares}.
+ */
+export const countriesOf = (cells, places) => {
+  const by = new Map();
+  for (const c of cells) {
+    const p = places(c[0], c[1]);
+    if (!p) continue;
+    const e = by.get(p.country) ?? by.set(p.country, { country: p.country, value: 0, cells: [], names: new Map() }).get(p.country);
+    e.value += c[2];
+    e.cells.push(c);
+    e.names.set(`${c[0]},${c[1]}`, p);
+  }
+  return [...by.values()].filter((e) => e.value > 0)
+    .sort((a, b) => b.value - a.value || (a.country < b.country ? -1 : 1))
+    .map((e) => ({
+      country: e.country,
+      value: e.value,
+      bbox: [Math.min(...e.cells.map((c) => c[0])), Math.min(...e.cells.map((c) => c[1])), Math.max(...e.cells.map((c) => c[0])) + 1, Math.max(...e.cells.map((c) => c[1])) + 1],
+      top: pickHotspots(e.cells, { n: COUNTRY_HOTSPOTS }).map((h) => ({ ...h, place: e.names.get(`${h.bbox[0]},${h.bbox[1]}`) })),
+    }));
 };
 
 /** The region label a domain file declares (`domain: {id, name}`), or null when it names none. */

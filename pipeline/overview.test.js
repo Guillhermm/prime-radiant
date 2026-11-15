@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildOverview, fullYear, pickHotspots, pickSource, regionOf } from './overview.js';
+import { buildOverview, countriesOf, fullYear, pickHotspots, pickSource, regionOf } from './overview.js';
 import { validateOverview } from '../core/schema.js';
 import { cellId } from '../core/grid.js';
 import { monthIndex } from '../core/months.js';
@@ -85,4 +85,23 @@ test('validateOverview names bad cells, duplicates and an unranked list', () => 
   assert.deepEqual(codes({ ...ok, hotspots: [{ bbox: [-56, -3, -54, -2], value: 3 }] }), ['BAD_HOTSPOT']);
   assert.deepEqual(codes({ ...ok, partial_months: ['2024-05'] }), ['BAD_FIELD']);
   assert.deepEqual(codes(null), ['NOT_OBJECT']);
+});
+
+test('countriesOf: squares grouped by the named country, ranked by total, with bbox and top squares', () => {
+  const cells = [[10, 0, 5], [11, 0, 50], [20, 5, 30], [30, 30, 7], [40, 40, 0]];
+  const name = (w) => (w < 15 ? { country: 'A', state: `a${w}` } : w < 25 ? { country: 'B', state: null } : w === 40 ? { country: 'C', state: null } : null);
+  const got = countriesOf(cells, name);
+  assert.deepEqual(got.map((c) => [c.country, c.value]), [['A', 55], ['B', 30]]); // C has only a zero; the unnamed square is left out
+  assert.deepEqual(got[0].bbox, [10, 0, 12, 1]);
+  assert.deepEqual(got[0].top.map((h) => [h.bbox[0], h.value, h.place.state]), [[11, 50, 'a11']]); // 10 is under 3 degrees from 11
+});
+
+test('the overview carries countries only with a place lookup, and the schema checks their ranking', () => {
+  assert.equal('countries' in buildOverview(manifest(), coarse), false);
+  const o = buildOverview(manifest(), coarse, null, () => ({ country: 'Land', state: null }));
+  assert.equal(o.countries.length, 1);
+  assert.equal(o.countries[0].value, o.cells.reduce((s, c) => s + c[2], 0));
+  assert.deepEqual(validateOverview(o), []);
+  const two = { ...o, countries: [{ ...o.countries[0], value: 1 }, o.countries[0]] };
+  assert.deepEqual(validateOverview(two).map((e) => e.code), ['BAD_COUNTRY']);
 });

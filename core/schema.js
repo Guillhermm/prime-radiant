@@ -433,6 +433,20 @@ export function validateOverview(o) {
       else seen.add(`${c[0]},${c[1]}`);
     });
   }
+  if (o.countries !== undefined) {
+    if (!Array.isArray(o.countries)) e.push(err('BAD_FIELD', 'countries', 'countries must be an array'));
+    else {
+      let prev = Infinity;
+      o.countries.forEach((c, i) => {
+        const b = c?.bbox;
+        const ok = isObj(c) && typeof c.country === 'string' && c.country !== '' && isCount(c.value) && c.value > 0 && c.value <= prev
+          && Array.isArray(b) && b.length === 4 && isW(b[0]) && isS(b[1]) && b[2] > b[0] && b[3] > b[1] && b[2] <= 180 && b[3] <= 90
+          && Array.isArray(c.top) && c.top.every((h) => isObj(h) && Array.isArray(h.bbox) && h.bbox.length === 4 && isCount(h.value) && h.value > 0);
+        if (!ok) e.push(err('BAD_COUNTRY', `countries[${i}]`, 'a country must be {country, value > 0, bbox, top}, ranked by value'));
+        else prev = c.value;
+      });
+    }
+  }
   if (!Array.isArray(o.hotspots)) e.push(err('BAD_FIELD', 'hotspots', 'hotspots must be an array'));
   else {
     let prev = Infinity;

@@ -235,7 +235,12 @@ year a VIIRS sensor covers in full (S-NPP on a tie, NOAA-20 once it has the newe
 one sensor's observed fire-cell-days per 1 deg cell (`cells: [west, south, value]`, summed from the
 coarse tiles), the sensor's partial months of that year, and up to 10 hotspots ranked by value and
 kept at least 3 deg apart on one axis (`hotspots: [{bbox, value}]`). No harmonization factor enters
-it. A build with no full VIIRS year writes none, and the app falls back to drawing or typing an area.
+it. With `--admin1` it also carries `countries: [{country, value, bbox, top}]`: the same cells grouped by the
+country `places.js` gives each square (border squares count once, whole, for the country holding most of
+them), ranked by total, with each country's bounding box and its 3 hottest squares 3 deg apart (`countriesOf`).
+On the production global cells (`202611151751`): 203 countries, 52 KB, every fire-cell-day named; top the
+Democratic Republic of the Congo 554,683, Angola 320,572, Brazil 275,308, India 243,118; about 5 minutes.
+A build with no full VIIRS year writes none, and the app falls back to drawing or typing an area.
 `core/schema.js` `validateOverview` checks it, and `pipeline/publish.js` validates it when present.
 
 First real file (data version `20261115`, 2026-11-15): S-NPP 2025, 793 cells, 274,291
