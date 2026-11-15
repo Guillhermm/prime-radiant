@@ -11,11 +11,13 @@ import zlib from 'node:zlib';
 import readline from 'node:readline';
 
 // Satellite code -> [sensor, satellite]. MODIS codes verified in real CSV and DBF
-// (Terra, Aqua); S-NPP: CSV 'N', DBF 'SNPP'; NOAA-20 'N20' in CSV and DBF; NOAA-21 DBF 'N21'.
+// (Terra, Aqua; the NRT text files use T, A); S-NPP: CSV 'N', DBF 'SNPP'; NOAA-20 'N20' in CSV and DBF; NOAA-21 DBF 'N21'.
 // Any other code (e.g. Landsat 'L8') is rejected and counted under 'satellite'.
 const SATELLITES = new Map([
   ['Terra', ['modis', 'Terra']],
   ['Aqua', ['modis', 'Aqua']],
+  ['T', ['modis', 'Terra']], // NRT text files (verified 2026-11-15 in MODIS_C6_1_Global_24h.csv)
+  ['A', ['modis', 'Aqua']],
   ['N', ['viirs', 'SNPP']],
   ['SNPP', ['viirs', 'SNPP']],
   ['N20', ['viirs', 'NOAA20']],

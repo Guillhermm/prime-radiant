@@ -85,8 +85,8 @@ test('csv: missing required column throws; unknown extension throws', async () =
 test('normalize: satellite codes map to families', () => {
   const base = { lat: '0', lon: '0', date: '2023-01-01', time: '0000', type: undefined };
   const got = (s) => normalize({ ...base, satellite: s }, newStats());
-  assert.deepEqual(['Terra', 'Aqua', 'N', 'SNPP', 'N20', 'N21'].map((s) => got(s).satellite),
-    ['Terra', 'Aqua', 'SNPP', 'SNPP', 'NOAA20', 'NOAA21']);
+  assert.deepEqual(['Terra', 'Aqua', 'T', 'A', 'N', 'SNPP', 'N20', 'N21'].map((s) => got(s).satellite),
+    ['Terra', 'Aqua', 'Terra', 'Aqua', 'SNPP', 'SNPP', 'NOAA20', 'NOAA21']);
   assert.equal(got('N20').sensor, 'viirs');
   assert.equal(got('L8'), null);
 });

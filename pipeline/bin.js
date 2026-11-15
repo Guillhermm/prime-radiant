@@ -18,6 +18,11 @@ import { createDedupe } from './dedupe.js';
 
 export const MODIS_AQUA_START = '2002-07-04';
 
+/** Days since 1970-01-01 of a valid "YYYY-MM-DD". */
+export function dayNumber(utcDay) {
+  return Date.UTC(+utcDay.slice(0, 4), +utcDay.slice(5, 7) - 1, +utcDay.slice(8, 10)) / 864e5;
+}
+
 /** Family of a record, or null when the record is dropped. */
 export function familyOf(rec) {
   if (rec.sensor === 'modis') {
@@ -36,7 +41,7 @@ export function familyOf(rec) {
  * @property {Object<string, Object<string, Object<string, Map<number, number>>>>} counts
  *   counts[family][tileId][cellId] is a Map monthIdx -> fire-cell-days (a Map, not an object:
  *   an object keyed by month index ~300 allocates a ~4 KB array per cell). monthIdx is months since
- *   the manifest `month0`. Family, tile and cell keys are strings.
+ *   the manifest `month0` (days since `day0` when binned daily). Family, tile and cell keys are strings.
  * @property {{read: number, counted: number, duplicates: number,
  *   skipped: Object<string, number>, rejected: number}} stats
  * @property {ReturnType<typeof createDedupe>} dedupe fire-cell-days seen, per UTC year; kept
@@ -54,11 +59,14 @@ export function createBinResult() {
  * Bin records (sync or async iterable) into `into`. Memory: `into.dedupe` holds one set per
  * UTC year seen; call `into.dedupe.dropYear(y)` once every file holding year y is binned.
  * @param {Iterable|AsyncIterable} records {sensor, satellite, lat, lon, utcDay, hasType}
- * @param {{month0: string, into?: BinResult, allowNoType?: boolean}} opts month0 = manifest month0 "YYYY-MM"
+ * @param {{month0?: string, day0?: string, into?: BinResult, allowNoType?: boolean}} opts month0 = manifest
+ *   month0 "YYYY-MM" (the index is months since month0); day0 "YYYY-MM-DD" instead bins daily (the
+ *   index is days since day0, live pipeline); exactly one of the two.
  * @returns {Promise<BinResult>}
  */
-export async function binRecords(records, { month0, into = createBinResult(), allowNoType = false }) {
-  const base = monthIndex(month0);
+export async function binRecords(records, { month0, day0, into = createBinResult(), allowNoType = false }) {
+  if (!month0 === !day0) throw new Error('binRecords needs exactly one of month0 and day0');
+  const base = month0 ? monthIndex(month0) : dayNumber(day0);
   const { counts, stats, dedupe } = into;
   for await (const rec of records) {
     stats.read++;
@@ -81,7 +89,7 @@ export async function binRecords(records, { month0, into = createBinResult(), al
       stats.rejected++;
       continue;
     }
-    const m = monthIndex(`${day[1]}-${day[2]}`) - base;
+    const m = (day0 ? dayNumber(rec.utcDay) : monthIndex(`${day[1]}-${day[2]}`)) - base;
     if (m < 0) {
       stats.rejected++;
       continue;
