@@ -52,8 +52,8 @@ test('footer names the authors with accents, the Apache-2.0 notice and the three
   assert.ok(FOOTER.attributions.some((a) => a.includes('OpenStreetMap contributors')));
 });
 
-test('every view has a bottom-bar icon and the footer links are https', () => {
-  assert.ok(VIEWS.every((v) => ICON_NAMES.includes(VIEW_ICONS[v.id])));
+test('Home and every view have a bottom-bar icon, and the footer links are https', () => {
+  assert.ok(['home', ...VIEWS.map((v) => v.id)].every((id) => ICON_NAMES.includes(VIEW_ICONS[id])));
   assert.ok(FOOTER.links.every((l) => l.href.startsWith('https://')));
   assert.match(FOOTER.tagline, /MODIS since 2000 and VIIRS since 2012/);
 });

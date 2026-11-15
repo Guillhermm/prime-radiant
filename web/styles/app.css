@@ -128,6 +128,11 @@ a { color: inherit; text-underline-offset: 0.2em; }
 .tab:hover { color: var(--topbar-text); }
 .tab[aria-selected="true"] { background: var(--color-text); color: var(--color-bg); }
 .tab-ic { display: none; }
+/* On desktop the Home tab is its icon only; aria-label and title name it. The phone bar shows the label. */
+.tab[data-view="home"] { padding-inline: 0.625rem; }
+.tab[data-view="home"] .tab-ic { display: grid; place-items: center; }
+.tab[data-view="home"] .tab-ic .icon { inline-size: 1.125rem; block-size: 1.125rem; }
+.tab[data-view="home"] .tab-label { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .tab-dot { display: inline-block; margin-inline-end: 0.1rem; inline-size: 0.4375rem; block-size: 0.4375rem; border-radius: 50%; background: var(--color-fire); }
 @media (prefers-reduced-motion: no-preference) { .tab-dot { animation: dot-pulse 2s ease-in-out infinite; } }
 @keyframes dot-pulse { 50% { opacity: 0.6; } }
@@ -512,7 +517,7 @@ html.sheet-open, html.drawer-open { overflow: hidden; }
   .topbar-actions .btn { inline-size: 2.75rem; min-block-size: 2.75rem; padding: 0; border-color: var(--color-border); background: var(--color-surface-2); color: var(--color-text); }
   .topbar-actions .btn .icon { inline-size: 1.125rem; block-size: 1.125rem; }
   .topbar-actions .btn-primary { background: var(--color-cta); color: var(--color-cta-text); }
-  /* The tablist becomes the bottom tab bar. */
+  /* The view switcher becomes the bottom bar. */
   .tabs {
     position: fixed; inset-inline: 0; inset-block-end: 0; z-index: var(--z-sticky); display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
     padding: 0.375rem 0.5rem calc(0.375rem + env(safe-area-inset-bottom, 0px)); border: 0; border-block-start: 1px solid var(--color-border); border-radius: 0;
@@ -521,7 +526,9 @@ html.sheet-open, html.drawer-open { overflow: hidden; }
   @supports (backdrop-filter: blur(1px)) { .tabs { background: color-mix(in srgb, var(--color-surface) 86%, transparent); backdrop-filter: blur(1.125rem) saturate(1.4); } }
   .tab { flex-direction: column; justify-content: center; gap: 0.1875rem; min-block-size: 3.25rem; padding: 0.25rem 0; border-radius: var(--radius-ctl); font-size: 0.6875rem; color: var(--color-text-muted); }
   .tab[aria-selected="true"] { background: none; color: var(--color-text); }
-  .tab-ic { display: grid; place-items: center; inline-size: 3.5rem; block-size: 1.875rem; border-radius: var(--radius-pill); }
+  .tab[data-view="home"] { padding-inline: 0; }
+  .tab[data-view="home"] .tab-label { position: static; inline-size: auto; block-size: auto; overflow: visible; clip-path: none; }
+  .tab-ic, .tab[data-view="home"] .tab-ic { display: grid; place-items: center; inline-size: 3.5rem; block-size: 1.875rem; border-radius: var(--radius-pill); }
   .tab-ic .icon { inline-size: 1.25rem; block-size: 1.25rem; }
   .tab[aria-selected="true"] .tab-ic { background: var(--color-accent-soft); color: var(--color-accent); }
   .tab-tag { display: none; }
@@ -641,8 +648,3 @@ html.sheet-open, html.drawer-open { overflow: hidden; }
   .topbar:has(.synth-tag:not([hidden])) .brand span { display: none; }
 }
 
-/* Without a view switcher the phone has no bottom bar to leave room for. */
-@media (max-width: 40rem) {
-  body:has(.tabs[hidden]) { padding-block-end: env(safe-area-inset-bottom, 0px); }
-  body:has(.tabs[hidden]) .ios-card, body:has(.tabs[hidden]) .toast-host { inset-block-end: calc(1rem + env(safe-area-inset-bottom, 0px)); }
-}

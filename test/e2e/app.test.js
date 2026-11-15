@@ -102,6 +102,7 @@ test('first run, desktop: Enter coordinates opens the form at South, Draw an are
   const page = await open(1280);
   try {
     await page.until(`document.querySelector('.cta .btn')`, 'first-run buttons');
+    await settle(page);
     await page.click('.cta .btn:nth-child(2)');
     await page.until(`document.activeElement.id === 'aoi-south' && document.querySelector('.query-form').getBoundingClientRect().height > 0`, 'coordinates form visible, South focused');
     assert.equal(await page.evaluate(`document.querySelector('.query-form').getAttribute('aria-modal')`), 'true');
@@ -311,8 +312,9 @@ test('iOS install hint: a permanent footer line, and a card once after the first
     assert.equal(await page.evaluate(`document.querySelector('.ios-card')`), null, 'no card on first run');
     await openExample(page);
     await page.until(`document.querySelector('.ios-card')`, 'card after the first area loads');
-    const [cardBottom, barTop] = await page.evaluate(`(() => { const t = document.querySelector('.tabs'); return [document.querySelector('.ios-card').getBoundingClientRect().bottom, t.hidden ? innerHeight : t.getBoundingClientRect().top]; })()`);
-    assert.ok(cardBottom <= barTop, `card sits above the tab bar or the screen edge (${cardBottom} <= ${barTop})`);
+    await settle(page);
+    const [cardBottom, barTop] = await page.evaluate(`[document.querySelector('.ios-card').getBoundingClientRect().bottom, document.querySelector('.tabs').getBoundingClientRect().top]`);
+    assert.ok(cardBottom <= barTop, `card sits above the tab bar (${cardBottom} <= ${barTop})`);
     assert.equal(await page.evaluate(`localStorage.getItem('pr-ios-hint-closed')`), '1', 'shown once');
     await settle(page);
     await page.click('.ios-card .ios-hint-close');
@@ -488,17 +490,114 @@ test('?preview=1: anomaly layer with rank in the panel, then the Live view and i
   } finally { await page.close(); }
 });
 
-test('first run: no view switcher until an area loads; a view from the hash survives the example pick', { skip }, async () => {
+test('first run: Home is the selected tab; a view opens the first example there with nothing selected; Home and the brand go home', { skip }, async () => {
   for (const width of [1280, 400]) {
-    const page = await open(width, '?fixtures=1#view=sensors', synthBase);
+    const page = await open(width, '?fixtures=1', synthBase);
+    const selected = `[...document.querySelectorAll('[role=tab][aria-selected="true"]')].map((b) => b.dataset.view)`;
+    const visibleTabs = `Boolean(document.querySelector('[role=tablist][aria-label="Views"]')?.getClientRects().length)`;
+    const firstRun = `document.documentElement.classList.contains('is-first-run') && document.querySelector('${EXAMPLE}')`;
     try {
       await page.until(`document.querySelector('${EXAMPLE}')`, 'example cards');
-      assert.equal(await page.evaluate(`document.querySelector('[role=tablist]').hidden && !document.querySelector('[role=tab]').getClientRects().length`), true, `no tabs on the first screen at ${width}`);
-      await page.evaluate(`document.querySelector('${EXAMPLE}').click()`);
-      await page.until(`!document.querySelector('.view-sensors').hidden && document.querySelector('.sensors-chart')`, 'the example opens the view from the hash');
-      assert.equal(await page.evaluate(`!document.querySelector('[role=tablist]').hidden && document.querySelector('#tab-sensors').getAttribute('aria-selected')`), 'true');
+      assert.equal(await page.evaluate(visibleTabs), true, `switcher on the first screen at ${width}`);
+      assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('[role=tab]')].map((t) => t.dataset.view)`), ['home', 'calendar', 'sensors', 'anomalies', 'live']);
+      assert.deepEqual(await page.evaluate(selected), ['home'], 'exactly one selected tab: Home');
+      assert.equal(await page.evaluate(`document.getElementById('main-view').getAttribute('aria-labelledby')`), 'tab-home');
+      assert.equal(await page.evaluate(`document.getElementById('tab-home').getAttribute('aria-label')`), 'Home');
+      const homeLabelWidth = await page.evaluate(`document.querySelector('#tab-home .tab-label').getBoundingClientRect().width`);
+      assert.ok(width < 640 ? homeLabelWidth > 20 : homeLabelWidth <= 1, `Home is icon only on desktop, icon and label in the phone bar (${homeLabelWidth})`);
+      await settle(page);
+      await page.click('[role=tab][data-view="anomalies"]');
+      await page.until(`!document.querySelector('.view-anomalies').hidden && document.querySelector('.anomaly-answer .answer-big')`, 'Anomalies with the first example');
+      const hash = await page.evaluate('location.hash');
+      assert.match(hash, /aoi=bbox:-59,-19,-52,-12/, 'the first example card, in the hash');
+      assert.match(hash, /view=anomalies/);
+      assert.deepEqual(await page.evaluate(selected), ['anomalies']);
+      await settle(page);
+      assert.equal(await page.evaluate(`Boolean(document.querySelector('.panel-host.is-open'))`), false, 'no month preselected');
+      await page.click('.brand');
+      await page.until(firstRun, 'the brand goes home');
+      assert.deepEqual(await page.evaluate(selected), ['home']);
+      await settle(page);
+      await page.click('[role=tab][data-view="sensors"]');
+      await page.until(`!document.querySelector('.view-sensors').hidden && document.querySelector('.sensors-answer')`, 'Sensors with the first example');
+      await settle(page);
+      assert.equal(await page.evaluate(`Boolean(document.querySelector('.panel-host.is-open'))`), false, 'Sensors opens with no panel');
+      await page.evaluate(`document.getElementById('tab-calendar').focus()`);
+      await page.press('ArrowLeft');
+      assert.equal(await page.evaluate('document.activeElement.id'), 'tab-home', 'arrows reach Home');
+      assert.equal(await page.evaluate(`document.documentElement.classList.contains('is-first-run')`), false, 'arrowing onto Home keeps the area');
+      await page.click('#tab-home');
+      await page.until(firstRun, 'Home goes home');
+      assert.deepEqual(await page.evaluate(selected), ['home']);
+      assert.deepEqual(page.problems, []);
     } finally { await page.close(); }
   }
+});
+
+test('Home resets everything: bare hash, panel closed, hero shown, its own history entry', { skip }, async () => {
+  for (const width of [1280, 400]) {
+    const page = await open(width, '?fixtures=1', synthBase);
+    const home = `document.documentElement.classList.contains('is-first-run') && document.querySelector('${EXAMPLE}') && document.getElementById('tab-home').getAttribute('aria-selected') === 'true'`;
+    const openPanel = async () => {
+      await page.until(CALENDAR_READY, 'calendar');
+      await settle(page);
+      await page.evaluate(`document.querySelector('.view-calendar .cal-cell[tabindex="0"]').focus()`);
+      await page.press('Enter');
+      await page.until(`document.querySelector('.panel-host.is-open')`, 'panel open');
+    };
+    try {
+      await page.until(`document.querySelector('${EXAMPLE}')`, 'example cards');
+      await settle(page);
+      await page.click('#tab-calendar');
+      await page.until(CALENDAR_READY, 'calendar from Home');
+      await settle(page);
+      assert.equal(await page.evaluate(`Boolean(document.querySelector('.panel-host.is-open'))`), false, 'Calendar opens with no panel');
+      const areaHash = await page.evaluate('location.hash');
+      await openPanel();
+      // The phone sheet is modal, so the Home tab under it is clicked directly.
+      await page.evaluate(`document.getElementById('tab-home').click()`);
+      await page.until(home, 'Home tab goes home');
+      assert.equal(await page.evaluate('location.hash'), '', 'no parameters left');
+      assert.equal(await page.evaluate(`Boolean(document.querySelector('.panel-host.is-open, .sheet-open, .drawer-backdrop, :popover-open'))`), false, 'nothing left open');
+      await page.evaluate('history.back()');
+      await page.until(`location.hash === ${JSON.stringify(areaHash)} && !document.documentElement.classList.contains('is-first-run')`, 'Back returns to the area');
+      await page.evaluate('history.forward()');
+      await page.until(home, 'Forward returns home');
+      assert.equal(await page.evaluate('location.hash'), '');
+      await settle(page);
+      await page.click(EXAMPLE);
+      await openPanel();
+      await page.evaluate(`document.querySelector('.brand').click()`);
+      await page.until(home, 'the brand goes home');
+      assert.equal(await page.evaluate('location.hash'), '');
+      assert.equal(await page.evaluate(`Boolean(document.querySelector('.panel-host.is-open'))`), false, 'the brand closes the panel');
+      assert.deepEqual(page.problems, []);
+    } finally { await page.close(); }
+  }
+});
+
+test('phone (360px): Live and Sensors tables scroll inside their card, never the page', { skip }, async () => {
+  const page = await open(360, '?fixtures=1', synthBase);
+  const noPageScroll = `document.documentElement.scrollWidth <= innerWidth`;
+  try {
+    await page.until(`document.querySelector('${EXAMPLE}')`, 'example cards');
+    await settle(page);
+    await page.click('#tab-live');
+    await page.until(`!document.querySelector('.view-live').hidden && document.querySelector('.live-card')`, 'Live from Home');
+    assert.equal(await page.evaluate(noPageScroll), true, 'Live chart fits');
+    for (const [tab, card, table] of [['live', '.live-card', '.live-table'], ['sensors', '.sensors-card', '.sensors-table']]) {
+      await settle(page);
+      await page.evaluate(`document.getElementById('tab-${tab}').click()`);
+      await page.until(`!document.querySelector('.view-${tab}').hidden && document.querySelector('${card}')`, tab);
+      await settle(page);
+      // The toggle can sit under the fixed bottom bar at this height, so it is clicked directly.
+      await page.evaluate(`document.querySelector('${card} .seg[aria-label="Display"] [data-id="table"]').click()`);
+      await page.until(`document.querySelector('${table} .data-table')?.offsetParent != null`, `${tab} table shown`);
+      assert.equal(await page.evaluate(noPageScroll), true, `${tab} table keeps the page at 360px`);
+      assert.ok(await page.evaluate(`document.querySelector('${table} .data-table-scroll').scrollWidth > document.querySelector('${table} .data-table-scroll').clientWidth`), `${tab} table scrolls in its own box`);
+    }
+    assert.deepEqual(page.problems, []);
+  } finally { await page.close(); }
 });
 
 test('phone: picking an example lands at the top of the result, not scrolled past it', { skip }, async () => {
@@ -521,7 +620,7 @@ test('synthetic data turns on every tab; Sensors shows R, the steps, a keyboard 
   try {
     await page.goto(`${synthBase}/web/?fixtures=1`);
     await openExample(page);
-    assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('[role=tab]')].map((t) => t.dataset.view)`), ['calendar', 'sensors', 'anomalies', 'live']);
+    assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('[role=tab]')].map((t) => t.dataset.view)`), ['home', 'calendar', 'sensors', 'anomalies', 'live']);
     await page.click('#tab-sensors');
     await page.until(`!document.querySelector('.view-sensors').hidden && document.querySelector('.sensors-chart')`, 'Sensors view');
     assert.equal(await page.evaluate(`document.querySelector('[data-slot=verdict]').hidden`), true, 'the calendar verdict gives way to the answer card');
@@ -587,19 +686,19 @@ test('tab switch updates the hash, back restores the previous view, disabled vie
   const plain = await open(1280);
   try {
     await openExample(plain);
-    assert.deepEqual(await plain.evaluate(`[...document.querySelectorAll('[role=tab]')].map((t) => t.dataset.view)`), ['calendar'], 'only enabled views get a tab');
-    assert.equal(await plain.evaluate(`document.querySelector('[role=tablist]').hidden`), true, 'one view needs no switcher');
+    assert.deepEqual(await plain.evaluate(`[...document.querySelectorAll('[role=tab]')].map((t) => t.dataset.view)`), ['home', 'calendar'], 'only enabled views get a tab, after Home');
+    assert.equal(await plain.evaluate(`document.querySelector('[role=tablist]').hidden`), false, 'Home keeps the switcher');
   } finally { await plain.close(); }
   const page = await open(1280, '?fixtures=1&preview=1');
   try {
     await openExample(page);
     await page.until(`location.hash.includes('view=calendar')`, 'calendar view in hash');
     const tabs = await page.evaluate(`[...document.querySelectorAll('[role=tab]')].map((t) => t.dataset.view)`);
-    assert.deepEqual(tabs, ['calendar', 'sensors', 'anomalies', 'live'], 'preview turns on every view');
-    await page.click('[role=tab][data-view="sensors"]');
+    assert.deepEqual(tabs, ['home', 'calendar', 'sensors', 'anomalies', 'live'], 'preview turns on every view');
+    await page.click('#tab-sensors');
     await page.until(`location.hash.includes('view=sensors')`, 'sensors in hash');
     await page.evaluate('history.back()');
-    await page.until(`location.hash.includes('view=calendar') && document.querySelector('[role=tab][data-view="calendar"]').getAttribute('aria-selected') === 'true'`, 'back returns to calendar');
+    await page.until(`location.hash.includes('view=calendar') && document.querySelector('#tab-calendar').getAttribute('aria-selected') === 'true'`, 'back returns to calendar');
     assert.deepEqual(page.problems, []);
   } finally {
     await page.close();

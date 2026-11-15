@@ -16,7 +16,7 @@ Status: D0 passed with conditions (M0-G5, see section 10); layout and components
 | Element | Role | Present from |
 |---|---|---|
 | Synthetic band | Burnt orange band on top while the data is the synthetic demo set (`manifest.synthetic`), with an About button opening a popover (what the data is, why it exists, that it must not be used for decisions, and a link to the Method drawer) and a close button ("Hide the synthetic data notice"). Closing slides the band out (transform and opacity, the content below glides up in a FLIP, so no frame recomputes layout; instant under reduced motion), is remembered in `sessionStorage` (`pr-synth-banner-closed`), so the band returns on the next visit, and leaves a "Synthetic data" tag in the top bar, right before Method ("Synthetic" on phone), that opens the same About popover. The popover closes on Escape, light dismiss or page scroll and returns focus to the button that opened it. The selected-month panel and phone sheet eyebrow reads "Selected month · Synthetic data", because the sheet covers the top bar. The data is never shown without one of these | M1 |
-| Top bar | Brand mark (a link home to the first screen), view tabs (icon plus label, hidden while only one view is enabled; Live carries a `--color-fire` dot 0.5rem before its label while its data is under 48 hours old, pulsing between full and 0.6 opacity unless motion is reduced), the offline chip when offline, the synthetic tag, Method, Export CSV. No theme control: it lives in the footer and the Method drawer. On phone: brand, Method (info icon) and Export (icon), and the tabs move to a bottom bar | M1 |
+| Top bar | Brand mark (a link home to the first screen), view tabs (Home first, a house icon with no visible text on desktop, named "Home" with a tooltip; then each enabled view, icon plus label; Live carries a `--color-fire` dot 0.5rem before its label while its data is under 48 hours old, pulsing between full and 0.6 opacity unless motion is reduced), the offline chip when offline, the synthetic tag, Method, Export CSV. No theme control: it lives in the footer and the Method drawer. On phone: brand, Method (info icon) and Export (icon), and the tabs move to a bottom bar where Home, like every item, shows icon and label. Home, the Home tab or the brand, resets everything: the hash becomes a bare `#`, the month panel or sheet, area sheet, full map, Method drawer and popovers close, and the first screen shows with Home selected. It is its own history entry, so Back returns to the area. A view picked on the first screen opens the first example card in that view with nothing selected | M1 |
 | Views: Calendar \| Sensors \| Anomalies \| Live | One `VIEWS` entry each. Disabled views are not rendered. Sensors, Anomalies and Live run on web-side placeholder numbers (`preview-stubs.js`, `sensors-model.js`) and are on when the data version starts with "synthetic" or with `?preview=1`; with real data they stay hidden until their science gate passes (`viewsFor` in `views.js`). Each carries a "preview" tab tag | M1 |
 | Context row | Eyebrow per view ("Burning activity calendar", "Sensors · two records, one series", "Anomalies · each month against its own history", "Live · this fire season", plus " · Synthetic data" while synthetic), area title, area chip, period chip. Chips wrap on phone, never truncate. Picking an example scrolls to the top and moves focus to the main view | M1 |
 | Verdict row | Calendar only: latest-month hero card, Radiant card, facts card (peak month, busiest year, total in range). Sensors, Anomalies and Live replace it with their own answer card | M1 |
@@ -95,7 +95,7 @@ Desktop: a popover under the chips. Phone: a bottom sheet. Coordinates first, th
 
 | Component | Behavior | Notes |
 |---|---|---|
-| Tabs | `role="tablist"`, arrow keys move, Enter/Space activate, hash updates, Back works | Icon plus label; bottom bar on phone |
+| Tabs | `role="tablist"` with Home as the first tab and the selected one on the first screen (`main` is the `tabpanel`, labeled by the selected tab). Arrow keys, Home and End move and activate a view; landing on the Home tab only focuses it, so the area is not dropped by an arrow, and Enter, Space or a click goes home. Hash updates, Back works | Home icon only on desktop; icon plus label in the phone bottom bar |
 | Theme control | `role="radiogroup"` Light, Dark, System; arrows move, choice stored as `pr-theme`; switch animated with a View Transition when supported and motion is allowed | Footer and Method drawer (both widths) |
 | Area and period chips | Open the form as a popover (desktop) or sheet (phone) with `aria-modal`, focus trapped, Escape and the close button return focus to the chip | Chips wrap; no ellipsis at 400px |
 | Share menu | A link button attached to the area chip (one pill split in two) opens a `role="menu"` popover: Copy link, Copy coordinates. Focus moves to the first item; arrows, Home and End move; Escape, Tab, scroll and outside click close it and focus returns to the button | Same at every width |
@@ -193,7 +193,7 @@ D0 judgment, revised for the dark redesign: acceptable in light (the 1px edge is
 
 | State | Where | What the user sees |
 |---|---|---|
-| First run (no area) | Main view | Hero with the example Radiant, record dates, two actions and two example cards. No empty grid, no Export |
+| First run (no area) | Main view | Hero with the example Radiant, record dates, two actions and two example cards; the Home tab is selected. No empty grid, no Export |
 | Zero detections | Grid, hero | Class 0 cells; the hero reads "0" and "No hotspots detected; the sensors were operating." Never confused with no data |
 | No data | Cells before MODIS (2000-11) or outside coverage | Hatch plus "No data" in label; the hero says "No data", never 0 |
 | Loading | Grid and verdict | Skeleton cards and grid with `aria-busy="true"` and a polite status; the chips stay usable |
@@ -218,7 +218,7 @@ D0 judgment, revised for the dark redesign: acceptable in light (the 1px edge is
 - [ ] Tabs, drawer and sheets: roles, `aria-selected`, `aria-expanded`, focus trap and restore, Escape closes (4.1.2, 2.1.2)
 - [ ] Errors identified in text, tied to fields with `aria-describedby`; status messages in a live region (3.3.1, 4.1.3)
 - [ ] No drag-only path: map rectangle has the form alternative (2.5.7)
-- [ ] Reflow at 400 px wide and 320 px, no horizontal page scroll (the grid scrolls inside its own container only if needed), text resizes to 200% (1.4.4, 1.4.10)
+- [ ] Reflow at 400 px wide and 320 px, no horizontal page scroll (the grid and the data tables scroll inside their own container only if needed; a table caption wraps to the visible width), text resizes to 200% (1.4.4, 1.4.10)
 - [ ] `prefers-reduced-motion` and `prefers-color-scheme` honored; no auto-moving content (2.3.3 spirit, 2.2.2)
 - [ ] Language set on `<html>`; page title changes per view; one `h1` (3.1.1, 2.4.2)
 - [ ] Consistent placement of Method and Export across views (3.2.6 consistent help)

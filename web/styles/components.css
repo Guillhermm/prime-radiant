@@ -157,12 +157,13 @@
   .cal-cell { font-size: 0.5625rem; }
 }
 
-.data-table-scroll { overflow: auto; max-inline-size: 100%; }
+.data-table-scroll { overflow: auto; max-inline-size: 100%; container-type: inline-size; }
 .data-table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
-.data-table caption { padding-block: var(--space-2); text-align: start; font-weight: 600; }
+/* A table wider than its box scrolls; the caption wraps to the visible width and stays put. */
+.data-table caption { position: sticky; inset-inline-start: 0; inline-size: 100cqi; box-sizing: border-box; padding-block: var(--space-2); text-align: start; font-weight: 600; }
 .data-table th, .data-table td { padding: var(--space-1) var(--space-2); border: 1px solid var(--color-border-strong); text-align: end; white-space: nowrap; }
 .data-table thead th { background: var(--color-surface); }
-.data-table tbody th { position: sticky; inset-inline-start: 0; background: var(--color-surface); }
+.data-table tbody th, .data-table thead th:first-child { position: sticky; inset-inline-start: 0; background: var(--color-surface); }
 .data-table-note { margin: var(--space-2) 0 0; color: var(--color-text-muted); }
 
 /* Anomaly layer: PuOr 11 diverging classes, centered on the median. */
@@ -206,7 +207,7 @@
 .rd-9 { fill: var(--div-above-4); }
 .rd-10 { fill: var(--div-above-5); }
 .rd-norank { fill: var(--color-surface-2); }
-.anomaly-view { display: grid; gap: 1rem; }
+.anomaly-view { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
 .anomaly-answer { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1rem 1.5rem; align-items: center; }
 .anomaly-answer .radiant-wrap { inline-size: 14rem; }
 /* SVG user units: the 240-unit viewBox draws at 14rem (0.93 px per unit), so 12 units reads as 11.2px, above 0.6875rem. */
@@ -246,7 +247,8 @@
 .live-label-live { fill: var(--series-live); }
 .live-band-label { fill: var(--color-text-muted); font-size: 0.75rem; paint-order: stroke; stroke: var(--color-surface); stroke-width: 3px; stroke-linejoin: round; }
 .chart-stamp { fill: var(--sensor-viirs); font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.08em; }
-.live-view { display: grid; gap: 1rem; }
+/* minmax(0, 1fr): an auto column grows to the wide data table and drags the page sideways on phone. */
+.live-view { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
 .live-headline { font-size: clamp(1.5rem, 1rem + 2vw, 2.25rem); font-weight: 600; line-height: 1.15; letter-spacing: -0.02em; }
 .live-card h2 .tag, .anomaly-card h2 .tag { margin-inline-start: 0.375rem; }
 .live-key { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); margin: var(--space-2) 0 0; padding: 0; list-style: none; font-size: 0.875rem; }
@@ -269,7 +271,7 @@
 .dot-modis { background: var(--sensor-modis); }
 .dot-viirs { background: var(--sensor-viirs); }
 .dot-harmonized { background: var(--sensor-harm); }
-.sensors-view { display: grid; gap: 1rem; }
+.sensors-view { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
 .sensors-top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); gap: 1rem; }
 .sensors-steps h2 { margin: 0; }
 .build-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; margin: 0.75rem 0 0; padding: 0; list-style: none; }

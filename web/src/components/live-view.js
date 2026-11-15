@@ -217,7 +217,6 @@ export const liveTableModel = ({ live, band, provisional = true }, { synthetic =
       header: `${periodLabel(live.start, step, i)}${provisional && i === last ? ' (provisional)' : ''}`,
       cells: [cell(v, 'No data'), cell(band.median[i], 'Not available'), cell(band.p25[i], 'Not available'), cell(band.p75[i], 'Not available')],
     })),
-    notes: ['Live detections are never added to the harmonized totals.'],
   });
 };
 
@@ -309,7 +308,9 @@ export const mount = (container, deps = {}) => {
     });
     svg.addEventListener('focusout', () => { readout.textContent = m.current?.text ?? ''; });
     readout.textContent = m.current?.text ?? '';
-    const chartBox = h('div', { hidden: tableOn }, svg, readout);
+    // The key explains the chart's lines, so it goes with the chart.
+    const key = m.key.length ? h('ul', { class: 'live-key' }, m.key.map((k) => h('li', { class: `live-key-${k.cls}`, text: k.text }))) : null;
+    const chartBox = h('div', { hidden: tableOn }, svg, readout, key);
     const tableHost = h('div', { class: 'live-table', hidden: !tableOn });
     mountTable(tableHost, { model: liveTableModel(input, { synthetic }) });
     const display = segmented('Display', [{ id: 'chart', label: 'Chart', on: !tableOn }, { id: 'table', label: 'Table', on: tableOn }], (id) => {
@@ -324,7 +325,6 @@ export const mount = (container, deps = {}) => {
           h('p', { class: 'sub', text: 'The last 12 months. The band and the median come from earlier years of this area.' })),
         display.el),
       chartBox,
-      m.key.length ? h('ul', { class: 'live-key' }, m.key.map((k) => h('li', { class: `live-key-${k.cls}`, text: k.text }))) : null,
       tableHost, h('p', { class: 'hint', text: m.note }));
     container.replaceChildren(h('div', { class: 'live-view' }, answer, card));
   };

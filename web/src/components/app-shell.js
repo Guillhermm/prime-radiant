@@ -67,7 +67,7 @@ export const FOOTER = {
   ],
 };
 
-export const VIEW_ICONS = { calendar: 'calendarView', sensors: 'sensors', anomalies: 'anomalies', live: 'live' };
+export const VIEW_ICONS = { home: 'home', calendar: 'calendarView', sensors: 'sensors', anomalies: 'anomalies', live: 'live' };
 
 const footerEl = (slots) => h('footer', { class: 'site-footer' },
   h('div', { class: 'foot-brand' },
@@ -82,16 +82,16 @@ const footerEl = (slots) => h('footer', { class: 'site-footer' },
 
 // Builds the page frame and returns the named slots other components mount into.
 export const mount = (container, { views, activeView, onView, previewIds = [], synthetic = false }) => {
-  const tabs = tabsModel(views, activeView);
+  // Home is a tab too: the first screen is its panel, so the tablist always has one selected tab.
+  const tabs = [{ id: 'home', label: 'Home' }, ...tabsModel(views, activeView)];
   const tabEls = tabs.map((t) => h('button', {
-    type: 'button', role: 'tab', id: `tab-${t.id}`, 'aria-controls': 'main-view', 'data-view': t.id, class: 'tab',
+    type: 'button', role: 'tab', id: `tab-${t.id}`, 'aria-controls': 'main-view', 'data-view': t.id, class: 'tab', ...(t.id === 'home' ? { 'aria-label': t.label, title: t.label } : {}),
   }, h('span', { class: 'tab-ic' }, icon(VIEW_ICONS[t.id] ?? 'calendarView')),
   h('span', { class: 'tab-dot', hidden: true, 'aria-hidden': 'true' }),
   h('span', { class: 'tab-label', text: t.label }),
   previewIds.includes(t.id) ? h('span', { class: 'tab-tag', text: 'preview' }) : null,
   h('span', { class: 'tab-dot-text sr-only' })));
-  // One view needs no switcher; the bar comes back when a second view is enabled.
-  const tablist = h('div', { class: 'tabs', role: 'tablist', 'aria-label': 'Views', hidden: tabEls.length < 2 }, tabEls);
+  const tablist = h('div', { class: 'tabs', role: 'tablist', 'aria-label': 'Views' }, tabEls);
   tablist.addEventListener('click', (e) => {
     const b = e.target.closest('[role=tab]');
     if (b) onView(b.dataset.view);
@@ -102,7 +102,8 @@ export const mount = (container, { views, activeView, onView, previewIds = [], s
     if (n === null || i < 0) return;
     e.preventDefault();
     tabEls[n].focus();
-    onView(tabEls[n].dataset.view);
+    // Arrowing past Home must not drop the area the user is looking at; Enter or a click goes home.
+    if (tabEls[n].dataset.view !== 'home') onView(tabEls[n].dataset.view);
   });
 
   const slot = (name, tag = 'div', attrs = {}) => h(tag, { 'data-slot': name, ...attrs });
@@ -164,14 +165,13 @@ export const mount = (container, { views, activeView, onView, previewIds = [], s
         heroEyebrow.textContent = hero.eyebrow;
         heroTitle.textContent = hero.title;
       }
+      const selected = hasArea ? view : 'home';
       tabEls.forEach((el) => {
-        const on = el.dataset.view === view;
+        const on = el.dataset.view === selected;
         el.setAttribute('aria-selected', String(on));
         el.tabIndex = on ? 0 : -1;
       });
-      main.setAttribute('aria-labelledby', `tab-${view}`);
-      // Views need an area: on the first screen a tab would switch nothing, so the switcher waits.
-      tablist.hidden = tabEls.length < 2 || !hasArea;
+      main.setAttribute('aria-labelledby', `tab-${selected}`);
       // The context stays rendered on first run: it holds the area form the hero buttons open. CSS hides its title and chips.
       slots.empty.hidden = hasArea;
       for (const [id, el] of Object.entries(groups)) el.hidden = !hasArea || view !== id;

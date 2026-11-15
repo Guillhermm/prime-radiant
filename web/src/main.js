@@ -44,7 +44,8 @@ const isPhone = () => Boolean(globalThis.matchMedia?.('(max-width: 40rem)').matc
 // Same-document View Transition where supported (Baseline 2025); a plain swap otherwise.
 const viewTransition = (fn) => {
   if (!document.startViewTransition || reducedMotion()) { fn(); return; }
-  document.startViewTransition(fn);
+  // A transition skipped by the next one rejects `ready`; the swap itself still happens.
+  document.startViewTransition(fn).ready.catch(() => {});
 };
 
 // Mounts a result component on the first ready result and updates it on later ones; a new query
@@ -247,7 +248,12 @@ export const start = async (root = document.getElementById('app')) => {
   const shell = appShell.mount(root, {
     views,
     activeView: state.view,
-    onView: (view) => viewTransition(() => store.set({ view })),
+    onView: (view) => {
+      // Home does what the brand link does: an empty hash clears the area.
+      if (view === 'home') location.hash = '';
+      else if (store.get().bbox) viewTransition(() => store.set({ view }));
+      else openDefault(view);
+    },
     previewIds: preview ? PREVIEW_VIEWS : [],
     synthetic,
   });
@@ -341,15 +347,18 @@ export const start = async (root = document.getElementById('app')) => {
     exampleQueue = next.catch(() => null);
     return next;
   };
+  // The picked card sits below the fold on phone and the result is shorter than the first-run
+  // screen, so without the scroll the page would open past the verdict.
+  const openExample = (preset, patch = {}) => {
+    goTo({ ...queryBar.presetPatch(preset, store.get(), span), ...patch });
+    window.scrollTo({ top: 0 });
+    document.getElementById('main-view')?.focus({ preventScroll: true });
+  };
+  // A view picked on the first screen opens the first example card in that view, nothing selected.
+  const openDefault = (view) => openExample(presets[0], { view });
   const stateView = states.mount(slots.empty, {
     presets, manifest, synthetic, loadExample,
-    // The picked card sits below the fold on phone and the result is shorter than the first-run
-    // screen, so without this the page would open scrolled past the verdict.
-    onPick: (id) => {
-      goTo(queryBar.presetPatch(findPreset(id, presets), store.get(), span));
-      window.scrollTo({ top: 0 });
-      document.getElementById('main-view')?.focus({ preventScroll: true });
-    },
+    onPick: (id) => openExample(findPreset(id, presets)),
     onRetry: () => run(store.get()),
     onDraw: (btn) => qb.open('map', btn),
     onCoords: (btn) => qb.open('area', btn),
@@ -414,9 +423,19 @@ export const start = async (root = document.getElementById('app')) => {
     paintState();
   };
   data.subscribe(() => render(store.get()));
+  // Home is the bare `#`: going there drops every parameter and closes whatever was open over the page.
+  const hashOf = (s) => (s.bbox ? serializeHash(s) : '');
+  const closeAll = () => {
+    detail.close({ restore: false });
+    drawer.close();
+    qb.close();
+    map.ctl?.closeFull(true);
+    document.querySelectorAll(':popover-open').forEach((p) => p.hidePopover());
+  };
   let lastQuery = state;
   store.subscribe((s) => {
-    const next = serializeHash(s);
+    if (!s.bbox && lastQuery.bbox) closeAll();
+    const next = hashOf(s);
     if (location.hash !== next) location.hash = next;
     render(s);
     if (s.bbox !== lastQuery.bbox || s.from !== lastQuery.from || s.to !== lastQuery.to) {
@@ -429,7 +448,6 @@ export const start = async (root = document.getElementById('app')) => {
     showErrors(parsed.errors);
     store.set(parsed.state);
   });
-  if (!location.hash) history.replaceState(null, '', serializeHash(state));
   render(state);
   run(state);
   return store;

@@ -23,7 +23,9 @@ const reduced = () => Boolean(globalThis.matchMedia?.('(prefers-reduced-motion: 
 const withTransition = (fn) => {
   if (document.startViewTransition && !reduced()) {
     document.documentElement.classList.add('vt-theme');
-    document.startViewTransition(fn).finished.finally(() => document.documentElement.classList.remove('vt-theme'));
+    const t = document.startViewTransition(fn);
+    t.ready.catch(() => {});
+    t.finished.finally(() => document.documentElement.classList.remove('vt-theme'));
   } else fn();
 };
 
