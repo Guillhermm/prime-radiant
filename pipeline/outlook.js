@@ -299,7 +299,7 @@ const skill = (s) => s && { n: s.n, brier: s.brier, brier_constant: s.brier_cons
  * `now` (default: the live fetch time, else the current time) decides forecast vs hindcast: the
  * output is a forecast only when the last observed month is the month before `now`'s month.
  */
-export function runOutlook({ dataDir, liveDir = null, outDir, modelOut, now = null, issuedAt = null, command = 'node pipeline/outlook.js', model: choice = 'auto', ...split }) {
+export function runOutlook({ dataDir, liveDir = null, outDir, modelOut, now = null, issuedAt = null, command = 'node pipeline/outlook.js', model: choice = 'gbt', ...split }) {
   const { manifest, K, cells, live } = loadCells(dataDir, { liveDir });
   const { samples, forecast, zeroT, lastMonth } = buildSamples(cells, manifest.month0);
   const lg = trainAndValidate(samples, zeroT, manifest.month0, { ...split, kind: 'logistic' });
@@ -360,7 +360,7 @@ async function main() {
     process.exit(2);
   }
   const command = `node pipeline/outlook.js --data ${values.data}${values.live ? ` --live ${values.live}` : ''} --out ${values.out}${values['model-out'] ? ` --model-out ${values['model-out']}` : ''}${values.model ? ` --model ${values.model}` : ''}`;
-  const { report, manifest } = runOutlook({ dataDir: values.data, liveDir: values.live, issuedAt: new Date().toISOString(), outDir: values.out, modelOut: values['model-out'], command, model: values.model ?? 'auto' });
+  const { report, manifest } = runOutlook({ dataDir: values.data, liveDir: values.live, issuedAt: new Date().toISOString(), outDir: values.out, modelOut: values['model-out'], command, model: values.model ?? 'gbt' });
   const strip = (s) => s && { ...s, reliability: undefined };
   console.log(JSON.stringify({ model: report.model, decision: report.decision, compared: report.compared, mode: manifest.mode, target_month: manifest.target_month, last_observed_month: manifest.last_observed_month,
     cells: manifest.cells, mean_p: manifest.mean_p, no_skill_share: manifest.no_skill_share, no_skill_share_of_test: report.no_skill_share_of_test,
