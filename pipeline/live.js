@@ -120,38 +120,54 @@ export function serializeLiveTile(t) {
   return `{\n${body}\n}\n`;
 }
 
-/** Days of a sensor's coverage whose global record count is under this share of the median daily count are partial. */
+/** A day is partial when a pass has under this share of the median of that pass over its neighbor days. */
 export const PARTIAL_SHARE = 0.5;
+/** Neighbor days on each side (a 7-day window centered on the day, the day itself excluded). */
+export const PARTIAL_HALF_WINDOW = 3;
+
+const median = (v) => {
+  const a = [...v].sort((x, y) => x - y);
+  const n = a.length;
+  return n % 2 ? a[(n - 1) / 2] : (a[n / 2 - 1] + a[n / 2]) / 2;
+};
 
 /**
- * Partial days of one sensor (gate V3, L2): a day is partial when its global record count (every
- * accepted record of the sensor that day, before the domain clip, any type) is under 50% of the
- * median daily count over its coverage window (days without records count 0); the fetch day is
- * always partial, and so is a sensor's last day when it is earlier than `lastDay` (the feed ended
- * mid-day: S-NPP, 2026-11-02 15:40 UTC, is 55% of the median, above the 50% rule). The first day is
- * not partial by default.
- * @param {Object<string, number>} counts day -> records
+ * Partial days of one sensor (gate V3, L2): counts are in-domain records (after the domain clip, any
+ * type) per day and pass, `{day: {D, N}}` (`A` when the file has no day/night field). A day is partial
+ * when any pass has under 50% of the median of that pass over the 7 days centered on it, the day itself
+ * excluded (fewer neighbors at the edges of the coverage window; days with no records count 0). The
+ * fetch day is always partial, and so is a sensor's last day when it is earlier than `lastDay` (the
+ * feed ended mid-day). The first day is not partial by default.
+ * @param {Object<string, Object<string, number>>} counts
  * @param {{first: string, last: string}} cov
  * @returns {string[]} sorted days
  */
 export function partialDays(counts, cov, fetchDay, lastDay = cov.last) {
   const first = dayNumber(cov.first);
   const n = dayNumber(cov.last) - first + 1;
-  const daily = Array.from({ length: n }, (_, i) => counts[dayString(first + i)] ?? 0).sort((a, b) => a - b);
-  const median = n % 2 ? daily[(n - 1) / 2] : (daily[n / 2 - 1] + daily[n / 2]) / 2;
+  const passes = [...new Set(Object.values(counts).flatMap((c) => Object.keys(c)))];
   const out = [];
   for (let i = 0; i < n; i++) {
     const d = dayString(first + i);
-    if (d === fetchDay || (d === cov.last && cov.last < lastDay) || (counts[d] ?? 0) < PARTIAL_SHARE * median) out.push(d);
+    let partial = d === fetchDay || (d === cov.last && cov.last < lastDay);
+    for (const p of passes) {
+      if (partial) break;
+      const nb = [];
+      for (let j = Math.max(0, i - PARTIAL_HALF_WINDOW); j <= Math.min(n - 1, i + PARTIAL_HALF_WINDOW); j++) {
+        if (j !== i) nb.push(counts[dayString(first + j)]?.[p] ?? 0);
+      }
+      if (nb.length && (counts[d]?.[p] ?? 0) < PARTIAL_SHARE * median(nb)) partial = true;
+    }
+    if (partial) out.push(d);
   }
   return out;
 }
 
 /**
  * Live manifest. `coverage` and `partial_days` are in "YYYY-MM-DD"; `daily_records` holds the
- * global record count per sensor and day that `partial_days` is derived from.
+ * in-domain record count per sensor, day and pass (D, N) that `partial_days` is derived from.
  * @param {{fetchedAt: string, days: Object<string, {first: string, last: string}>,
- *   dayCounts?: Object<string, Object<string, number>>, tiles: string[],
+ *   dayCounts?: Object<string, Object<string, Object<string, number>>> sensor -> day -> pass -> in-domain records, tiles: string[],
  *   sources: object[], domain?: object, stats?: object, baseUrl?: string}} o
  */
 export function buildLiveManifest({ fetchedAt, days, dayCounts = {}, tiles, sources, domain, stats, baseUrl = 'data/live/' }) {
@@ -227,10 +243,13 @@ export async function buildLive({ inputs, outDir, fetchedAt, domainFile, baseUrl
           const d = (days[SENSOR_OF[fam]] ??= { first: rec.utcDay, last: rec.utcDay });
           if (rec.utcDay < d.first) d.first = rec.utcDay;
           if (rec.utcDay > d.last) d.last = rec.utcDay;
-          const c = (dayCounts[SENSOR_OF[fam]] ??= {});
-          c[rec.utcDay] = (c[rec.utcDay] ?? 0) + 1;
         }
         if (clipper && !(inBbox(domainBox, rec.lon, rec.lat) && clipper.contains(rec.lon, rec.lat))) { clippedByDomain++; continue; }
+        if (fam) {
+          const c = ((dayCounts[SENSOR_OF[fam]] ??= {})[rec.utcDay] ??= {});
+          const pass = rec.daynight ?? 'A';
+          c[pass] = (c[pass] ?? 0) + 1;
+        }
         yield rec;
       }
     };

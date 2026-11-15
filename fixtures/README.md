@@ -19,7 +19,7 @@ coverage, an integer count inside it (`validateTile` checks this when given the 
 | `tiles/1/x17y13.json` | Coarse (1 deg) tile: the sum of the 0.1 deg fire-cell-days of `0.1/x17y13` per 1 deg cell and month (coarse cell = `floor(row/10)*10 + floor(col/10)`). A coarse count is a sum of fine fire-cell-days, not a distinct (coarse cell, day) count. |
 | `firms-modis-50.csv`, `firms-viirs-50.csv` | 50 rows each, all inside tile x17y13. |
 | `firms-noaa20-20.csv` | 20 NOAA-20 rows (`N20`), 2023-05 and 2023-06, inside tile x17y13: 14 fire-cell-days (May 6, June 8). NOAA-20 covers indexes 4..5 only. |
-| `nrt-modis.csv`, `nrt-viirs.csv` | NRT-shaped CSVs (no `type`), 2026-11-10 to 2026-11-12: 6 + 6 rows, MODIS `T`/`A`, VIIRS `N`/`N20`/`N21`, one row outside the box, one bad latitude. Expected (`pipeline/live.js`, fetched 2026-11-12T12:00:00Z): fire-cell-days modis 4, viirs 2, noaa20 1; 2 duplicates, 1 NOAA-21 skipped, 1 clipped. |
+| `nrt-modis.csv`, `nrt-viirs.csv` | NRT-shaped CSVs (no `type`), 2026-11-10 to 2026-11-12: 7 + 6 rows, MODIS `T`/`A` (one row duplicates a cell-day so each day has a D and an N pass), VIIRS `N`/`N20`/`N21`, one row outside the box, one bad latitude. Expected (`pipeline/live.js`, fetched 2026-11-12T12:00:00Z): fire-cell-days modis 4, viirs 2, noaa20 1; 3 duplicates, 1 NOAA-21 skipped, 1 clipped. |
 | `golden/live/` | Output of `pipeline/live.js` on the two NRT CSVs with `domain/box.geojson`; day index 0 = 2026-11-10. |
 | `golden/` | Output of `pipeline/build.js` on the three CSVs (`month0` 2023-01); `tiles/` equal `fixtures/tiles/*/x17y13.json`. Regenerate only with a reviewed contract change. |
 

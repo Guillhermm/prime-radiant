@@ -136,14 +136,19 @@ tiles and a live manifest. `--fetched-at` is the time the files were fetched (de
   rolling window starts mid-day, and the last day when it is the fetch day or earlier than `last_day`, i.e. the sensor stopped
   or lags, as S-NPP on 2026-11-02), `sources` (file, records, has_type),
   `skipped`, `duplicates`, `clipped_by_domain`, `fire_cell_days`, `domain`, `citation` (NRT product DOIs), `caveats`.
-- **Partial days (gate V3, L2):** per sensor, a day is partial when its global record count (every accepted record of
-  the sensor that day, before the domain clip, any type) is under 50% of the median daily count over the sensor's coverage
-  window (days with no record count 0); the fetch day (day of `fetched_at`) is always partial; so is a sensor's last day
-  when it is earlier than the manifest `last_day` (a feed that ended mid-day). The first day is not partial. Partial days
-  are `null` in the tiles (never 0, never the partial count) and listed in `partial_days`; `daily_records` holds the counts
-  used. On the real run S-NPP 2026-08-03 (1,973 records), 08-04, 10-12, 10-13 fall under 50% and 11-02 is partial as the
-  feed's last day (55% of the median, above the rule); NOAA-20 10-12 and 11-14 (fetch day). Not verified: the V3 reviewers
-  expected 11-02 from the 50% rule alone and did not list 08-04 and 10-13 (19,184 and 23,516 records, 30% and 36% of the median).
+- **Partial days (gate V3, L2):** per sensor and day, in-domain records (after the domain clip, any type) are counted
+  separately for the daytime and night-time passes (`daynight` D/N; one pass `A` for a file without the field). A day is
+  partial when either pass has under 50% of the median of that pass over the 7 days centered on it, the day itself excluded
+  (fewer neighbors at the edges; a day with no records counts 0). The fetch day (day of `fetched_at`) is always partial; so
+  is a sensor's last day when it is earlier than the manifest `last_day` (a feed that ended mid-day). The first day is not
+  partial by default. Without `--domain` every record counts. Partial days are `null` in the tiles (never 0, never the
+  partial count) and listed in `partial_days`; `daily_records` holds `{sensor: {day: {D, N}}}`. Real run (2026-11-14 fetch,
+  Brazil): NOAA-20 2026-09-07, 10-27 and 11-05 are partial (daytime pass 0 or almost empty against 2,000-6,700), 10-12 is
+  not (day 5,768 against about 5,700-7,200 around it); early August is not flagged. NOAA-20 also lists 10-13 (no night
+  pass), 10-18, 10-19, 10-26, 11-03, 11-04, 11-09, 11-10 and the fetch day 11-14; S-NPP 08-03, 08-04, 09-17, 09-25,
+  09-26, 10-03, 10-12, 10-13, 10-18 to 10-20, 10-26 and 11-02 (the last day of the feed). MODIS lists 33 days: its passes
+  hold few records per day in Brazil and vary between Terra and Aqua, so the 50% test fires often; the live series uses
+  NOAA-20 (gate V3, L3).
 - **Limit:** coverage is the first to last day with a detection, so an outage day inside the range reads as 0, and
   there is no acquisition-day check as in the archive.
 - **Real run (2026-11-15, NRT Shapefiles in `raw/firms-2026/`, Brazil domain):** 22,078,520 records in (every one without

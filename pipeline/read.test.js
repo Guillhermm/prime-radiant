@@ -29,8 +29,8 @@ function write(name, text) {
 test('csv: normalizes MODIS and VIIRS rows, header-driven', async () => {
   const m = write('m.csv', [MODIS_H, modisRow(40.05, -9.95, '2023-01-01', '1015', 'Aqua')].join('\n') + '\n');
   const v = write('v.csv', [VIIRS_H, '40.05,-9.95,335.1,0.4,0.4,2023-03-01,0212,N,VIIRS,n,2.0,290.0,3.1,N,0'].join('\n'));
-  assert.deepEqual((await collect(m)).out, [{ sensor: 'modis', satellite: 'Aqua', lat: 40.05, lon: -9.95, utcDay: '2023-01-01', hasType: true }]);
-  assert.deepEqual((await collect(v)).out, [{ sensor: 'viirs', satellite: 'SNPP', lat: 40.05, lon: -9.95, utcDay: '2023-03-01', hasType: true }]);
+  assert.deepEqual((await collect(m)).out, [{ sensor: 'modis', satellite: 'Aqua', lat: 40.05, lon: -9.95, utcDay: '2023-01-01', hasType: true, daynight: 'D' }]);
+  assert.deepEqual((await collect(v)).out, [{ sensor: 'viirs', satellite: 'SNPP', lat: 40.05, lon: -9.95, utcDay: '2023-03-01', hasType: true, daynight: 'N' }]);
 });
 
 test('csv: non-vegetation types excluded and counted, type=0 kept', async () => {
@@ -171,4 +171,11 @@ test('dbf: records straddling stream chunks, and a truncated file is counted', a
   const { out, stats } = await collect(p);
   assert.equal(out.length, 19994);
   assert.equal(stats.rejected.truncated, 6);
+});
+
+test('csv: daynight is carried when the file has the column and absent otherwise', async () => {
+  const withCol = write('dn.csv', ['latitude,longitude,acq_date,acq_time,satellite,daynight', '1,2,2026-11-01,0100,N20,N'].join('\n') + '\n');
+  const without = write('nodn.csv', ['latitude,longitude,acq_date,acq_time,satellite', '1,2,2026-11-01,0100,N20'].join('\n') + '\n');
+  assert.equal((await collect(withCol)).out[0].daynight, 'N');
+  assert.equal('daynight' in (await collect(without)).out[0], false);
 });

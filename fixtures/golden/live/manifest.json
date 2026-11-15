@@ -32,16 +32,32 @@
   "partial_share": 0.5,
   "daily_records": {
     "modis": {
-      "2026-11-10": 2,
-      "2026-11-11": 2,
-      "2026-11-12": 2
+      "2026-11-10": {
+        "D": 1,
+        "N": 1
+      },
+      "2026-11-11": {
+        "D": 1,
+        "N": 1
+      },
+      "2026-11-12": {
+        "D": 1,
+        "N": 1
+      }
     },
     "viirs": {
-      "2026-11-11": 1,
-      "2026-11-12": 1
+      "2026-11-11": {
+        "N": 1
+      },
+      "2026-11-12": {
+        "N": 1
+      }
     },
     "noaa20": {
-      "2026-11-12": 2
+      "2026-11-12": {
+        "N": 1,
+        "D": 1
+      }
     }
   },
   "satellites": {
@@ -62,7 +78,7 @@
   "sources": [
     {
       "file": "nrt-modis.csv",
-      "records": 6,
+      "records": 7,
       "has_type": false
     },
     {
@@ -71,11 +87,11 @@
       "has_type": false
     }
   ],
-  "records_without_type": 11,
+  "records_without_type": 12,
   "skipped": {
     "NOAA21": 1
   },
-  "duplicates": 2,
+  "duplicates": 3,
   "clipped_by_domain": 1,
   "fire_cell_days": {
     "modis": 4,

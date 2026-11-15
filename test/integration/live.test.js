@@ -43,8 +43,8 @@ test('manifest and tile pass the schema; the domain is written', async () => {
 
 test('NRT files have no type column: handled, counted, recorded in the manifest', async () => {
   const { manifest, stats } = await buildLive({ ...opts, outDir: tmp() });
-  assert.deepEqual(manifest.sources.map((s) => [s.file, s.records, s.has_type]), [['nrt-modis.csv', 6, false], ['nrt-viirs.csv', 5, false]]);
-  assert.equal(manifest.records_without_type, 11);
+  assert.deepEqual(manifest.sources.map((s) => [s.file, s.records, s.has_type]), [['nrt-modis.csv', 7, false], ['nrt-viirs.csv', 5, false]]);
+  assert.equal(manifest.records_without_type, 12);
   assert.equal(stats.rejected.lat, 1);
 });
 
@@ -52,11 +52,12 @@ test('provenance: fetch time, per-sensor day coverage, skipped NOAA-21, clipped,
   const { manifest } = await buildLive({ ...opts, outDir: tmp() });
   assert.equal(manifest.fetched_at, '2026-11-13T00:30:00Z');
   assert.deepEqual(manifest.partial_days, { modis: [], viirs: [], noaa20: [] });
-  assert.deepEqual(manifest.daily_records.modis, { '2026-11-10': 2, '2026-11-11': 2, '2026-11-12': 2 });
+  // in-domain records per day and pass: the point outside the box (11-12, D) is not counted
+  assert.deepEqual(manifest.daily_records.modis, { '2026-11-10': { D: 1, N: 1 }, '2026-11-11': { D: 1, N: 1 }, '2026-11-12': { D: 1, N: 1 } });
   assert.deepEqual(manifest.coverage, { modis: ['2026-11-10', '2026-11-12'], viirs: ['2026-11-11', '2026-11-12'], noaa20: ['2026-11-12', '2026-11-12'] });
   assert.deepEqual(manifest.skipped, { NOAA21: 1 });
   assert.equal(manifest.clipped_by_domain, 1);
-  assert.equal(manifest.duplicates, 2);
+  assert.equal(manifest.duplicates, 3);
   assert.deepEqual(manifest.fire_cell_days, { modis: 4, viirs: 2, noaa20: 1 });
   assert.deepEqual(manifest.domain, { id: 'fixture-box', version: '1', file: 'domain.json', res: 0.1 });
 });

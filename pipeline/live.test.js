@@ -48,20 +48,41 @@ test('buildLiveTiles: null outside a sensor day coverage, 0 inside, rows sorted'
   assert.match(serializeLiveTile(t), /^\{\n {2}"cell": \[\d+,\d+\],\n {2}"day": \[0,1\],/);
 });
 
-test('partialDays: under 50% of the median, the fetch day, a feed that ended early; never the first day', () => {
-  const counts = { '2026-11-08': 10, '2026-11-09': 100, '2026-11-10': 49, '2026-11-11': 100, '2026-11-12': 100, '2026-11-13': 100 };
-  // median of 7 days (11-14 has no records: 0) is 100; 11-08 is the first day and 10 < 50 still counts as partial by the rule
-  assert.deepEqual(partialDays(counts, { first: '2026-11-09', last: '2026-11-13' }, '2026-11-20'), ['2026-11-10']);
-  assert.deepEqual(partialDays({ ...counts, '2026-11-10': 50 }, { first: '2026-11-09', last: '2026-11-13' }, '2026-11-20'), []);
-  assert.deepEqual(partialDays(counts, { first: '2026-11-09', last: '2026-11-13' }, '2026-11-13'), ['2026-11-10', '2026-11-13']);
-  assert.deepEqual(partialDays(counts, { first: '2026-11-09', last: '2026-11-13' }, '2026-11-20', '2026-11-14'), ['2026-11-10', '2026-11-13']);
-  assert.deepEqual(partialDays({ '2026-11-09': 100, '2026-11-11': 100 }, { first: '2026-11-09', last: '2026-11-11' }, 'x'), ['2026-11-10'], 'a day with no records inside the window');
+const dn = (d, n) => ({ D: d, N: n });
+const span = (from, vals) => Object.fromEntries(vals.map((v, i) => [`2026-11-${String(from + i).padStart(2, '0')}`, v]));
+
+test('partialDays: a pass under 50% of its neighbors median, the fetch day, a feed that ended early; never the first day', () => {
+  const cov = { first: '2026-11-01', last: '2026-11-09' };
+  const base = span(1, Array.from({ length: 9 }, () => dn(100, 40)));
+  const day = (d, v) => ({ ...base, [`2026-11-${d}`]: v });
+  assert.deepEqual(partialDays(base, cov, '2026-11-30'), []);
+  assert.deepEqual(partialDays(day('05', dn(3, 40)), cov, '2026-11-30'), ['2026-11-05'], 'day pass almost empty');
+  assert.deepEqual(partialDays(day('05', dn(100, 19)), cov, '2026-11-30'), ['2026-11-05'], 'night pass under half');
+  assert.deepEqual(partialDays(day('05', dn(100, 20)), cov, '2026-11-30'), [], '50% exactly is complete');
+  assert.deepEqual(partialDays(day('05', dn(0, 40)), cov, '2026-11-30'), ['2026-11-05'], 'zero counts');
+  assert.deepEqual(partialDays(day('01', dn(0, 0)), cov, '2026-11-30'), ['2026-11-01'], 'the first day is judged by its right neighbors only');
+  assert.deepEqual(partialDays(base, cov, '2026-11-09'), ['2026-11-09'], 'fetch day');
+  assert.deepEqual(partialDays(base, cov, '2026-11-30', '2026-11-12'), ['2026-11-09'], 'feed ended before the manifest last day');
 });
 
-test('buildLiveManifest: partial days from record counts, fetch day, no coverage throws', () => {
+test('partialDays: a low but steady stretch is not partial; one neighbor is not enough to change the median', () => {
+  const cov = { first: '2026-11-01', last: '2026-11-07' };
+  const counts = span(1, [dn(10, 5), dn(11, 5), dn(10, 6), dn(12, 5), dn(10, 5), dn(11, 5), dn(10, 5)]);
+  assert.deepEqual(partialDays(counts, cov, '2026-11-30'), []);
+  assert.deepEqual(partialDays({ '2026-11-01': dn(5, 5) }, { first: '2026-11-01', last: '2026-11-01' }, 'x'), [], 'no neighbors, nothing to compare');
+});
+
+test('partialDays: files without a day/night field use one pass', () => {
+  const cov = { first: '2026-11-01', last: '2026-11-04' };
+  assert.deepEqual(partialDays(span(1, [{ A: 100 }, { A: 10 }, { A: 100 }, { A: 100 }]), cov, 'x'), ['2026-11-02']);
+});
+
+test('buildLiveManifest: partial days from pass counts, fetch day, last day, no coverage throws', () => {
   const days = { modis: { first: '2026-11-08', last: '2026-11-14' }, viirs: { first: '2026-11-09', last: '2026-11-15' } };
-  const full = (a, b, n) => Object.fromEntries(Array.from({ length: b - a + 1 }, (_, i) => [`2026-11-${String(a + i).padStart(2, '0')}`, n]));
-  const dayCounts = { modis: { ...full(8, 14, 100), '2026-11-11': 10 }, viirs: full(9, 15, 100) };
+  const dayCounts = {
+    modis: { ...span(8, Array.from({ length: 7 }, () => dn(100, 100))), '2026-11-11': dn(10, 100) },
+    viirs: span(9, Array.from({ length: 7 }, () => dn(100, 100))),
+  };
   const m = buildLiveManifest({ fetchedAt: '2026-11-15T09:00:00Z', days, dayCounts, tiles: [], sources: [{ file: 'a.csv' }] });
   assert.equal(m.day0, '2026-11-08');
   assert.equal(m.last_day, '2026-11-15');

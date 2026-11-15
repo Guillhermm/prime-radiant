@@ -2,7 +2,7 @@
 // FIRMS Shapefile) and yields normalized records. Standard library only.
 //
 // Record: { sensor: 'modis'|'viirs', satellite: 'Terra'|'Aqua'|'SNPP'|'NOAA20'|'NOAA21',
-//           lat, lon, utcDay: 'YYYY-MM-DD', hasType }
+//           lat, lon, utcDay: 'YYYY-MM-DD', hasType, daynight? ('D'|'N', only when the file has the column) }
 // Rows that fail validation are never yielded and never silent: they are counted by
 // reason in `stats.rejected`. type != 0 is rejected as 'type_excluded' when the file has a
 // type field; files without one (NRT) yield records with hasType = false.
@@ -75,7 +75,9 @@ export function normalize(f, stats) {
     if (Number(f.type) !== 0) return reject(stats, 'type_excluded');
   }
   stats.accepted++;
-  return { sensor: sat[0], satellite: sat[1], lat, lon, utcDay: f.date, hasType };
+  const rec = { sensor: sat[0], satellite: sat[1], lat, lon, utcDay: f.date, hasType };
+  if (f.daynight !== undefined) rec.daynight = f.daynight; // 'D' or 'N' when the file has the column
+  return rec;
 }
 
 function columnMap(names) {
@@ -101,6 +103,7 @@ async function* readCsv(path, stats) {
     const rec = normalize({
       lat: g('latitude'), lon: g('longitude'), date: g('acq_date'), time: g('acq_time'),
       satellite: g('satellite'), type: 'type' in idx ? g('type') : undefined,
+      daynight: 'daynight' in idx ? g('daynight') : undefined,
     }, stats);
     if (rec) yield rec;
   }
@@ -150,6 +153,7 @@ async function* readDbf(path, stats) {
         date: /^\d{8}$/.test(d) ? `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6)}` : d,
         time: g('acq_time'), satellite: g('satellite'),
         type: 'type' in fields ? g('type') : undefined,
+        daynight: 'daynight' in fields ? g('daynight') : undefined,
       }, stats);
       if (rec) yield rec;
     }
