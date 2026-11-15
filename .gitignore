@@ -1,6 +1,7 @@
 # FIRMS archive downloads and generated tiles
 raw/
 data/
+!core/data/
 
 # Local and deploy state
 .vercel/

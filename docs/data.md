@@ -136,9 +136,27 @@ tiles and a live manifest. `--fetched-at` is the time the files were fetched (de
   rolling window starts mid-day, and the last day when it is the fetch day or earlier than `last_day`, i.e. the sensor stopped
   or lags, as S-NPP on 2026-11-02), `sources` (file, records, has_type),
   `skipped`, `duplicates`, `clipped_by_domain`, `fire_cell_days`, `domain`, `citation` (NRT product DOIs), `caveats`.
+- **Partial days (gate V3, L2):** per sensor, a day is partial when its global record count (every accepted record of
+  the sensor that day, before the domain clip, any type) is under 50% of the median daily count over the sensor's coverage
+  window (days with no record count 0); the fetch day (day of `fetched_at`) is always partial; so is a sensor's last day
+  when it is earlier than the manifest `last_day` (a feed that ended mid-day). The first day is not partial. Partial days
+  are `null` in the tiles (never 0, never the partial count) and listed in `partial_days`; `daily_records` holds the counts
+  used. On the real run S-NPP 2026-08-03 (1,973 records), 08-04, 10-12, 10-13 fall under 50% and 11-02 is partial as the
+  feed's last day (55% of the median, above the rule); NOAA-20 10-12 and 11-14 (fetch day). Not verified: the V3 reviewers
+  expected 11-02 from the 50% rule alone and did not list 08-04 and 10-13 (19,184 and 23,516 records, 30% and 36% of the median).
 - **Limit:** coverage is the first to last day with a detection, so an outage day inside the range reads as 0, and
   there is no acquisition-day check as in the archive.
 - **Real run (2026-11-15, NRT Shapefiles in `raw/firms-2026/`, Brazil domain):** 22,078,520 records in (every one without
   `type`), 566,140 NOAA-21 skipped, 20,279,616 outside Brazil, 879,968 duplicates. Days 2026-08-01 to 2026-11-14
   (MODIS from 2026-09-01, S-NPP to 2026-11-02, NOAA-20 to 2026-11-14). Fire-cell-days: MODIS 56,330; S-NPP 137,688;
   NOAA-20 158,778. 17 tiles, 3.5 MB raw, 359 KB brotli. 67 s, 420 MB peak RSS, Node 24.
+
+## Daily share table (gate V3, L1)
+
+`core/data/daily-share.json` is a derived constant, committed: `share[m][d-1]` is the mean, over complete S-NPP months of
+calendar month m+1, of the cumulative fire-cell-days by the end of day d divided by the month's total (a day past the end
+of a month is 1). Source: FIRMS archive national S-NPP files `raw/country/viirs-snpp_{2012..2025}_Brazil.csv`, `type = 0`,
+Brazil domain clip, the archive dedupe; months in `partial_months.viirs` of `data/brazil/manifest.json` and empty months are
+left out. 14 years, 168 months. Command (2 minutes):
+`node pipeline/daily-share.js --in raw/country --years 2012-2025 --domain pipeline/domain/brazil.geojson --manifest data/brazil/manifest.json --out core/data/daily-share.json`.
+Day 14: July 0.350, September 0.471, November 0.501 (the mathematician's check: about 0.36, 0.48, 0.50).
