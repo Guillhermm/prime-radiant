@@ -200,7 +200,8 @@ months, NOAA-20 for NOAA-20 x K months (`core/partial.js`).
    burning.
 5. The latest archived month may lag the calendar month.
 6. Sparse areas use a regional ratio (low confidence).
-7. Near-real-time data cannot be filtered by type (planned, M3).
+7. Near-real-time data cannot be filtered by type. The live pipeline (`pipeline/live.js`) counts it unfiltered and
+   keeps it out of the archive series; the comparison model and its labeling are planned (M3-K3).
 8. Method not yet validated (preliminary) until gate V1.
 9. Data cover Brazil only (Natural Earth 10m outline, v5.1.2). Areas outside read as
    no data; border cells hold only detections inside the outline, so they undercount.

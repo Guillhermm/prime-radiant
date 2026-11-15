@@ -388,8 +388,8 @@ Sync **S4**: anomaly stub replaced by real core; V2, D2, Q2; deploy.
 
 ### Kaue
 
-**M3-K1 NRT gridding** · M · depends: M1-K3
-- Deliverable: `pipeline/live.js`: reads FIRMS global NRT CSVs (keyless, NOAA-20 VIIRS 7-day and MODIS 7-day default), same grid and cell rules, no type filter possible (NRT has no `type`), daily tiles in `data/live/` with `day[]`, live manifest with fetch time and source files.
+✅ **M3-K1 NRT gridding** · M · depends: M1-K3
+- Deliverable: `pipeline/live.js`: reads FIRMS global NRT CSVs or the NRT Shapefile `.dbf` (keyless; MODIS, S-NPP and NOAA-20, 7-day default), same grid and cell rules, no type filter possible (NRT has no `type`), daily tiles in `data/live/` with `day[]`, live manifest with fetch time and source files.
 - Acceptance: fixture NRT CSV -> golden live tiles; missing `type` column handled; provenance in manifest.
 - Tests: unit + integration `test/integration/live.test.js` on fixtures (no network).
 - Files: `pipeline/live.js`, `fixtures/nrt-*.csv`.
