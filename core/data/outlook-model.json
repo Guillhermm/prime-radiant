@@ -38,33 +38,53 @@
   ],
   "bias": -0.213148,
   "trained": {
+    "from": "2018-02",
     "to": "2020-12",
     "samples": 22393
   },
-  "command": "node pipeline/outlook.js --data /home/aukauemelo/prime-radiants/prime-radiant/data/brazil --out /tmp/claude-1000/-home-aukauemelo-prime-radiants-prime-radiant/ead8c772-ecef-42f5-a04d-2ba9d0ea2bd7/scratchpad/outlook --model-out core/data/outlook-model.json",
+  "command": "node pipeline/outlook.js --data /home/aukauemelo/prime-radiants/prime-radiant/data/brazil --live /home/aukauemelo/prime-radiants/prime-radiant/data/live --out /tmp/claude-1000/-home-aukauemelo-prime-radiants-prime-radiant/ead8c772-ecef-42f5-a04d-2ba9d0ea2bd7/scratchpad/outlook --model-out core/data/outlook-model.json",
   "dataVersion": "20261114",
+  "references": {
+    "constant": 0.4512,
+    "persistence_given_above": 0.5784,
+    "persistence_given_not_above": 0.3462
+  },
   "metrics": {
     "temporal": {
-      "n": 27832,
-      "brier": 0.2178,
-      "brier_climatology": 0.2608,
-      "brier_persistence": 0.3457,
-      "bss_climatology": 0.1649,
-      "bss_persistence": 0.3699,
-      "auc": 0.7074,
-      "auc_climatology": 0.5551,
-      "auc_persistence": 0.6522
+      "n": 25458,
+      "brier": 0.2147,
+      "brier_constant": 0.2492,
+      "brier_persistence_calibrated": 0.2258,
+      "bss_constant": 0.1385,
+      "bss_constant_ci": [
+        0.1173,
+        0.1616
+      ],
+      "bss_persistence": 0.0491,
+      "bss_persistence_ci": [
+        0.0359,
+        0.0627
+      ],
+      "auc": 0.7209,
+      "auc_persistence": 0.6589
     },
     "spatial": {
-      "n": 27832,
-      "brier": 0.219,
-      "brier_climatology": 0.2608,
-      "brier_persistence": 0.3457,
-      "bss_climatology": 0.1602,
-      "bss_persistence": 0.3664,
-      "auc": 0.7028,
-      "auc_climatology": 0.5551,
-      "auc_persistence": 0.6522
+      "n": 25458,
+      "brier": 0.2156,
+      "brier_constant": 0.2495,
+      "brier_persistence_calibrated": 0.226,
+      "bss_constant": 0.1356,
+      "bss_constant_ci": [
+        0.1149,
+        0.1607
+      ],
+      "bss_persistence": 0.0458,
+      "bss_persistence_ci": [
+        0.0325,
+        0.0617
+      ],
+      "auc": 0.7174,
+      "auc_persistence": 0.654
     }
   }
 }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  anomaly1p, auc, brier, brierSkill, climatology, featuresAt, fitLogistic, lossAndGrad, outcome, predict, reliability, scoreSet,
+  anomaly1p, auc, bootstrapBss, brier, brierSkill, featuresAt, fitLogistic, lossAndGrad, outcome, predict, reliability, scoreSet,
 } from './outlook.js';
 
 test('anomaly1p is log1p of the ratio-like difference, 0 at the median', () => {
@@ -32,7 +32,8 @@ test('featuresAt builds the six features by hand and refuses missing inputs', ()
   assert.ok(Math.abs(x[4] - Math.log1p(2)) < 1e-12);
   assert.ok(Math.abs(x[5] - (Math.log1p(8) - Math.log1p(2))) < 1e-12);
   assert.equal(featuresAt(values.map((v, i) => (i === 10 ? null : v)), medians, 11, 1), null);
-  assert.equal(featuresAt(values, medians.map((m, i) => (i === 12 ? 0 : m)), 11, 1), null);
+  assert.equal(featuresAt(values, medians.map((m, i) => (i === 12 ? 0 : m)), 11, 1)[4], 0); // median 0: forecast, labeled no-skill later
+  assert.equal(featuresAt(values, medians.map((m, i) => (i === 12 ? null : m)), 11, 1), null);
   assert.equal(featuresAt(values, medians, 5, 1), null); // no year-before month
 });
 
@@ -71,9 +72,16 @@ test('scores by hand: brier, skill, auc with ties, reliability bins', () => {
   assert.equal(r.length, 10);
   assert.deepEqual([r[0].n, r[0].observed, r[9].n, r[9].observed], [2, 0.5, 2, 1]);
   assert.equal(r[4].meanP, null);
-  assert.equal(climatology(0, 0), 0.5);
-  assert.equal(climatology(3, 4), 4 / 6);
-  const s = scoreSet({ p: [0.9, 0.1], clim: [0.5, 0.5], persist: [1, 0], y: [1, 0] });
-  assert.ok(s.bss_climatology > 0);
-  assert.equal(s.bss_persistence, null); // perfect persistence has Brier 0: no skill ratio
+  const sc = scoreSet({ p: [0.9, 0.1, 0.8, 0.2], constant: [0.5, 0.5, 0.5, 0.5], persist: [0.6, 0.4, 0.6, 0.4], y: [1, 0, 1, 0], block: ['a', 'a', 'b', 'b'] });
+  assert.ok(sc.bss_constant > 0 && sc.bss_persistence > 0);
+  assert.ok(Math.abs(sc.bss_constant - (1 - 0.025 / 0.25)) < 1e-12);
+  assert.ok(sc.bss_constant_ci[0] <= sc.bss_constant_ci[1]);
+});
+
+test('bootstrapBss is seeded and collapses on identical blocks', () => {
+  const blocks = [1, 2, 3, 4].map((k) => ({ key: k, sm: 1, sc: 2, sp: 4, n: 1 }));
+  const a = bootstrapBss(blocks, { draws: 50 });
+  assert.deepEqual(a, bootstrapBss(blocks, { draws: 50 }));
+  assert.deepEqual(a.constant, [0.5, 0.5]);
+  assert.deepEqual(a.persistence, [0.75, 0.75]);
 });

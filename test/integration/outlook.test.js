@@ -37,10 +37,10 @@ test('outlook run is deterministic and writes tiles, manifest and report', () =>
   makeBuild(dir);
   const split = { trainTo: '2020-12', testFrom: '2022-01', testTo: '2024-12' };
   const out = path.join(dir, 'out');
-  const a = runOutlook({ dataDir: dir, outDir: out, ...split });
-  const b = runOutlook({ dataDir: dir, ...split });
+  const a = runOutlook({ dataDir: dir, outDir: out, now: '2025-03-05T00:00:00Z', ...split });
+  const b = runOutlook({ dataDir: dir, now: '2025-03-05T00:00:00Z', ...split });
   assert.deepEqual(a.model.weights, b.model.weights);
-  assert.equal(a.manifest.month, '2025-01');
+  assert.equal(a.manifest.target_month, '2025-01');
   assert.equal(a.manifest.status, 'experimental');
   const tile = JSON.parse(fs.readFileSync(path.join(out, 'tiles', 'x10y10.json'), 'utf8'));
   assert.equal(tile.cell.length, tile.p.length);
@@ -48,6 +48,36 @@ test('outlook run is deterministic and writes tiles, manifest and report', () =>
   const report = JSON.parse(fs.readFileSync(path.join(out, 'report.json'), 'utf8'));
   assert.ok(report.counts.train > 0 && report.counts.test > 0);
   assert.equal(report.temporal.reliability.length, 10);
-  assert.ok(Number.isFinite(report.temporal.bss_climatology));
+  assert.ok(Number.isFinite(report.temporal.bss_constant) && report.temporal.bss_persistence_ci.length === 2);
+  assert.equal(tile.target_month, '2025-01');
+  assert.equal(a.manifest.mode, 'hindcast');
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('live months extend the series: forecast of the month after the latest complete month, else hindcast', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'outlook-live-'));
+  makeBuild(dir);
+  const live = path.join(dir, 'live');
+  fs.mkdirSync(path.join(live, 'tiles', '0.1'), { recursive: true });
+  const cell = [], day = [], noaa20 = [];
+  for (let c = 0; c < 12; c++) for (let d = 0; d < 59; d++) { cell.push(Math.floor(c / 10) * 1000 + (c % 10) * 10); day.push(d); noaa20.push(30 + (c % 3)); }
+  fs.writeFileSync(path.join(live, 'tiles', '0.1', 'x10y10.json'), JSON.stringify({ cell, day, modis: noaa20.map(() => null), viirs: noaa20.map(() => null), noaa20 }));
+  fs.writeFileSync(path.join(live, 'manifest.json'), JSON.stringify({
+    fetched_at: '2025-03-05T10:00:00Z', day0: '2025-01-01', last_day: '2025-03-04', tiles: ['x10y10'],
+    coverage: { noaa20: ['2025-01-01', '2025-03-04'] }, partial_days: { noaa20: ['2025-01-10'] },
+  }));
+  const split = { trainTo: '2020-12', testFrom: '2022-01', testTo: '2024-12' };
+  const a = runOutlook({ dataDir: dir, liveDir: live, ...split });
+  assert.equal(a.manifest.mode, 'forecast');
+  assert.equal(a.manifest.last_observed_month, '2025-02');
+  assert.equal(a.manifest.target_month, '2025-03');
+  assert.deepEqual(a.report.live_months.map((m) => [m.month, m.usable]), [['2025-01', true], ['2025-02', true], ['2025-03', false]]);
+  const t = a.tiles.get('x10y10');
+  assert.equal(t.target_month, '2025-03');
+  assert.equal(t.no_skill.length, t.p.length);
+  const h = runOutlook({ dataDir: dir, now: '2025-03-05T10:00:00Z', ...split });
+  assert.equal(h.manifest.mode, 'hindcast');
+  assert.equal(h.manifest.last_observed_month, '2024-12');
+  assert.equal(h.manifest.target_month, '2025-01');
   fs.rmSync(dir, { recursive: true });
 });

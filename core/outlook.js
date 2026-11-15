@@ -24,7 +24,8 @@ export function outcome(values, medians, T) {
 /**
  * Feature vector at month index t for the outlook of month t+1 (FEATURES order), or null when any
  * input is missing: this month and the two before need a value and a median, t+1 needs a median
- * > 0, and the same calendar month a year before the target (t-11) needs both.
+ * (0 allowed: such a cell is forecast but labeled no-skill, and with no outcome it never trains),
+ * and the same calendar month a year before the target (t-11) needs both.
  * `month` is the calendar month (1..12) of the target.
  */
 export function featuresAt(values, medians, t, month) {
@@ -35,7 +36,7 @@ export function featuresAt(values, medians, t, month) {
   }
   const next = medians[t + 1];
   const p = t - 11;
-  if (!ok(next) || !(next > 0) || p < 0 || !ok(values[p]) || !ok(medians[p])) return null;
+  if (!ok(next) || p < 0 || !ok(values[p]) || !ok(medians[p])) return null;
   const ang = (2 * Math.PI * month) / 12;
   return [a[0], (a[0] + a[1] + a[2]) / 3, Math.sin(ang), Math.cos(ang), Math.log1p(next), anomaly1p(values[p], medians[p])];
 }
@@ -125,17 +126,58 @@ export function reliability(p, y, bins = 10) {
   return out;
 }
 
-/** Scores of model, climatology and persistence on the same samples ({p, clim, persist, y} arrays). */
-export function scoreSet({ p, clim, persist, y }) {
-  const bs = brier(p, y), bc = brier(clim, y), bp = brier(persist, y);
-  return {
-    n: y.length, base_rate: y.reduce((s, v) => s + v, 0) / y.length,
-    brier: bs, brier_climatology: bc, brier_persistence: bp,
-    bss_climatology: brierSkill(bs, bc), bss_persistence: brierSkill(bs, bp),
-    auc: auc(p, y), auc_climatology: auc(clim, y), auc_persistence: auc(persist, y),
-    reliability: reliability(p, y),
+/** Seeded mulberry32 generator, floats in [0, 1). */
+function rng(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
 
-/** Climatology forecast: share of earlier years above the median, shrunk to 0.5 with 2 pseudo-years. */
-export const climatology = (above, years) => (above + 1) / (years + 2);
+/**
+ * Block bootstrap of the Brier skill scores: blocks ({key, sm, sc, sp, n}: sums of squared errors of
+ * model, constant and calibrated persistence per tile x year) are resampled with replacement.
+ * @returns {{constant: [number, number], persistence: [number, number]}} 95% intervals (2.5th and 97.5th percentiles)
+ */
+export function bootstrapBss(blocks, { draws = 1000, seed = 20261115 } = {}) {
+  const next = rng(seed);
+  const c = [], p = [];
+  for (let d = 0; d < draws; d++) {
+    let sm = 0, sc = 0, sp = 0;
+    for (let k = 0; k < blocks.length; k++) {
+      const b = blocks[Math.floor(next() * blocks.length)];
+      sm += b.sm; sc += b.sc; sp += b.sp;
+    }
+    c.push(1 - sm / sc); p.push(1 - sm / sp);
+  }
+  const q = (xs, f) => { const v = xs.slice().sort((a, b) => a - b); const pos = f * (v.length - 1); const lo = Math.floor(pos); return v[lo] + (v[Math.ceil(pos)] - v[lo]) * (pos - lo); };
+  return { constant: [q(c, 0.025), q(c, 0.975)], persistence: [q(p, 0.025), q(p, 0.975)] };
+}
+
+/**
+ * Scores of the model against a constant base rate and a calibrated persistence (both fit on
+ * training only), on the same samples: `{p, constant, persist, y, block}` parallel arrays, `block`
+ * the tile x year key of the bootstrap.
+ */
+export function scoreSet({ p, constant, persist, y, block }) {
+  const bs = brier(p, y), bc = brier(constant, y), bp = brier(persist, y);
+  const sq = (a, i) => (a[i] - y[i]) ** 2;
+  const groups = new Map();
+  y.forEach((_, i) => {
+    const g = groups.get(block[i]) ?? groups.set(block[i], { key: block[i], sm: 0, sc: 0, sp: 0, n: 0 }).get(block[i]);
+    g.sm += sq(p, i); g.sc += sq(constant, i); g.sp += sq(persist, i); g.n++;
+  });
+  const ci = bootstrapBss([...groups.values()]);
+  return {
+    n: y.length, base_rate: y.reduce((s, v) => s + v, 0) / y.length,
+    brier: bs, brier_constant: bc, brier_persistence_calibrated: bp,
+    bss_constant: brierSkill(bs, bc), bss_constant_ci: ci.constant,
+    bss_persistence: brierSkill(bs, bp), bss_persistence_ci: ci.persistence,
+    auc: auc(p, y), auc_persistence: auc(persist, y),
+    reliability: reliability(p, y),
+  };
+}
