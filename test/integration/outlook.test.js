@@ -84,3 +84,19 @@ test('live months extend the series: forecast of the month after the latest comp
   assert.equal(h.manifest.target_month, '2025-01');
   fs.rmSync(dir, { recursive: true });
 });
+
+test('no-skill: a cell with median 0 is forecast but labeled, the others are not (V4 O2)', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'outlook-'));
+  makeBuild(dir);
+  const f = path.join(dir, 'tiles', '1', 'x10y10.json');
+  const t = JSON.parse(fs.readFileSync(f, 'utf8'));
+  t.cell.forEach((c, i) => { if (c === 0) { t.viirs[i] = 0; if (t.noaa20[i] !== null) t.noaa20[i] = 0; } });
+  fs.writeFileSync(f, JSON.stringify(t));
+  const out = path.join(dir, 'out');
+  runOutlook({ dataDir: dir, outDir: out, now: '2025-03-05T00:00:00Z', trainTo: '2020-12', testFrom: '2022-01', testTo: '2024-12' });
+  const tile = JSON.parse(fs.readFileSync(path.join(out, 'tiles', 'x10y10.json'), 'utf8'));
+  assert.equal(tile.no_skill.length, tile.cell.length);
+  assert.ok(tile.cell.includes(0));
+  tile.cell.forEach((c, i) => assert.equal(tile.no_skill[i], c === 0 ? 1 : 0, `cell ${c}`));
+  fs.rmSync(dir, { recursive: true });
+});
