@@ -94,7 +94,13 @@ export const mount = (container, { id = 'area-name', loadPlaces = async () => nu
     statusTimer = setTimeout(() => { status.textContent = open ? countText(matches.length) : ''; }, 400);
   };
 
+  // Focus selects the whole name, so typing replaces it. A click would collapse that selection on
+  // mouseup, so the mouseup that follows a pointer focus is canceled.
+  let keepSelection = false;
+  input.addEventListener('pointerdown', () => { keepSelection = document.activeElement !== input; });
+  input.addEventListener('mouseup', (ev) => { if (keepSelection) ev.preventDefault(); keepSelection = false; });
   input.addEventListener('focus', () => {
+    input.select();
     if (requested) return;
     requested = true;
     loadPlaces().then((p) => {

@@ -1014,3 +1014,28 @@ test('area name: typing "pant" suggests Pantanal, picking it fills the area, the
     assert.deepEqual(page.problems, []);
   } finally { await page.close(); }
 });
+
+test('area name: the form opens on the area\'s own title, selected on focus; only the fields scroll', { skip }, async () => {
+  const hs = synthOverview.hotspots[0];
+  const label = `${hs.place.state}, ${hs.place.country}`;
+  // A link with no name: the title comes from the hotspot, which is only known once overview.json arrives.
+  const page = await open(1280, `#${bboxHash(hs.bbox)}&view=calendar`, synthBase);
+  try {
+    await page.until(`${CALENDAR_READY} && document.querySelector('.context h1').textContent === ${JSON.stringify(label)}`, 'titled by the hotspot');
+    await settle(page);
+    await page.click('.areas-button');
+    await page.until(`document.querySelector('.ad-manual')`, 'place picker');
+    await page.click('.ad-manual');
+    await page.until(`document.querySelector('.query-bar.sheet-open') && document.querySelector('.map-canvas .leaflet-pane')`, 'the form with the map');
+    await settle(page);
+    await page.click('#area-name');
+    await page.until(`document.activeElement.id === 'area-name'`, 'name focused');
+    assert.deepEqual(await page.evaluate(`(() => { const i = document.querySelector('#area-name'); return [i.value, i.selectionStart, i.selectionEnd]; })()`), [label, 0, label.length]);
+    const scroll = await page.evaluate(`[...document.querySelectorAll('.query-form, .query-form > .sheet-head, .query-form > .actions, .query-body')].map((e) => getComputedStyle(e).overflowY).join()`);
+    assert.equal(scroll, 'hidden,hidden,auto,hidden', 'form, head, body, actions: only the body scrolls');
+    await page.click('.query-form .actions .btn-primary');
+    await page.until(`!document.querySelector('.query-bar').classList.contains('sheet-open')`, 'applied');
+    assert.equal(await page.evaluate(`document.querySelector('.context h1').textContent`), label, 'an untouched Apply keeps the title');
+    assert.deepEqual(page.problems, []);
+  } finally { await page.close(); }
+});

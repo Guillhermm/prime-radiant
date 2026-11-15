@@ -97,7 +97,7 @@ export const mount = (container, {
   const actions = h('div', { class: 'actions' }, apply);
   const form = h('form', { class: 'query-form', 'aria-labelledby': 'query-title' },
     h('div', { class: 'sheet-head' }, h('strong', { id: 'query-title', text: 'Area and period' }), closeBtn),
-    nameBox, mapSlot, aoiBox, drawBtn, dateBox, actions);
+    h('div', { class: 'query-body' }, nameBox, mapSlot, aoiBox, drawBtn, dateBox), actions);
   form.addEventListener('submit', (e) => { e.preventDefault(); commit(); });
 
   // The form is a popover under the chips on desktop and a sheet on phone. Its open state is a
@@ -116,6 +116,9 @@ export const mount = (container, {
   // in the middle of the screen on desktop rather than a popover hanging off a chip.
   const openSheet = (from, focusEl, { centered = false } = {}) => {
     opener = from;
+    // An untouched name follows the area's title, which can change after mount (an example's label
+    // arrives with overview.json); a draft the user typed stays.
+    if (nameCtl.isPrefilled()) prefillName(store.get());
     form.classList.toggle('is-centered', centered);
     container.classList.add('sheet-open');
     document.documentElement.classList.add('query-open');

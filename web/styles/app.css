@@ -177,6 +177,8 @@ a { color: inherit; text-underline-offset: 0.2em; }
 /* The share button is attached to the area chip, one pill split in two. */
 .chip-split { display: inline-flex; max-inline-size: 100%; }
 .chip-split:has(.share-chip:not([hidden])) .area-chip { border-start-end-radius: 0; border-end-end-radius: 0; }
+/* The two halves overlap by a hairline: the focused one is lifted so its ring is drawn whole. */
+.chip-split > :focus-visible { position: relative; z-index: 1; }
 .share-chip { justify-content: center; inline-size: 2.75rem; margin-inline-start: -1px; padding: 0; border-start-start-radius: 0; border-end-start-radius: 0; }
 .share-menu, .export-menu {
   position: fixed; inset: auto; inset-block-start: var(--pop-top, 8rem);
@@ -198,8 +200,8 @@ a { color: inherit; text-underline-offset: 0.2em; }
 .query-form { display: none; }
 .query-bar.sheet-open .query-form {
   position: absolute; inset-block-start: calc(100% + 0.5rem); inset-inline-start: 0; z-index: var(--z-popover);
-  display: flex; flex-direction: column; gap: 1rem; inline-size: min(34rem, calc(100vw - 2rem)); max-block-size: calc(100dvh - 8rem); overflow: auto;
-  padding: 1.25rem; border-radius: var(--radius-card); background: var(--color-surface); border: 1px solid var(--color-border); box-shadow: var(--shadow-overlay);
+  display: flex; flex-direction: column; inline-size: min(34rem, calc(100vw - 2rem)); max-block-size: calc(100dvh - 8rem); overflow: hidden;
+  padding: 0; border-radius: var(--radius-card); background: var(--color-surface); border: 1px solid var(--color-border); box-shadow: var(--shadow-overlay);
   transform-origin: top left;
 }
 /* Opened from the first screen or the place picker: a dialog centered in the viewport, over a scrim.
@@ -208,14 +210,18 @@ a { color: inherit; text-underline-offset: 0.2em; }
   position: fixed; inset-block-start: 50%; inset-inline-start: 50%; translate: -50% -50%; max-block-size: calc(100dvh - 2rem); transform-origin: center;
 }
 html.query-open:has(.query-form.is-centered) { overflow: hidden; }
-/* The centered form can be taller than the screen: Apply stays in reach at its foot. */
 @media (width > 40rem) {
   html.query-open:has(.query-form.is-centered) body::after { content: ""; position: fixed; inset: 0; z-index: calc(var(--z-popover) - 1); background: var(--scrim); }
-  .query-form.is-centered .actions {
-    position: sticky; inset-block-end: -1.25rem; z-index: calc(var(--z-map) + 1); margin: 0 -1.25rem -1.25rem; padding: 0.75rem 1.25rem 1.25rem;
-    background: var(--color-surface); border-block-start: 1px solid var(--color-border);
-  }
 }
+/* Header and Apply stay put; only the fields between them scroll, so the scrollbar never crosses the
+   rounded corners. The inline padding leaves room for focus rings inside the scroller. */
+.query-form > .sheet-head { flex: none; padding: 1.25rem 1.25rem 1rem; }
+.query-body { flex: 1 1 auto; min-block-size: 0; overflow: auto; display: flex; flex-direction: column; gap: 1rem; padding: 0.25rem 1.25rem 1.25rem; }
+.query-form > .actions { flex: none; padding: 0.75rem 1.25rem 1.25rem; border-block-start: 1px solid var(--color-border); }
+/* The same gutter on all three keeps the close button, the fields and Apply on one right edge
+   wherever scrollbars take space (scrollbar-gutter applies to overflow: hidden too). */
+.query-form > .sheet-head, .query-body, .query-form > .actions { overflow: hidden; scrollbar-gutter: stable; }
+.query-body { overflow: auto; }
 
 .sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
 .sheet-head strong { font-size: 1.125rem; font-weight: 700; }
@@ -448,13 +454,13 @@ kbd { padding: 0.125rem 0.375rem; border-radius: 0.3125rem; border: 1px solid va
 html.sheet-open, html.drawer-open { overflow: hidden; }
 /* Overlay scrollbars: thin and quiet, like on a phone. The ::-webkit-scrollbar rules only matter
    where scrollbar-color is unsupported, since browsers ignore them once it is set. */
-.drawer-panel, .panel-host, .panel-host.is-sheet .panel, .query-form, .data-table-scroll {
+.drawer-panel, .panel-host, .panel-host.is-sheet .panel, .query-body, .data-table-scroll {
   scrollbar-width: thin; scrollbar-color: var(--color-border-strong) transparent;
 }
 @supports not (scrollbar-color: auto) {
-  :is(.drawer-panel, .panel-host, .panel-host.is-sheet .panel, .query-form, .data-table-scroll)::-webkit-scrollbar { width: 0.375rem; height: 0.375rem; }
-  :is(.drawer-panel, .panel-host, .panel-host.is-sheet .panel, .query-form, .data-table-scroll)::-webkit-scrollbar-track { background: transparent; }
-  :is(.drawer-panel, .panel-host, .panel-host.is-sheet .panel, .query-form, .data-table-scroll)::-webkit-scrollbar-thumb { border-radius: var(--radius-pill); background: var(--color-border-strong); }
+  :is(.drawer-panel, .panel-host, .panel-host.is-sheet .panel, .query-body, .data-table-scroll)::-webkit-scrollbar { width: 0.375rem; height: 0.375rem; }
+  :is(.drawer-panel, .panel-host, .panel-host.is-sheet .panel, .query-body, .data-table-scroll)::-webkit-scrollbar-track { background: transparent; }
+  :is(.drawer-panel, .panel-host, .panel-host.is-sheet .panel, .query-body, .data-table-scroll)::-webkit-scrollbar-thumb { border-radius: var(--radius-pill); background: var(--color-border-strong); }
 }
 
 /* Method drawer: floating from the right, a sheet on phone. */
@@ -588,8 +594,11 @@ html.sheet-open, html.drawer-open { overflow: hidden; }
   .query-summary .share-chip { flex: none; }
   .query-bar.sheet-open .query-form, .is-first-run .query-bar.sheet-open .query-form, .query-bar.sheet-open .query-form.is-centered {
     position: fixed; inset: auto 0 0; translate: none; z-index: var(--z-sheet); inline-size: auto; max-block-size: 92dvh;
-    padding: 1rem 1rem calc(1.5rem + env(safe-area-inset-bottom, 0px)); border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+    padding: 0; border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
   }
+  .query-form > .sheet-head { padding: 1rem 1rem 0.75rem; }
+  .query-body { padding: 0.25rem 1rem 1rem; }
+  .query-form > .actions { padding: 0.75rem 1rem calc(1rem + env(safe-area-inset-bottom, 0px)); }
   html.query-open { overflow: hidden; }
   /* A transform (the sheet's entrance fill) would make the sheet the containing block of the fixed full-screen map. */
   .query-bar.sheet-open .query-form:has(.map-panel.is-full) { animation: none; transform: none; translate: none; }
