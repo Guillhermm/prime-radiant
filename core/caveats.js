@@ -71,8 +71,8 @@ export const NO_GATES = Object.freeze(Object.fromEntries(CAVEAT_IDS.map((id) => 
  * Status after gate V1 (docs/gates/V1.md, passed with caveats on 2026-11-14): every item
  * passed except near-real-time data (gate V3) and the anomaly items (gate V2 re-check).
  */
-const PRELIMINARY = new Set(['nrt-unfiltered', 'anomaly-rule', 'anomaly-small-n', 'anomaly-scaled-years',
-  'anomaly-sparse', 'anomaly-archive', 'cross-era', 'unconfirmed', 'viirs-era-record', 'sparse-baseline', 'viirs-outage-filled']);
+// Gates V1 and V2 passed (docs/gates/V1.md, V2.md); near-real-time data waits for V3.
+const PRELIMINARY = new Set(['nrt-unfiltered']);
 export const DEFAULT_GATES = Object.freeze(Object.fromEntries(
   CAVEAT_IDS.map((id) => [id, PRELIMINARY.has(id) ? 'preliminary' : 'passed'])));
 

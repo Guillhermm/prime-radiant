@@ -13,10 +13,8 @@ test('catalog: nine caveats plus anomaly caveats and flags, short and long text,
   for (const c of all) assert.ok(c.short && c.long && c.long.length >= c.short.length, c.id);
 });
 
-test('preliminary: after V1 only nrt-unfiltered and the V2 anomaly items stay preliminary', () => {
-  assert.deepEqual(catalog().filter((c) => c.preliminary).map((c) => c.id),
-    ['nrt-unfiltered', 'anomaly-rule', 'anomaly-small-n', 'anomaly-scaled-years', 'anomaly-sparse', 'anomaly-archive',
-      'viirs-era-record', 'unconfirmed', 'cross-era', 'sparse-baseline', 'viirs-outage-filled']);
+test('preliminary: after V1 and V2 only nrt-unfiltered stays preliminary', () => {
+  assert.deepEqual(catalog().filter((c) => c.preliminary).map((c) => c.id), ['nrt-unfiltered']);
   assert.equal(DEFAULT_GATES['not-validated'], 'passed');
 });
 
