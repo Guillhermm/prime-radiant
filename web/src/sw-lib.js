@@ -23,7 +23,7 @@ export const SHELL_FILES = [
   'src/components/legend.js', 'src/components/live-view.js', 'src/components/map-picker.js', 'src/components/sensors-view.js', 'src/components/segmented.js',
   'src/components/method-drawer.js', 'src/components/query-bar.js', 'src/components/radiant.js', 'src/components/states.js',
   'src/components/synthetic-band.js', 'src/components/theme-control.js', 'src/components/toast.js', 'src/components/popover.js', 'src/components/share-menu.js', 'src/components/offline-chip.js', 'src/components/verdict-row.js',
-  '../core/aggregate.js', '../core/baseline.js', '../core/calendar.js', '../core/caveats.js', '../core/csv.js', '../core/domain.js',
+  '../core/aggregate.js', '../core/anomaly.js', '../core/baseline.js', '../core/calendar.js', '../core/caveats.js', '../core/csv.js', '../core/domain.js',
   '../core/grid.js', '../core/harmonize.js', '../core/index.js', '../core/months.js', '../core/schema.js', '../core/series.js', '../core/tiles.js',
 ];
 

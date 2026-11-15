@@ -72,7 +72,7 @@ const previewNote = (synthetic) => h('p', { class: 'hint anomaly-preview-note', 
 // Placeholder ranks for a result, computed once per result.
 const ranked = new WeakMap();
 const anomalyCells = (r) => {
-  if (!ranked.has(r)) ranked.set(r, anomalyLayer.withAnomaly(r.cells, previewAnomaly(r.cells)));
+  if (!ranked.has(r)) ranked.set(r, anomalyLayer.withAnomaly(r.cells, r.anomaly ?? previewAnomaly(r.cells)));
   return ranked.get(r);
 };
 

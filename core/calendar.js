@@ -1,5 +1,6 @@
 import { addMonths } from './months.js';
 import { KNOWN_PARTIAL_MONTHS } from './baseline.js';
+import { anomaly, yearRank } from './anomaly.js';
 
 /** Partial MODIS month at the start of the Aqua era (method.md section 3). */
 const MODIS_PARTIAL_MONTHS = ['2002-07'];
@@ -89,6 +90,9 @@ const pickRatio = (r) => (r ? {
  * sources of the months with a value: 'MODIS x R', 'S-NPP', 'NOAA-20 x K'. `flags` counts the
  * months in range carrying each reason flag.
  *
+ * `anomaly` (anomaly.js): `flagged` months in range, `yearRank` {year, rank, n} of the latest complete
+ * year (null without one), `latest` {month, rank, flagged} of the latest archived month in range.
+ *
  * @param {import('./index.js').Harmonized} harmonized result of harmonize()
  * @param {import('./index.js').Baseline|null} base
  * @param {object} manifest
@@ -119,6 +123,9 @@ export function kpis(harmonized, base, manifest, { from, to } = {}) {
 
   const hasMedian = li >= 0 && base && base.series.values[li] !== null && base.series.values[li] !== undefined;
   const c = li >= 0 ? cells[li] : null;
+  const an = anomaly(harmonized, manifest);
+  const yr = yearRank(harmonized, manifest);
+  const last = yr.years[yr.years.length - 1];
   return {
     range: { from: lo, to: hi },
     total,
@@ -130,6 +137,11 @@ export function kpis(harmonized, base, manifest, { from, to } = {}) {
     K: pickRatio(harmonized.K),
     era,
     flags,
+    anomaly: {
+      flagged: idx.filter((i) => an.flags[i]).length,
+      yearRank: last ? { year: last.year, rank: last.rank, n: yr.n } : null,
+      latest: li >= 0 ? { month: months[li], rank: an.values[li], flagged: an.flags[li] } : null,
+    },
     method: series.method,
   };
 }

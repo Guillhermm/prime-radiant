@@ -1,4 +1,4 @@
-import { seriesForAoi, seriesForLevels, harmonize, baseline, toCalendar, kpis, cellCount } from '../../core/index.js';
+import { seriesForAoi, seriesForLevels, harmonize, baseline, anomaly, toCalendar, kpis, cellCount } from '../../core/index.js';
 import { caveatsFor } from '../../core/caveats.js';
 import { KNOWN_PARTIAL_MONTHS } from '../../core/baseline.js';
 import { typicalYear } from './stats.js';
@@ -93,6 +93,8 @@ export const buildResult = ({ bbox, from, to, manifest, tiles, domain = null }) 
     series: sliceSeries(harmonized.series, from, to),
     cells: sliceCells(allCells, from, to),
     allCells,
+    // Core's anomaly Series over the whole history (not sliced): withAnomaly matches it to cells by month.
+    anomaly: anomaly(harmonized, manifest),
     typical: typicalYear(harmonized.series, { partialMonths }),
     kpis: kpis(harmonized, base, manifest, { from, to }),
     caveats: caveatsFor(harmonized),

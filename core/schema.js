@@ -167,6 +167,10 @@ export function validateSeries(s, { manifest } = {}) {
   }
   if (typeof s.comparable !== 'boolean') e.push(err('BAD_COMPARABLE', 'comparable', 'comparable must be a boolean'));
   if (s.flags !== undefined && !Array.isArray(s.flags)) e.push(err('BAD_FLAGS', 'flags', 'flags must be an array'));
+  if (s.id === 'anomaly' && Array.isArray(s.flags) && Array.isArray(s.values)
+    && (s.flags.length !== s.values.length || s.flags.some((f) => typeof f !== 'boolean'))) {
+    e.push(err('BAD_FLAGS', 'flags', 'anomaly flags must be booleans, one per value'));
+  }
   if (!Array.isArray(s.values)) {
     e.push(err('NOT_ARRAY', 'values', 'values must be an array'));
     return e;
