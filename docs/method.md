@@ -250,7 +250,20 @@ months, NOAA-20 for NOAA-20 x K months (`core/partial.js`).
   archive follows after a 2-3 month lag (FIRMS FAQ). Caveat items `live-*` in `core/caveats.js`.
 - Implementation: `core/live.js`.
 
-## 7. Open questions
+## 7. Fire outlook (experimental)
+
+M4-K2. Built and validated on the Brazil build of 2026-11-14; **not science-gated yet** (V-gate pending), the UI must label it experimental. Code: `core/outlook.js` (features, logistic regression, scores), `pipeline/outlook.js` (CLI), coefficients in `core/data/outlook-model.json`.
+
+- **What it predicts**: per 1 deg cell, the probability that next month's fire-cell-days are above the cell's baseline median (section 5) for that calendar month. Not ignitions. Cells whose median is 0 are left out ("above" would only mean "any fire").
+- **Series**: VIIRS era only, no MODIS x R. S-NPP as observed; NOAA-20 x K where S-NPP is partial or ended; months partial for the supplying sensor are null; K is one scalar (0.984 on Brazil). Medians come from `baseline()` (5-year minimum), so the first usable target is 2018-01.
+- **Features** (own data only, standardized): this month's anomaly `log1p(v) - log1p(median)`; mean anomaly of the last 3 months; sin and cos of the target month; `log1p` of the target month's median; the target calendar month's anomaly one year earlier. Missing any input drops the sample.
+- **Model**: logistic regression, full-batch gradient descent, L2 = 1e-3, 400 iterations, lr 0.5, zero start: deterministic, no random seed needed.
+- **Validation** (no leakage): train on targets up to 2020-12, test on 2022-01..2025-12 (2021 is the gap). Spatial check: 5 folds of whole 10 deg tiles held out (also trained on the past only). References: climatology (the cell's share of earlier years above median, shrunk to 0.5 with 2 pseudo-years; earlier years only) and persistence (above median now means above next month). Scores: Brier, Brier skill score (BSS = 1 - BS / BS_ref), AUC, reliability in 10 bins; all in `report.json`.
+- **Result, Brazil, 27,832 test samples (base rate 0.46)**: Brier 0.218 vs climatology 0.261 vs persistence 0.346; BSS vs climatology 0.165, vs persistence 0.370; AUC 0.707 (climatology 0.555, persistence 0.652). Tile-blocked: BSS 0.160 and 0.366, AUC 0.703. Reliability is close to the diagonal; the highest bins (p above 0.8, few samples) are slightly overconfident.
+- **Limits**: one region, one train/test split, 4 training years, cells treated as independent (the skill estimate is optimistic for neighbors that move together); the model is trained once on data to 2020-12 and not refit as new months arrive. **Next step**: climate drivers (rainfall, temperature, humidity, fuel dryness); compare with INPE Risco de Fogo and GWIS before showing.
+- **Run**: `node pipeline/outlook.js --data data/brazil --out data/outlook --model-out core/data/outlook-model.json`. Output: `manifest.json` (forecast month, skill), `report.json`, `tiles/<id>.json` = `{cell[], p[]}` (1 deg cell ids as in the coarse tiles).
+
+## 8. Open questions
 
 | # | Question | Status |
 |---|---|---|

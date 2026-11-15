@@ -23,8 +23,8 @@ export const SHELL_FILES = [
   'src/components/legend.js', 'src/components/live-view.js', 'src/components/map-picker.js', 'src/components/sensors-view.js', 'src/components/segmented.js',
   'src/components/method-drawer.js', 'src/components/name-field.js', 'src/components/query-bar.js', 'src/components/radiant.js', 'src/components/states.js',
   'src/components/synthetic-band.js', 'src/components/theme-control.js', 'src/components/toast.js', 'src/components/popover.js', 'src/components/share-menu.js', 'src/components/offline-chip.js', 'src/components/verdict-row.js',
-  '../core/aggregate.js', '../core/anomaly.js', '../core/baseline.js', '../core/calendar.js', '../core/caveats.js', '../core/csv.js', '../core/data/daily-share.json', '../core/data/type0-share.json', '../core/domain.js',
-  '../core/grid.js', '../core/harmonize.js', '../core/index.js', '../core/live.js', '../core/months.js', '../core/partial.js', '../core/periods.js', '../core/schema.js', '../core/series.js', '../core/tiles.js',
+  '../core/aggregate.js', '../core/anomaly.js', '../core/baseline.js', '../core/calendar.js', '../core/caveats.js', '../core/csv.js', '../core/data/daily-share.json', '../core/data/outlook-model.json', '../core/data/type0-share.json', '../core/domain.js',
+  '../core/grid.js', '../core/harmonize.js', '../core/index.js', '../core/live.js', '../core/months.js', '../core/outlook.js', '../core/partial.js', '../core/periods.js', '../core/schema.js', '../core/series.js', '../core/tiles.js',
 ];
 
 export const shellUrls = (scope) => SHELL_FILES.map((p) => new URL(p, scope).href);
