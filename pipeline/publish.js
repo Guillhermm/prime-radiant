@@ -14,7 +14,7 @@ import path from 'node:path';
 import { createHash, createHmac } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
-import { validateManifest, validateTile, validateDomain, validateOverview } from '../core/schema.js';
+import { validateManifest, validateTile, validateDomain, validateOverview, validatePlaces } from '../core/schema.js';
 
 export const IMMUTABLE = 'public, max-age=31536000, immutable';
 export const ROOT_CACHE = 'public, max-age=300';
@@ -119,7 +119,7 @@ const walk = (dir, rel = '') => fs.readdirSync(path.join(dir, rel), { withFileTy
 
 /**
  * Reads a build directory and validates it with core's schema: the manifest, both tile levels of
- * every manifest tile, the domain when the manifest names one, and overview.json when present. Throws on the first file that
+ * every manifest tile, the domain when the manifest names one, and overview.json and places.json when present. Throws on the first file that
  * fails, with every error of that file.
  * @returns {{manifest: object, files: string[]}} files relative to `dir`, POSIX separators
  */
@@ -144,6 +144,7 @@ export const loadBuild = (dir) => {
     check(manifest.domain.file, validateDomain(read(manifest.domain.file)));
   }
   if (files.includes('overview.json')) check('overview.json', validateOverview(read('overview.json')));
+  if (files.includes('places.json')) check('places.json', validatePlaces(read('places.json')));
   return { manifest, files };
 };
 

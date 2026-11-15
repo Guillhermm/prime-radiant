@@ -21,6 +21,7 @@ import { createCoverage, buildManifest, coverageIndexes } from './manifest.js';
 import { compareTileIds, writeTiles } from './write-tiles.js';
 import { regionOf, writeOverview } from './overview.js';
 import { createPlaces } from './places.js';
+import { writePlaces } from './gazetteer.js';
 
 const EXT = /\.(csv|csv\.gz|dbf)$/i;
 
@@ -102,6 +103,7 @@ export async function build({ inputs, outDir, bbox, month0 = '2000-01', dataVers
   fs.writeFileSync(path.join(outDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   const places = admin1File ? createPlaces(JSON.parse(fs.readFileSync(admin1File, 'utf8'))) : null;
   const overview = writeOverview(outDir, region, places);
+  const placeNames = writePlaces(outDir, clipper?.domain ?? null);
 
   const fcd = Object.fromEntries(Object.entries(into.counts).map(([fam, tiles]) =>
     [fam, Object.values(tiles).reduce((a, cells) => a + Object.values(cells).reduce((b, ms) => b + [...ms.values()].reduce((c, n) => c + n, 0), 0), 0)]));
@@ -111,6 +113,7 @@ export async function build({ inputs, outDir, bbox, month0 = '2000-01', dataVers
       detections_in: reader.read, accepted: reader.accepted, rejected: reader.rejected, clipped_by_bbox: clipped, clipped_by_domain: clippedByDomain,
       skipped: into.stats.skipped, bin_rejected: into.stats.rejected, duplicates: into.stats.duplicates,
       fire_cell_days: fcd, tiles: written.stats,
+      place_names: placeNames.entries.length,
       overview: overview && { sensor: overview.sensor, year: overview.year, cells: overview.cells.length, hotspots: overview.hotspots.length },
       wall_seconds: +((performance.now() - t0) / 1000).toFixed(1),
       peak_rss_mb: Math.round(process.resourceUsage().maxRSS / 1024),

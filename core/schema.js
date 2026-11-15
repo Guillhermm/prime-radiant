@@ -325,3 +325,25 @@ export function validateOverview(o) {
   }
   return e;
 }
+
+/**
+ * places.json (pipeline/gazetteer.js): names the area field suggests, each with the bbox it opens.
+ * bbox may cross the antimeridian (west > east).
+ * @param {unknown} p
+ */
+export function validatePlaces(p) {
+  if (!isObj(p)) return [err('NOT_OBJECT', '', 'places must be an object')];
+  const e = [];
+  if (p.schema !== 1) e.push(err('BAD_SCHEMA', 'schema', 'schema must be 1'));
+  if (!isObj(p.source) || typeof p.source.id !== 'string' || typeof p.source.version !== 'string') e.push(err('BAD_FIELD', 'source', 'source must be {id, version}'));
+  if (!Array.isArray(p.entries)) return [...e, err('BAD_FIELD', 'entries', 'entries must be an array')];
+  const str = (v) => typeof v === 'string' && v.trim() !== '' && v.length <= 120;
+  p.entries.forEach((x, i) => {
+    const b = x?.bbox;
+    const ok = isObj(x) && str(x.name) && Array.isArray(x.alt) && x.alt.every(str) && ['country', 'state', 'region'].includes(x.kind) &&
+      (x.country === null || str(x.country)) && Array.isArray(b) && b.length === 4 && b.every(Number.isFinite) &&
+      Math.abs(b[0]) <= 180 && Math.abs(b[2]) <= 180 && Math.abs(b[1]) <= 90 && Math.abs(b[3]) <= 90 && b[1] < b[3] && b[0] !== b[2];
+    if (!ok) e.push(err('BAD_PLACE', `entries[${i}]`, 'an entry must be {name, alt[], kind, country|null, bbox [w, s, e, n]}'));
+  });
+  return e;
+}

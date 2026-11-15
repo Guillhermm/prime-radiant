@@ -132,3 +132,11 @@ the square, so the label names the 0.1 deg cells; the ranking is "most fire acti
 one sensor", not a lasting hotspot claim (only the top cell held its rank across 2023 to 2025); and
 border squares count only the part inside the domain.
 
+## Place names for the area field (places.json)
+
+`pipeline/build.js` also writes `places.json` (`pipeline/gazetteer.js`): the countries, states or
+provinces and geographic regions of Natural Earth (`pipeline/domain/ne-gazetteer.json`, provenance in
+`pipeline/domain/README.md`) whose label point lies in the domain, each with the bbox it opens. Without
+a domain every entry is kept. `core/schema.js` `validatePlaces` checks it and the publish validates it
+when present. Brazil build (2026-11-15): 51 entries (27 states, 22 regions, 2 countries), 5.8 KB.
+
