@@ -200,11 +200,37 @@ months, NOAA-20 for NOAA-20 x K months (`core/partial.js`).
    burning.
 5. The latest archived month may lag the calendar month.
 6. Sparse areas use a regional ratio (low confidence).
-7. Near-real-time data cannot be filtered by type. The live pipeline (`pipeline/live.js`) counts it unfiltered and
-   keeps it out of the archive series; the comparison model and its labeling are planned (M3-K3).
+7. Near-real-time data cannot be filtered by type (no `type` field in NRT files). The live view
+   states the bias: about 0.4-1.5% extra in Aug-Nov, up to 3-10% in Feb-May (gate V3), unless the
+   archive's type-0 share is supplied, in which case live values are scaled by it. The live
+   comparison is approximate; see section 6b.
 8. Method not yet validated (preliminary) until gate V1.
 9. Data cover Brazil only (Natural Earth 10m outline, v5.1.2). Areas outside read as
    no data; border cells hold only detections inside the outline, so they undercount.
+
+## 6b. Live comparison (M3-K3, gate V3 fixes L1-L6 applied, re-check pending)
+
+- **Series**: NOAA-20 x K for the whole live period (S-NPP units; S-NPP NRT ended 2026-11-02, MODIS is
+  never used without x R). `liveSeriesFromTiles` builds it from the live tiles for an AOI and
+  declares `units: 'snpp-equivalent'`; `liveComparison` refuses any other unit. Days outside NOAA-20
+  coverage, listed in `partial_days`, and the fetch day are null, never 0.
+- **Month to date**: cumulative fire-cell-days from the 1st to the last complete day (the leading
+  run of non-null days). Season: monthly totals, the current month provisional. Series id `live`,
+  `comparable: false`, never added to harmonized totals.
+- **Band**: median and quartiles (type 7) of the same calendar month in earlier years of the VIIRS era
+  (2012-02 on, baseline exclusions; at least 5 years, else null) multiplied by the mean cumulative
+  share of a month counted by the end of day d (`core/data/daily-share.json`, 12 x 31, from the
+  national S-NPP daily data 2012-2025; gate V3 measured leave-one-year-out bias of at most 4% for
+  Brazil). This replaces the earlier d/N scaling, which was 20-28% too high in Jun-Aug.
+- **Small areas**: under 2,000 in-domain 0.1 degree cells (about 20,000 km2, a Foundation choice not
+  yet validated) the comparison is marked low confidence (the Pantanal was 25-30% off either way).
+- **Type filter**: the simplest honest option is taken: values are kept and the per-month bias is
+  stated (`typeBiasStatement`). `type0Share(allTypes, type0)` computes the archive's monthly type-0
+  ratio when an all-types monthly series is built; `liveComparison` then multiplies by it.
+- **Wording**: approximate; NOAA-20 scaled to S-NPP; near-real-time; unfiltered by type; last complete
+  day; S-NPP NRT ended 2026-11-02; FIRMS documentation says an Earthdata Login is required; the
+  archive follows after a 2-3 month lag (FIRMS FAQ). Caveat items `live-*` in `core/caveats.js`.
+- Implementation: `core/live.js`.
 
 ## 7. Open questions
 

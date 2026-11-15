@@ -26,5 +26,5 @@ export { anomaly, yearRank } from './anomaly.js';
 export { harmonize } from './harmonize.js';
 export { toCalendar, kpis } from './calendar.js';
 export { toCsv } from './csv.js';
-export { liveComparison, liveCaveats, isStale, LIVE_STALE_HOURS } from './live.js';
+export { liveComparison, liveSeriesFromTiles, type0Share, typeBiasStatement, liveCaveats, isStale, LIVE_STALE_HOURS, LIVE_MIN_CELLS } from './live.js';
 export { flaggedPeriods, flagRuleText } from './periods.js';

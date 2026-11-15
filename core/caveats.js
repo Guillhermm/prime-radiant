@@ -36,15 +36,23 @@ const DEFS = [
     'Where most earlier years had no detections, a single fire-cell-day can flag a month. Flags marked sparse baseline need the most caution.'],
   ['anomaly-archive', 'anomaly', 'Rank is relative to this archive.',
     'The rank is relative to this archive and its years, not a standard climatology; another baseline period would rank months differently. MODIS x R months after 2021 (orbit drift) are estimates.'],
-  // live data caveats (M3-K3), kind 'live' so the drawer's count of 9 caveats stays
+  // live data caveats (M3-K3, gate V3 L6), kind 'live' so the drawer's count of 9 caveats stays
   ['live-nrt', 'live', 'Near-real-time data.',
-    'Live detections are near-real-time (FIRMS NRT): they can be revised or replaced by the archive later, and are not the archive.'],
+    'Live detections are near-real-time (FIRMS NRT, within about 3 hours of the overpass). They can differ from the archive product, which uses the same algorithm but follows after a 2-3 month lag (FIRMS FAQ).'],
+  ['live-approximate', 'live', 'Live comparison is approximate.',
+    'The comparison is approximate: the archive band is the median and middle half of the same month in earlier VIIRS-era years (2012 on), scaled to the day by the mean share of a month counted by that day. Small areas deviate most (the Pantanal 25-30% either way) and are marked low confidence.'],
   ['live-not-harmonized', 'live', 'Live is not harmonized.',
-    'Live detections are not harmonized: no MODIS x R or VIIRS scaling is applied, and they are never added to the harmonized totals or baseline.'],
+    'Live detections are NOAA-20 scaled to S-NPP units (x K), not the MODIS-and-VIIRS harmonized series, and are never added to the harmonized totals or baseline.'],
   ['live-unfiltered', 'live', 'Live is unfiltered by type.',
-    'Near-real-time detections carry no detection type, so static sources and offshore detections are not removed as in the archive.'],
+    'Near-real-time detections carry no detection type, so static sources are not removed as in the archive. The bias is small in Aug-Nov (about 0.4% to 1.5%) and larger in the wet season (up to 3% to 10% in Feb-May).'],
   ['live-provisional', 'live', 'Current period is provisional.',
-    'The current month is still open. Its band is the archive month scaled by the fraction of the month observed, an assumption for V3, not a daily climatology.'],
+    'The current month is still open: the line ends at the last complete UTC day, and the day of the fetch is never counted.'],
+  ['live-sensor', 'live', 'Live uses NOAA-20 scaled to S-NPP.',
+    'S-NPP near-real-time files ended on 2026-11-02, so live values are NOAA-20 detections multiplied by K to S-NPP equivalent units, the unit of the archive band.'],
+  ['live-archive-lag', 'live', 'The archive follows later.',
+    'The archive product replaces near-real-time data after a 2-3 month lag (FIRMS FAQ); live values for a month are provisional until then.'],
+  ['live-access', 'live', 'Live source may require a login.',
+    'FIRMS documentation says an Earthdata Login is required for its files; they are served without one today. If that is enforced, live data becomes unavailable and the view says so.'],
   // flag explanations
   ['viirs-era-record', 'anomaly', 'Record since 2012',
     'Highest or near-highest for this month in the VIIRS era (2012 on); not a record against 2002-2011, which are scaled MODIS estimates.'],
@@ -81,7 +89,8 @@ export const NO_GATES = Object.freeze(Object.fromEntries(CAVEAT_IDS.map((id) => 
  * passed except near-real-time data (gate V3) and the anomaly items (gate V2 re-check).
  */
 // Gates V1 and V2 passed (docs/gates/V1.md, V2.md); near-real-time data waits for V3.
-const PRELIMINARY = new Set(['nrt-unfiltered', 'live-nrt', 'live-not-harmonized', 'live-unfiltered', 'live-provisional']);
+const LIVE_IDS = ['live-nrt', 'live-approximate', 'live-not-harmonized', 'live-unfiltered', 'live-provisional', 'live-sensor', 'live-archive-lag', 'live-access'];
+const PRELIMINARY = new Set(['nrt-unfiltered', ...LIVE_IDS]);
 export const DEFAULT_GATES = Object.freeze(Object.fromEntries(
   CAVEAT_IDS.map((id) => [id, PRELIMINARY.has(id) ? 'preliminary' : 'passed'])));
 
