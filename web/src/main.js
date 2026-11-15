@@ -306,6 +306,12 @@ export const start = async (root = document.getElementById('app')) => {
       const what = { series: r.series, cells: r.cells, sensors: slicedSensors(r), meta: csvMeta(r, { aoi: appShell.heroModel(store.get(), { presets }).title }) };
       return csvExport(store.get().view === 'sensors' ? 'sensors' : 'calendar', what);
     },
+    // The image is the calendar of the area and period, whichever view is open.
+    getImage: () => {
+      const r = data.get().result;
+      if (!r) return null;
+      return { cells: r.cells, aoiCells: r.aoiCells, series: r.series, bbox: r.bbox, manifest: r.manifest, title: appShell.heroModel(store.get(), { presets }).title };
+    },
   });
 
   const ctx = { store, slots, span, data, preview, synthetic, views, goTo, grids: [], verdict: null, setTabDot: shell.setTabDot };

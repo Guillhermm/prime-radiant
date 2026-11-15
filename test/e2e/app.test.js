@@ -10,6 +10,7 @@ import { createStaticServer, loadSite } from '../../tools/serve.mjs';
 import { createDataSource } from '../../web/src/data-source.js';
 import { buildResult, csvMeta } from '../../web/src/view-data.js';
 import { csvExport } from '../../web/src/components/export-menu.js';
+import { imageModel, pngSize } from '../../web/src/components/export-image.js';
 import { generate } from '../../tools/mock-data.mjs';
 import { parseHash } from '../../web/src/state.js';
 import { spanFromManifest } from '../../web/src/components/date-range.js';
@@ -72,6 +73,21 @@ const focusedLabel = `document.activeElement.getAttribute('aria-label')`;
 // Clicks land by coordinates, so wait for entrance animations to stop moving the target.
 // Infinite loops (the Live freshness dot) never settle and move nothing, so they are skipped.
 const settle = (page) => page.until(`document.getAnimations().every((a) => a.playState !== 'running' || a.effect?.getComputedTiming().iterations === Infinity)`, 'animations settle');
+
+// Export is a menu: open it and pick CSV or Image (PNG).
+const exportAs = async (page, id) => {
+  await settle(page);
+  await page.click('.export-button');
+  await page.until(`document.querySelector('.export-menu').matches(':popover-open') && document.activeElement?.dataset.id === 'csv'`, 'export menu open, CSV focused');
+  await page.click(`.export-menu [data-id="${id}"]`);
+};
+
+// Width and height from a PNG's IHDR chunk, after checking the signature.
+const pngHeader = (buf) => {
+  assert.deepEqual([...buf.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10], 'PNG signature');
+  assert.equal(buf.toString('latin1', 12, 16), 'IHDR');
+  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+};
 
 const openExample = async (page) => {
   await page.until(`document.querySelector('${EXAMPLE}')`, 'first-run example cards');
@@ -409,7 +425,7 @@ test('example, apply, docked panel follows arrow keys, Method drawer and CSV exp
     await page.until(`!document.querySelector('.drawer-panel')`, 'Esc closes the drawer');
     assert.equal(await page.evaluate(`document.activeElement.classList.contains('method-button')`), true);
 
-    await page.click('.export-button');
+    await exportAs(page, 'csv');
     await page.until(`document.querySelector('.toast-host [role=status] .toast-msg')?.textContent.startsWith('CSV saved: prime-radiant-2023-03-')`, 'CSV export toast');
     for (let i = 0; i < 50 && !(await readdir(downloadDir)).some((f) => f.endsWith('.csv')); i++) await wait(100);
     const files = (await readdir(downloadDir)).filter((f) => f.endsWith('.csv'));
@@ -428,6 +444,29 @@ test('example, apply, docked panel follows arrow keys, Method drawer and CSV exp
     const expected = csvExport('calendar', { series: result.series, cells: result.cells, meta: csvMeta(result, { aoi: 'Fixture area (tile x17y13)' }) }).text;
     assert.equal(actual, expected);
     assert.match(actual, /\r\n2023,6,10,partial,false,\r\n$/);
+
+    // Menu keys: Down and End reach the image item, Escape closes and returns focus to Export.
+    await settle(page);
+    await page.click('.export-button');
+    await page.until(`document.activeElement?.dataset.id === 'csv'`, 'menu opens on CSV');
+    await page.press('ArrowDown');
+    assert.equal(await page.evaluate(`document.activeElement.textContent`), 'Image (PNG)');
+    await page.press('ArrowDown');
+    assert.equal(await page.evaluate(`document.activeElement.dataset.id`), 'csv', 'Down wraps to the first item');
+    await page.press('End');
+    assert.equal(await page.evaluate(`document.activeElement.dataset.id`), 'png');
+    await page.press('Escape');
+    await page.until(`document.activeElement.classList.contains('export-button') && !document.querySelector('.export-menu').matches(':popover-open')`, 'Escape closes the menu, focus on Export');
+    await exportAs(page, 'png');
+    await page.until(`document.querySelector('.toast-host [role=status] .toast-msg')?.textContent.startsWith('Image saved: prime-radiant-2023-03-2023-06.png')`, 'image export toast');
+    for (let i = 0; i < 50 && !(await readdir(downloadDir)).some((f) => f.endsWith('.png')); i++) await wait(100);
+    const pngs = (await readdir(downloadDir)).filter((f) => f.endsWith('.png'));
+    assert.deepEqual(pngs, ['prime-radiant-2023-03-2023-06.png']);
+    const model = imageModel({
+      cells: result.cells, aoiCells: result.aoiCells, title: 'Fixture area (tile x17y13)', bbox: result.bbox,
+      dataVersion: m.dataVersion, citation: m.citation, synthetic: false, generated: '2026-11-15',
+    });
+    assert.deepEqual(pngHeader(await readFile(join(downloadDir, pngs[0]))), pngSize(model));
     assert.deepEqual(page.problems, []);
   } finally { await page.close(); }
 });
@@ -443,6 +482,7 @@ test('outside the domain: a state card with Draw an area in Brazil and the examp
     assert.match(await page.evaluate(`document.getElementById(${btn}.getAttribute('aria-describedby')).textContent`), /^Nothing to export: .*outside Brazil/);
     await page.click('.export-button');
     await wait(300);
+    assert.equal(await page.evaluate(`document.querySelector('.export-menu').matches(':popover-open')`), false, 'a disabled Export opens no menu');
     assert.equal(await page.evaluate(`document.querySelector('.toast-host [role=status] .toast-msg')?.textContent ?? null`), null, 'a disabled Export does nothing');
     await settle(page);
     await page.click('.state-box-outside .state-action');
@@ -694,7 +734,7 @@ test('synthetic data turns on every tab; Sensors shows R, the steps, a keyboard 
     await page.until(`document.querySelector('.sensors-table .data-table')?.offsetParent !== null`, 'table shown');
     assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.sensors-table thead th')].map((t) => t.textContent)`), ['Year', 'MODIS', 'S-NPP', 'NOAA-20', 'Harmonized', 'Source']);
     assert.match(await page.evaluate(`document.querySelector('.sensors-table caption').textContent`), /Synthetic data/);
-    await page.click('.export-button');
+    await exportAs(page, 'csv');
     for (let i = 0; i < 50 && !(await readdir(dir)).some((f) => f.endsWith('.csv')); i++) await wait(100);
     const [file] = (await readdir(dir)).filter((f) => f.endsWith('.csv'));
     assert.match(file, /^prime-radiant-sensors-/);

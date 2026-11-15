@@ -19,6 +19,7 @@ const ICONS = {
   // Rounded rectangle open at the lower right, where a pencil crosses the corner.
   drawArea: [['path', { d: 'M10 16H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v3' }], ['path', { d: 'M20.4 10.9l2.2 2.2-7 7-3.6 1.4 1.4-3.6z' }], ['path', { d: 'M13.4 17.9l2.2 2.2' }]],
   chevron: [['path', { d: 'M6 9l6 6 6-6' }]],
+  image: [['rect', { x: 3.5, y: 4.5, width: 17, height: 15, rx: 2 }], ['circle', { cx: 9, cy: 10, r: 1.5 }], ['path', { d: 'M4 17l5-4.5 3.5 3 3-2.5 4.5 4' }]],
   warning: [['path', { d: 'M12 3l9.5 17h-19z' }], ['path', { d: 'M12 10v4M12 17v.5' }]],
   arrow: [['path', { d: 'M5 12h14M13 6l6 6-6 6' }]],
   cloudOff: [['path', { d: 'M8 19h9a4 4 0 0 0 1.6-7.7M15.9 7.6A6 6 0 0 0 6.1 10 4.5 4.5 0 0 0 6 19' }], ['path', { d: 'M3 3l18 18' }]],

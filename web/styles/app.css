@@ -178,19 +178,20 @@ a { color: inherit; text-underline-offset: 0.2em; }
 .chip-split { display: inline-flex; max-inline-size: 100%; }
 .chip-split:has(.share-chip:not([hidden])) .area-chip { border-start-end-radius: 0; border-end-end-radius: 0; }
 .share-chip { justify-content: center; inline-size: 2.75rem; margin-inline-start: -1px; padding: 0; border-start-start-radius: 0; border-end-start-radius: 0; }
-.share-menu {
+.share-menu, .export-menu {
   position: fixed; inset: auto; inset-block-start: var(--pop-top, 8rem);
   inset-inline-start: max(1rem, min(var(--pop-start, 1rem), 100vw - 15rem)); z-index: var(--z-popover);
   min-inline-size: 13rem; margin: 0; padding: 0.375rem; border: 1px solid var(--color-border); border-radius: var(--radius-ctl);
   background: var(--color-raised); color: var(--color-text); box-shadow: var(--shadow-overlay);
 }
-.share-menu[hidden] { display: none; }
-.share-item {
+.share-menu[hidden], .export-menu[hidden] { display: none; }
+.export-button .icon:last-child { margin-inline-start: -0.25rem; }
+.share-item, .export-item {
   display: flex; align-items: center; gap: 0.625rem; inline-size: 100%; min-block-size: 2.75rem; padding: 0 0.75rem;
   border: 0; border-radius: calc(var(--radius-ctl) - 0.25rem); background: none; color: inherit; font: inherit; font-size: 0.875rem; text-align: start; cursor: pointer;
 }
-.share-item .icon { color: var(--color-accent); }
-.share-item:hover, .share-item:focus-visible { background: var(--color-accent-soft); }
+.share-item .icon, .export-item .icon { color: var(--color-accent); }
+.share-item:hover, .share-item:focus-visible, .export-item:hover, .export-item:focus-visible { background: var(--color-accent-soft); }
 
 /* Query popover (desktop) and sheet (phone). The form logic lives in query-bar.js. */
 .query-bar { position: relative; }
@@ -531,6 +532,7 @@ html.sheet-open, html.drawer-open { overflow: hidden; }
   .topbar-actions .btn { inline-size: 2.75rem; min-block-size: 2.75rem; padding: 0; border-color: var(--color-border); background: var(--color-surface-2); color: var(--color-text); }
   .topbar-actions .btn .icon { inline-size: 1.125rem; block-size: 1.125rem; }
   .topbar-actions .btn-primary { background: var(--color-cta); color: var(--color-cta-text); }
+  .export-button .icon:last-child { display: none; }
   /* The view switcher becomes the bottom bar. */
   .tabs {
     position: fixed; inset-inline: 0; inset-block-end: 0; z-index: var(--z-sticky); display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;

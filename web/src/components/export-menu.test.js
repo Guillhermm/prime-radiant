@@ -48,4 +48,5 @@ test('synthetic data puts its warning on the first line of the CSV, real data is
   assert.equal(withSyntheticNote('a,b', true).split('\r\n')[0], SYNTHETIC_LINE);
   assert.match(SYNTHETIC_LINE, /^# /);
   assert.equal(savedMessage('prime-radiant-2001-01-2026-10.csv'), 'CSV saved: prime-radiant-2001-01-2026-10.csv');
+  assert.equal(savedMessage('prime-radiant-2001-01-2026-10.png'), 'Image saved: prime-radiant-2001-01-2026-10.png');
 });
