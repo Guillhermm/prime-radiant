@@ -123,3 +123,12 @@ it. A build with no full VIIRS year writes none, and the app falls back to drawi
 First real file (data version `20261115`, 2026-11-15): S-NPP 2025, 793 cells, 274,291
 fire-cell-days, 10.9 KB; top hotspot the cell at 7°S to 6°S, 45°W to 44°W (Maranhão) with 3,391.
 
+Science check (Second Foundation mathematician, 2026-11-15): correct, with caveats. Recomputed
+independently from `raw/country/viirs-snpp_2025_Brazil.csv` (type 0, own point-in-polygon clip, one
+count per 0.1 deg cell and UTC day): four 1 deg cells match exactly ((-45,-7) 3,391; (-43,-4) 2,225;
+(-56,-2) 1,167; border cell (-61,4) 1,130), total 274,291, no partial 2025 month. Conditions for the
+app: a 1 deg value is a sum of 0.1 deg fire-cell-days (up to 36,500 a year), not days with fire in
+the square, so the label names the 0.1 deg cells; the ranking is "most fire activity in that year,
+one sensor", not a lasting hotspot claim (only the top cell held its rank across 2023 to 2025); and
+border squares count only the part inside the domain.
+
