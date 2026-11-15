@@ -68,6 +68,18 @@ test('no level usable: last level used, low confidence reason', () => {
   assert.match(h.reasons[0], /low confidence/);
 });
 
+test('a world R in a build with no domain is applied but low confidence; a Brazil build keeps it usable', () => {
+  const a = level('aoi', '2010-02', 144, { m: () => 0, v: (i, ym) => (ym >= '2012-02' ? 1 : null) });
+  const g = level('global', '2010-02', 144, { m: (i) => (i % 2) + 1, v: (i, ym) => (ym >= '2012-02' ? ((i % 2) + 1) * 2 : null) });
+  const world = harmonize([a, g], manifest());
+  assert.equal(world.R.level, 'global');
+  assert.equal(world.R.usable, false);
+  assert.match(world.reasons[0], /world total/);
+  assert.ok(world.series.flags.some((f) => f.flag === 'low-confidence'));
+  const brazil = harmonize([a, g], manifest({ domain: { id: 'brazil' } }));
+  assert.equal(brazil.R.usable, true);
+});
+
 test('per-calendar-month R when all months pass, annual R otherwise', () => {
   // 2012-02..2024-12: month-dependent ratio (cal month c has R = c), no noise.
   const mon = (ym) => Number(ym.slice(5));

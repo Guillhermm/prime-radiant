@@ -107,6 +107,10 @@ months, NOAA-20 for NOAA-20 x K months (`core/partial.js`).
   the level used and the UI shows a low-confidence chip. "Global" is everything the build
   holds (Brazil for a Brazil build, the world for a global one); the build precomputes it as
   `global.json` with the same function, so the app does not load every tile.
+- In a build with no domain, an R taken from the global level (the whole world, about 2.4)
+  is applied but never usable: it mixes biomes and is wrong for boreal forests (Yakutia
+  1.31, gate G1), so the series is flagged low confidence. K is not affected (same
+  instrument on both satellites).
 
 ### 4.4 After S-NPP
 

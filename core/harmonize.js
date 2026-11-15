@@ -161,9 +161,15 @@ export function harmonize(levels, manifest, { seed = 20260, draws = 1000, rWindo
   const R = chooseRatio(levels, 'viirs', 'modis',
     (ym) => ym >= window.from && ym <= window.to && !pm.has(ym) && !pv.has(ym), seed, draws);
   R.window = window;
+  // In a build with no domain, "global" is the whole world, whose R (about 2.4) mixes biomes and
+  // is wrong for boreal forests (Yakutia 1.31): applied, but never usable (gate G1).
+  if (R.level === 'global' && !manifest.domain && R.usable) {
+    R.usable = false;
+    reasons.push('R taken from the world total: it mixes biomes, low confidence');
+  }
   const hasNoaa = levels.every((l) => l.noaa20);
   const K = hasNoaa ? chooseRatio(levels, 'viirs', 'noaa20', (ym) => !pv.has(ym) && !pn.has(ym), seed, draws) : null;
-  if (!R.usable) reasons.push(`R not usable at any level, using ${R.level}: low confidence`);
+  if (!R.usable && !reasons.length) reasons.push(`R not usable at any level, using ${R.level}: low confidence`);
   else if (R.level !== base.level) reasons.push(`R taken from fallback level ${R.level}`);
   if (R.value === null) reasons.push('R undefined: no MODIS detections in the overlap');
   if (K && !K.usable) reasons.push(`K not usable at any level, using ${K.level}: low confidence`);
