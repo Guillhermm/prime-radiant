@@ -29,6 +29,13 @@ test('does not serve what the deploy leaves out', async () => {
   }
 });
 
+test('serves the local data/ where Vercel rewrites /data/ to R2, and fixtures/', async () => {
+  const site = await loadSite(root);
+  assert.ok(site.allowed.includes('data'), 'data/ comes from the external rewrite in vercel.json');
+  assert.ok(!site.allowed.includes('pipeline') && !site.allowed.includes('tools'));
+  assert.equal((await get('/fixtures/manifest.json')).status, 200);
+});
+
 test('redirects / to /web/', async () => {
   const res = await get('/');
   assert.equal(res.status, 307);

@@ -1,0 +1,36 @@
+name: publish-data
+# Rebuilds the Brazil tiles from the public FIRMS country files and publishes them to R2
+# (docs/deploy.md, "Data hosting"). Manual only.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: publish-data
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - name: Download the FIRMS Brazil country files (about 3 GB)
+        run: node tools/fetch-country.mjs --out raw/country --to 2025
+      - name: Build tiles
+        run: node pipeline/build.js --in raw/country --out raw/build --domain pipeline/domain/brazil.geojson
+      - name: Test
+        run: node --test
+        env:
+          REQUIRE_CHROME: '1'
+      - name: Publish to R2
+        run: node pipeline/publish.js --in raw/build
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}

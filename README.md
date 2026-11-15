@@ -8,18 +8,18 @@ burning-activity calendar per area. Built for the NASA Space Apps Challenge 2026
 
 Web app (Guilherme's track) built on fixture and synthetic demo data, redesigned to design 3: first-run screen with example areas, latest-month verdict with the Radiant (a polar year-by-month view), calendar grid with year totals and a median row, selected-month panel (docked on desktop, sheet on phone), area and period chips, caveats, method drawer, one-click CSV export, plus the Sensors, Anomalies and Live tabs. The numbers come from `core/` (Kaue's track): fire-cell-days per month over a Brazil domain, MODIS scaled to VIIRS-equivalent with the ratio R and NOAA-20 continuing S-NPP with K, and the median baseline, all accepted at science gate V1 ([docs/gates/V1.md](docs/gates/V1.md)). Calendar and Sensors are always on. Anomalies and Live still run on placeholder numbers labeled Preview: they show on synthetic data or with `?preview=1`, and stay hidden with real data. Comparisons with the median (delta, rank, typical year) keep a Preview tag; V1 did not cover them. An area outside Brazil shows an outside-domain state, never zeros.
 
-Deployed at https://primeradiant.zenus.systems (Vercel, built from `main`; see [docs/deploy.md](docs/deploy.md)). Production serves synthetic data generated at build time and shows a "Synthetic demo data" band: no fire count on it is real until the pipeline publishes real tiles (planned). The live proxy is deployed without `MAP_KEY` (it answers 503) and the app does not call it yet: the Live tab shows placeholder data. Judges: [docs/demo.md](docs/demo.md). Plan: [docs/roadmap.md](docs/roadmap.md).
+Deployed at https://primeradiant.zenus.systems (Vercel, from `main`; see [docs/deploy.md](docs/deploy.md)). Production reads its data from a Cloudflare R2 bucket through `/data/`, filled by the manual `publish-data` workflow (FIRMS download, build, tests, publish). The first publish has not run yet, so production has no data until it does; nothing synthetic is deployed any more. The live proxy is deployed without `MAP_KEY` (it answers 503) and the app does not call it yet: the Live tab shows placeholder data. Judges: [docs/demo.md](docs/demo.md). Plan: [docs/roadmap.md](docs/roadmap.md).
 
 | Product line | Status |
 |---|---|
-| A. Burning calendar per area | built: core's counts, harmonization and median baseline (gate V1); real tiles built locally, not hosted yet |
+| A. Burning calendar per area | built: core's counts, harmonization and median baseline (gate V1); real tiles built locally; R2 publish built, first publish pending |
 | B. Sensor comparison (MODIS, S-NPP, NOAA-20, harmonized) | built: core's R and K, validated at gate V1, applied to the harmonized series |
 | C. Anomalies against a multi-year baseline | UI built, labeled Preview; science planned (M2) |
 | D. Live season from near-real-time data | UI and keyed proxy built and deployed without a key (503); live data pipeline planned (M3) |
 
 ## Run
 
-Requires Node.js 22 or later. Real tiles are built locally by the pipeline and are not hosted, so generate synthetic demo data first (written to the gitignored `data/`, about 17 MB, labeled "Synthetic demo data" in the app):
+Requires Node.js 22 or later. Locally the app reads the gitignored `data/`. Fill it with synthetic demo data (about 17 MB, labeled "Synthetic demo data" in the app), or with a real build (`node tools/fetch-country.mjs`, then `node pipeline/build.js --in raw/country --out data --domain pipeline/domain/brazil.geojson`, about 3 GB of downloads):
 
 ```sh
 npm run mock && npm run serve

@@ -1,19 +1,8 @@
-# Allowlist: only web/, core/, api/ and the generated data/ are deployed.
-# The build generates the synthetic data/ with tools/mock-data.mjs, which reuses the pipeline's
-# tile writer and the Brazil outline, so those two files are uploaded too.
+# Allowlist: only web/, core/ and api/ are deployed. /data/ is not a file here: vercel.json
+# rewrites it to the R2 bucket, and a deployed data/ folder would shadow the rewrite.
 /*
 !/web
 !/core
 !/api
-!/data
 !/vercel.json
-!/tools
-/tools/*
-!/tools/mock-data.mjs
-!/pipeline
-/pipeline/*
-!/pipeline/write-tiles.js
-!/pipeline/domain
-/pipeline/domain/*
-!/pipeline/domain/brazil.geojson
 *.test.js

@@ -10,12 +10,14 @@ const TYPES = {
 
 // Mirrors what Vercel serves as static files: the top-level entries .vercelignore re-includes with "!/name",
 // the headers rule and the redirects from vercel.json. `extra` adds dev-only folders (fixtures).
+// A folder vercel.json rewrites to an external origin (/data/ to the R2 bucket) is served from the
+// local folder of that name instead, so local runs use the local data/.
 export const loadSite = async (root, { extra = [] } = {}) => {
   const config = JSON.parse(await readFile(join(root, 'vercel.json'), 'utf8'));
   const ignore = await readFile(join(root, '.vercelignore'), 'utf8');
   // api/ deploys as functions, not files: serving its source here would differ from Vercel.
-  // tools/ and pipeline/ are re-included only as the build's mock generator inputs, not as part of the site.
-  const allowed = [...ignore.matchAll(/^!\/([^/\s]+)\s*$/gm)].map((m) => m[1]).filter((d) => !['api', 'tools', 'pipeline'].includes(d)).concat(extra);
+  const rewritten = (config.rewrites ?? []).filter((r) => /^https:\/\//.test(r.destination)).map((r) => /^\/([^/]+)\/:path\*$/.exec(r.source)?.[1]).filter(Boolean);
+  const allowed = [...ignore.matchAll(/^!\/([^/\s]+)\s*$/gm)].map((m) => m[1]).filter((d) => d !== 'api').concat(rewritten, extra);
   const headers = Object.fromEntries(config.headers.find((h) => h.source === '/(.*)').headers.map((h) => [h.key, h.value]));
   return { root: resolve(root), allowed, headers, redirects: config.redirects ?? [] };
 };

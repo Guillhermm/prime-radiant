@@ -1,10 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "buildCommand": "node tools/mock-data.mjs",
+  "buildCommand": null,
   "installCommand": null,
   "outputDirectory": ".",
   "redirects": [{ "source": "/", "destination": "/web/", "permanent": false }],
+  "rewrites": [{ "source": "/data/:path*", "destination": "https://data.primeradiantdata.com/:path*" }],
   "headers": [
     {
       "source": "/(.*)",

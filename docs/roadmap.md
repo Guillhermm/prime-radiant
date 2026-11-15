@@ -7,7 +7,7 @@ Status: accepted by the team on 2026-11-14 (planning ritual). Open decisions in 
 - Two humans, two tracks, one contract. **Kaue owns data and science** (pipeline, `core/` science, data hosting, live ingestion). **Guilherme owns the web app** (shell, inputs, views, the Vercel function). The axis can be swapped wholesale (decision H1); nothing else depends on who is who.
 - Task ID: `M{milestone}-{K|G}{n}`. K = Kaue, G = Guilherme. Every deliverable task has exactly one owner.
 - "Done" for any task: code + tests in the same commit, `node --test` green, docs that describe it true, reviewed by the other human (or the dev master) before merge.
-- ✅ marks a task whose deliverable is built and tested (checked 2026-11-15, after merging Kaue's data and science work). M2-G1 and M3-G1 run on core stubs until M2-K1 and M3-K3 land. Not marked: M0-G3 and M1-K4 (tile hosting H5 open, no publish step), M1-G12 (production serves synthetic data, not real).
+- ✅ marks a task whose deliverable is built and tested (checked 2026-11-15, after merging Kaue's data and science work). M2-G1 and M3-G1 run on core stubs until M2-K1 and M3-K3 land. Not marked: M0-G3 and M1-K4 (H5 decided 2026-11-15 and `pipeline/publish.js` built, but no real publish has run yet), M1-G12 (production has no real data until that publish).
 - Size points used for balancing: S = 1, M = 2, L = 3.
 - Gates are not tasks of one person; they are checkpoints a milestone cannot pass without. Each gate names who triggers it.
 
@@ -490,7 +490,7 @@ Never cut: AOI by form and map, calendar with accessible ramp and no-data distin
 | H2 | Granularity | Monthly; current partial month labeled partial |
 | H3 | Grid extent and demo region | Decided 2026-11-14: Brazil full history (FIRMS yearly country CSVs, 2000-2025) + global 2026 from archive Shapefiles (`docs/data.md`); the pipeline reads CSV and DBF. Global history only if added later |
 | H4 | Max AOI size | 0.1 deg for AOI up to 20,000 cells, coarse 1 deg above, hard cap at continent scale (exact number after spike) |
-| H5 | Where tiles live | Cloudflare R2 public bucket if tiles exceed Vercel limits or if the live cron must publish without a redeploy; else deployed with the site via `vercel deploy` (tiles stay out of git) |
+| H5 | Where tiles live | Decided 2026-11-15: Cloudflare R2 bucket `prime-radiant-data` behind `data.primeradiantdata.com`, served same-origin through a Vercel rewrite of `/data/`; published by `pipeline/publish.js` from the `publish-data` workflow (`docs/deploy.md`, Data hosting) |
 | H6 | Repository owner | Decided 2026-11-14: Guilherme's personal GitHub (`Guillhermm/prime-radiant`), Vercel project on Guilherme's Hobby account, Kaue collaborator |
 | H7 | Domain | Bought after M1 is live on `*.vercel.app`; name to choose |
 | H8 | Map base | Vendored Leaflet + OSM if policy and advisory checks pass, else SVG Natural Earth outline |

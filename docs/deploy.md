@@ -6,12 +6,14 @@
 
 - URL: https://primeradiant.zenus.systems (custom domain set by the team in the Vercel project). Hosting: Vercel Hobby, Git integration.
 - Redeploy: push to `main` (the humans push); Vercel builds and promotes. Previews come from other branches. Nothing in this repo deploys by itself.
-- Build: `node tools/mock-data.mjs` (no install step, no dependencies). It writes the synthetic `data/` (gitignored) so the deployed site always has tiles.
-- What is synthetic: everything under `data/` on production, including the manifest (`dataVersion` starts with `synthetic-`). The app shows a "Synthetic demo data" band and tab title prefix. The synthetic generator covers Brazil only (the same domain the pipeline clips to); the method in `core/` is the real one, applied to invented counts. What is real: the app, the headers, the PWA, the optional live proxy code.
-- Going real (planned, H5 open): when the pipeline publishes real tiles, either drop the build command and ship the tiles with the site, or point `manifest.base_url` at a bucket (R2) and add its origin to `connect-src`. The synthetic band disappears only when the manifest stops being synthetic.
+- Build: none (`buildCommand: null`, no install step, no dependencies). The deploy uploads `web/`, `core/` and `api/`.
+- Data: `/data/*` is rewritten to the R2 bucket (see "Data hosting (H5)"), so production shows real FIRMS data once the first publish has run. Until then `/data/manifest.json` has nothing behind it and the app shows its load error. The synthetic generator (`npm run mock`) is for local use only; a synthetic manifest still turns on the "Synthetic demo data" band.
+- To check in the Vercel dashboard once (not checked): Project, Settings, Build and Deployment, Build Command is not set to `node tools/mock-data.mjs` by hand. `vercel.json` overrides it, but what `null` does there is not documented.
 - Live proxy `/api/live`: deployed with the site. `MAP_KEY` is not set on production, and the web app does not call the proxy yet (the Live tab runs on placeholder data): without it the function answers 503 `live proxy is not configured`. To enable: Vercel dashboard, Project, Settings, Environment Variables, add `MAP_KEY` (FIRMS map key) for Production, then redeploy (a variable change does not apply to existing deployments). Never put the key in the repo or in a `NEXT_PUBLIC`-style variable.
 
 ### Security pass, 2026-11-14
+
+Made when production still built synthetic data with the site; the data rows below describe that setup.
 
 Scanned (read-only requests against production, headless Chrome, repo grep):
 - Headers: on `/web/`, a JS file and `/data/manifest.json` every header in the table below is present exactly as in `vercel.json`. `/api/live` carries its own set (`default-src 'none'`, `no-store`, `Referrer-Policy: no-referrer`) plus HSTS, nosniff, COOP, CORP, X-Frame-Options.
@@ -27,9 +29,9 @@ Not checked: Hobby WAF rate limits; whether a real FIRMS key works with the prox
 
 ## Static site and headers (M0-K6)
 
-`vercel.json` serves the repo root (`outputDirectory: "."`), because the app imports `../../core/`. Its build step is `node tools/mock-data.mjs`: until the real pipeline publishes tiles, every deploy generates the synthetic `data/` (gitignored, so a Git deploy has none otherwise) and the app shows the synthetic banner. `.vercelignore` is an allowlist (`/*`, then `!/web`, `!/core`, `!/data`, `!/api`, `!/vercel.json`, `tools/mock-data.mjs` only, `pipeline/write-tiles.js` and `pipeline/domain/brazil.geojson` only, then `*.test.js`), so `raw/`, the rest of `pipeline/`, `fixtures/`, `test/`, `docs/` and the test files are not uploaded. The two pipeline files are there because the build step imports them (the mock generator writes tiles with the pipeline's own writer, clipped to the Brazil domain); on Vercel they are served as public static files, which is harmless (both are public code and public boundary data). `tools/serve.mjs` does not serve `pipeline/`. `api/` is re-included so its functions deploy; `tools/serve.mjs` does not serve it (no local function runtime). A redirect sends `/` to `/web/` (a rewrite would keep the URL at `/` and break the page's relative `src/` and `styles/` links). The headers apply to every path. `test/integration/headers.test.js` asserts the config; `tools/serve.mjs` mirrors it (allowlist, redirect, headers) for `npm run serve` (127.0.0.1:8433) and the end-to-end tests. Consequence: `?fixtures=1` works locally only, not on the deployed site.
+`vercel.json` serves the repo root (`outputDirectory: "."`), because the app imports `../../core/`. There is no build step. `.vercelignore` is an allowlist (`/*`, then `!/web`, `!/core`, `!/api`, `!/vercel.json`, then `*.test.js`), so `raw/`, `data/`, `pipeline/`, `tools/`, `fixtures/`, `test/`, `docs/` and the test files are not uploaded. `data/` must stay out: Vercel gives the filesystem precedence over rewrites, so a deployed `data/` would shadow the R2 rewrite. `api/` is re-included so its functions deploy; `tools/serve.mjs` does not serve it (no local function runtime). `tools/serve.mjs` serves the local `data/` where `vercel.json` rewrites `/data/` to R2, so local runs and the end-to-end tests keep using local files. A redirect sends `/` to `/web/` (a rewrite would keep the URL at `/` and break the page's relative `src/` and `styles/` links). The headers apply to every path. `test/integration/headers.test.js` asserts the config; `tools/serve.mjs` mirrors it (allowlist, redirect, headers) for `npm run serve` (127.0.0.1:8433) and the end-to-end tests. Consequence: `?fixtures=1` works locally only, not on the deployed site.
 
-Checked on production: `.vercelignore` re-inclusion works (`/web`, `/core`, `/api`, `/data`, `tools/mock-data.mjs` are served; the 404 list is in the Security pass).
+Checked on production before the R2 switch: `.vercelignore` re-inclusion works (the 404 list is in the Security pass).
 
 | Header | Value | Note |
 |---|---|---|
@@ -41,12 +43,12 @@ Checked on production: `.vercelignore` re-inclusion works (`/web`, `/core`, `/ap
 
 CSP placeholders to change when decided:
 - `img-src`: `https://tile.openstreetmap.org` is the OpenStreetMap tile host (M0-G4, used by the map picker). The bare host is needed because tiles are requested without a subdomain; replace it if the basemap changes.
-- `connect-src`: `'self'` only. If H5 picks R2, add the bucket origin (its `r2.dev` or custom domain host). Tiles are fetched with `fetch`, so `connect-src` is the directive, not `img-src`.
+- `connect-src`: `'self'` only. Tiles come from R2 through the same-origin `/data/` rewrite, so the bucket host is not listed.
 - `font-src 'self'`: Fira Sans and Fira Code are self-hosted in `web/fonts/` (source and checksums in `docs/ux.md` 5.6); no font CDN is contacted.
 - `style-src 'self'`: Leaflet sets styles through `element.style`, which CSP allows; if the app injects `<style>` or `style=""` attributes, this must be revisited.
 
 Checked: vercel.json shape (`$schema`, `headers[].source`, `headers[].headers[]` key/value, `outputDirectory` string or null, `framework: null` for "Other") against https://vercel.com/docs/project-configuration/vercel-json (page last updated per docs index 2026-08-25 on https://vercel.com/docs/project-configuration).
-Production now runs `node tools/mock-data.mjs` as the build command and `installCommand: null`, and deploys. Headers were observed with `curl -I` on production on 2026-11-14 (see Security pass).
+Headers were observed with `curl -I` on production on 2026-11-14 (see Security pass), before the R2 switch.
 
 ## H5 research
 
@@ -67,7 +69,21 @@ Cloudflare R2 ([pricing](https://developers.cloudflare.com/r2/pricing/)):
 - Checked: CORS via dashboard bucket Settings or `npx wrangler r2 bucket cors set <bucket> --file cors.json` ([doc](https://developers.cloudflare.com/r2/buckets/cors/)). Wrangler format: `{"rules":[{"allowed":{"origins":["https://app.example"],"methods":["GET"]}}]}`. Custom domains return CORS headers automatically once a policy exists; browsers must send an `Origin` header.
 - Not checked: CORS on the public `r2.dev` URL (the page does not mention it; whether `r2.dev` is rate limited was also not read).
 
-Decision H5: open. Compare M0-K4 total brotli size and file count against 100 MB / 15,000 files; over either, R2 (10 GB free) is the path.
+Decision H5: Cloudflare R2, decided by the humans on 2026-11-15. See "Data hosting (H5)".
+
+## Data hosting (H5)
+
+Status: infrastructure created by the team; `pipeline/publish.js` and the publish workflow built and unit tested with a stubbed `fetch`; no real publish has run yet.
+
+- Bucket `prime-radiant-data`, Standard storage, location ENAM. CORS allows GET and HEAD from `https://primeradiant.zenus.systems` and `http://127.0.0.1:8433` (not needed by the rewrite, kept for direct use). A lifecycle rule aborts incomplete multipart uploads after 1 day.
+- Custom domain `https://data.primeradiantdata.com` on its own Cloudflare zone. Its certificate was still pending on 2026-11-15; production data loads only once it is active.
+- Layout: `v/{dataVersion}/manifest.json`, `v/{dataVersion}/domain.json`, `v/{dataVersion}/tiles/0.1/*.json`, `v/{dataVersion}/tiles/1/*.json`, all `Cache-Control: public, max-age=31536000, immutable`; the root `manifest.json` (`public, max-age=300`) is a copy of the live version's manifest. Its `base_url` is `data/v/{dataVersion}/`, resolved by `web/src/data-source.js` against the site root, so it stays relative.
+- Serving: `vercel.json` rewrites `/data/:path*` to `https://data.primeradiantdata.com/:path*`. The app keeps fetching same-origin `/data/`, so CSP, CORS and the service worker (which caches only same-origin `data/`) are unchanged. Chosen over a direct fetch with `connect-src https://data.primeradiantdata.com` for that reason: a direct fetch would also lose offline tiles. Its cost: tile bytes count against Vercel's Fast Data Transfer (100 GB a month on Hobby, [limits](https://vercel.com/docs/limits)) instead of R2's free egress, and a proxied request times out after 30 s. If traffic ever nears the cap, switch to the direct fetch.
+- Checked on [Rewrites](https://vercel.com/docs/routing/rewrites): external rewrites forward to an outside origin, and Vercel honors upstream `cache-control` on them by default for projects created on or after 2026-04-06 (older projects need `x-vercel-enable-rewrite-caching`; this project's creation date is not checked). The page names no plan restriction. Checked on [vercel.json](https://vercel.com/docs/project-configuration/vercel-json): "precedence is given to the filesystem prior to rewrites being applied". Not checked: a Hobby-specific statement on external rewrites (none found either way).
+- Publish: `node pipeline/publish.js --in <build dir>` with `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` in the environment. It validates every file with `core/schema.js` (any error aborts before the first request), uploads to `v/{dataVersion}/`, lists the prefix back and aborts if a key is missing, then writes the root manifest, then deletes every `v/*` version except the new one and the previous live one. Re-publishing a version overwrites the same keys; give changed data a new `dataVersion`, because the old files are cached as immutable. `--dry-run` validates and lists the keys without credentials or requests. Logs carry keys and counts only.
+- Workflow `.github/workflows/publish-data.yml` (manual, `workflow_dispatch`): downloads the 48 FIRMS country files with `tools/fetch-country.mjs` (about 3 GB), builds with `pipeline/build.js --domain pipeline/domain/brazil.geojson`, runs `node --test`, publishes. Actions are pinned to commit SHAs; one run at a time, never cancelled midway.
+- Secrets: the four `R2_*` values live only in GitHub Actions repository secrets (and in a local shell for a manual publish). The S3 keys are an R2 API token with Object Read and Write on this bucket only. `.env` holds `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` for bucket administration; neither is used by the publish.
+- Roll back: `node pipeline/publish.js --rollback <dataVersion>` copies `v/{dataVersion}/manifest.json` to the root. Only the previous version is kept, so that is the one to roll back to. Browsers and Vercel see the change within the root manifest's 5 minutes.
 
 ## Live proxy
 
