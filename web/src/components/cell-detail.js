@@ -2,7 +2,7 @@ import { binClass, density, NODATA } from '../bins.js';
 import { caveatsForCell } from '../caveat-catalog.js';
 import { MONTH_ABBR, MONTH_NAMES, formatCount, formatDensity, monthLabel } from '../format.js';
 import { compareToMedian, medianYears, rankSentence, sameMonth, ymOf } from '../stats.js';
-import { rankText } from './anomaly-layer.js';
+import { divClass, rankText } from './anomaly-layer.js';
 import { isSyntheticManifest } from '../view-data.js';
 import { h } from './h.js';
 import { icon, mark, svgEl } from './icons.js';
@@ -47,7 +47,7 @@ export const barStripModel = (list, cell, median) => {
   const bw = list.length ? W / list.length : W;
   const y = (v) => H - (v / max) * (H - top);
   const bars = list.map((c, i) => ({
-    year: c.year, value: c.value, selected: c.year === cell.year,
+    year: c.year, value: c.value, rank: c.rank ?? null, selected: c.year === cell.year,
     x: i * bw + 1.5, w: Math.max(1, bw - 3), y: c.value === null ? H : y(c.value), h: c.value === null ? 0 : H - y(c.value),
   }));
   const years = list.map((c) => c.year);
@@ -153,6 +153,7 @@ export const detailModel = (cell, { aoiCells, layer = 'counts', cells = [cell], 
     provenance: provenanceText(cell),
     compare,
     noMedian: compare ? null : NO_MEDIAN,
+    layer,
     stripTitle: `Every ${name}, ${strip.bars[0]?.year}–${strip.bars[strip.bars.length - 1]?.year}`,
     strip,
     stripLabel: stripLabel(cell, strip, rank),
@@ -184,7 +185,9 @@ const stripSvg = (m) => {
   const svg = svgEl('svg', { class: 'bar-strip', viewBox: `0 0 ${s.width} ${s.height + 18}`, role: 'img', 'aria-label': m.stripLabel });
   for (const b of s.bars) {
     if (b.value === null) continue;
-    svg.append(svgEl('rect', { x: f1(b.x), y: f1(b.y), width: f1(b.w), height: f1(Math.max(b.h, 1)), rx: 2, class: b.selected ? 'bs-bar is-sel' : 'bs-bar' }));
+    // On the anomaly layer each bar takes its month's diverging class, as in the grid.
+    const div = m.layer === 'anomaly' && typeof b.rank === 'number' ? ` bs-div rd-${divClass(b.rank)}` : '';
+    svg.append(svgEl('rect', { x: f1(b.x), y: f1(b.y), width: f1(b.w), height: f1(Math.max(b.h, 1)), rx: 2, class: `bs-bar${div}${b.selected ? ' is-sel' : ''}` }));
     if (b.selected) {
       const t = svgEl('text', { x: f1(s.value.x), y: f1(s.value.y), 'text-anchor': s.value.anchor, class: 'bs-value' });
       t.textContent = formatCount(b.value);

@@ -57,7 +57,8 @@ const browserDownload = ({ filename, mime, text }) => {
 
 /**
  * mount(container, deps). One primary button that downloads the CSV of what is on screen.
- * deps: `getSeries()` returns the Series or null, `getMeta()` extra CSV header lines,
+ * deps: `getSeries()` returns the Series or null, `getMeta()` extra CSV header lines, optional
+ * `getFile()` a view's own {filename, text} (used instead of the series when it returns one),
  * `isSynthetic()`; optional `download(file)` and `notify(message, {kind})` for tests. The result
  * is reported in a toast. Returns {destroy()}.
  */
@@ -71,7 +72,9 @@ export const mount = (container, deps) => {
     try {
       const series = deps.getSeries();
       if (!series) return notify('Nothing to export yet. Choose an area first.', { kind: 'error' });
-      const file = csvExport(series, deps.getMeta?.() ?? {});
+      // A view can export its own table (Sensors exports three series); otherwise the harmonized series.
+      const own = deps.getFile?.();
+      const file = own ? { filename: own.filename, mime: 'text/csv;charset=utf-8', text: guardCsv(own.text) } : csvExport(series, deps.getMeta?.() ?? {});
       file.text = withSyntheticNote(file.text, deps.isSynthetic?.() ?? false);
       download(file);
       return notify(savedMessage(file.filename));

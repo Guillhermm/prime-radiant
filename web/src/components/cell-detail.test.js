@@ -145,3 +145,10 @@ test('regression: the median label sits on the side away from the selected value
   assert.equal(late.median.anchor, 'start');
   assert.equal(late.median.labelX, 2);
 });
+
+test('bar strip carries each year\'s rank so the anomaly panel can color it', () => {
+  const list = [{ year: 2023, month: 1, value: 3, rank: 0.2 }, { year: 2024, month: 1, value: 5 }];
+  const s = barStripModel(list, list[1], null);
+  assert.deepEqual(s.bars.map((b) => b.rank), [0.2, null]);
+  assert.equal(detailModel(list[1], { aoiCells: 100, layer: 'anomaly', cells: list }).layer, 'anomaly');
+});

@@ -70,3 +70,10 @@ test('zero is drawn as the empty class, null is not drawn at all', () => {
   assert.equal(m.slices[0].month, 1);
   assert.equal(m.slices[0].bin, 0);
 });
+
+test('classOf recolors slices (the anomaly ramp on the Anomalies tab); the default is the density class', () => {
+  const two = [{ year: 2024, month: 1, value: 5, rank: 0.95 }, { year: 2024, month: 2, value: 0, rank: 0.1 }];
+  assert.ok(radiantModel(two, { aoiCells: 100 }).slices.every((s) => s.cls.startsWith('rb rb-')));
+  const m = radiantModel(two, { aoiCells: 100, classOf: (c) => `rd-${Math.floor(c.rank * 10)}` });
+  assert.deepEqual(m.slices.map((s) => s.cls), ['rd-9', 'rd-1']);
+});

@@ -20,18 +20,23 @@ export const viewTitle = (views, activeId) => {
   return v ? `${v.label} - Prime Radiant` : 'Prime Radiant';
 };
 
-const EYEBROWS = { calendar: 'Burning activity calendar', sensors: 'Sensors', anomalies: 'Anomalies', live: 'Live' };
+const EYEBROWS = {
+  calendar: 'Burning activity calendar',
+  sensors: 'Sensors · two records, one series',
+  anomalies: 'Anomalies · each month against its own history',
+  live: 'Live · this fire season',
+};
 const sameBbox = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((v, i) => v === b[i]);
 
 // Text of the page hero: the area's name (the matching example area, else "Custom area") and the period.
-export const heroModel = ({ view, bbox, from, to }, { presets = [], span = null } = {}) => {
+export const heroModel = ({ view, bbox, from, to }, { presets = [], span = null, synthetic = false } = {}) => {
   const f = from ?? span?.from;
   const t = to ?? span?.to;
   const preset = bbox ? presets.find((p) => sameBbox(p.bbox, bbox)) : null;
   let subtitle = 'Pick an example area or enter coordinates.';
   if (bbox) subtitle = f && t ? `Fire-cell-days per month, ${f} to ${t}.` : '';
   return {
-    eyebrow: EYEBROWS[view] ?? 'Prime Radiant',
+    eyebrow: `${EYEBROWS[view] ?? 'Prime Radiant'}${synthetic ? ' · Synthetic data' : ''}`,
     title: bbox ? (preset?.label ?? 'Custom area') : 'Choose an area',
     subtitle,
   };
@@ -165,6 +170,8 @@ export const mount = (container, { views, activeView, onView, previewIds = [], s
         el.tabIndex = on ? 0 : -1;
       });
       main.setAttribute('aria-labelledby', `tab-${view}`);
+      // Views need an area: on the first screen a tab would switch nothing, so the switcher waits.
+      tablist.hidden = tabEls.length < 2 || !hasArea;
       // The context stays rendered on first run: it holds the area form the hero buttons open. CSS hides its title and chips.
       slots.empty.hidden = hasArea;
       for (const [id, el] of Object.entries(groups)) el.hidden = !hasArea || view !== id;

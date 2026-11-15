@@ -221,7 +221,7 @@ test('synthetic banner: closes with an animation, a persistent tag stays and ope
     const [tagRight, methodLeft, brandRight, tagLeft] = await next.evaluate(`(() => { const r = (s) => document.querySelector(s).getBoundingClientRect(); return [r('.synth-tag').right, r('[data-slot=method]').left, r('.brand').right, r('.synth-tag').left]; })()`);
     assert.ok(tagRight <= methodLeft && brandRight <= tagLeft, `phone header order brand, tag, Method without overlap: ${[brandRight, tagLeft, tagRight, methodLeft]}`);
     await openExample(next);
-    await next.evaluate(`(() => { const c = [...document.querySelectorAll('.view-calendar .cal-cell[data-row]')].pop(); c.scrollIntoView({ block: 'end' }); c.focus(); })()`);
+    await next.evaluate(`(() => { const c = [...document.querySelectorAll('.view-calendar .calendar:not(.anomaly-layer) .cal-cell[data-row]')].pop(); c.scrollIntoView({ block: 'end' }); c.focus(); })()`);
     await next.press('Enter');
     await next.until(`document.querySelector('.panel-host.is-sheet .panel[role=dialog]')`, 'sheet on phone');
     assert.equal(await next.evaluate(`document.querySelector('.panel-host .panel-top .eyebrow').textContent`), 'Selected month · Synthetic data', 'the sheet says synthetic while it covers the top bar');
@@ -435,7 +435,7 @@ test('phone width (400px): chips wrap, popover traps focus, sheet keeps the cell
     assert.equal(await page.evaluate(`getComputedStyle(document.querySelector('.tabs')).position`), 'fixed', 'views become a bottom bar');
 
     // The bottom sheet must not cover the tapped cell (WCAG 2.4.11).
-    await page.evaluate(`(() => { const c = [...document.querySelectorAll('.view-calendar .cal-cell[data-row]')].pop(); c.scrollIntoView({ block: 'end' }); c.focus(); })()`);
+    await page.evaluate(`(() => { const c = [...document.querySelectorAll('.view-calendar .calendar:not(.anomaly-layer) .cal-cell[data-row]')].pop(); c.scrollIntoView({ block: 'end' }); c.focus(); })()`);
     const label = await page.evaluate(focusedLabel);
     await page.press('Enter');
     await page.until(`document.querySelector('.panel-host.is-sheet .panel[role=dialog][aria-modal="true"]')`, 'modal sheet opens on phone');
@@ -481,9 +481,104 @@ test('?preview=1: anomaly layer with rank in the panel, then the Live view and i
     await page.until(`!document.querySelector('.view-live').hidden && document.querySelector('.view-live .live-chart')`, 'Live view with its chart');
     assert.equal(await page.evaluate(`document.querySelector('.view-calendar').hidden && document.querySelector('.view-anomalies').hidden`), true);
     await settle(page);
-    await page.click('.view-live .cal-toggle');
+    await page.click('.view-live .live-card .seg-opt[data-id="table"]');
     await page.until(`document.querySelector('.view-live .live-table')?.offsetParent !== null`, 'Live table shown');
     assert.equal(await page.evaluate(`document.querySelectorAll('.view-live .live-table tbody tr').length`), 12);
+    assert.deepEqual(page.problems, []);
+  } finally { await page.close(); }
+});
+
+test('first run: no view switcher until an area loads; a view from the hash survives the example pick', { skip }, async () => {
+  for (const width of [1280, 400]) {
+    const page = await open(width, '?fixtures=1#view=sensors', synthBase);
+    try {
+      await page.until(`document.querySelector('${EXAMPLE}')`, 'example cards');
+      assert.equal(await page.evaluate(`document.querySelector('[role=tablist]').hidden && !document.querySelector('[role=tab]').getClientRects().length`), true, `no tabs on the first screen at ${width}`);
+      await page.evaluate(`document.querySelector('${EXAMPLE}').click()`);
+      await page.until(`!document.querySelector('.view-sensors').hidden && document.querySelector('.sensors-chart')`, 'the example opens the view from the hash');
+      assert.equal(await page.evaluate(`!document.querySelector('[role=tablist]').hidden && document.querySelector('#tab-sensors').getAttribute('aria-selected')`), 'true');
+    } finally { await page.close(); }
+  }
+});
+
+test('phone: picking an example lands at the top of the result, not scrolled past it', { skip }, async () => {
+  const page = await open(400, '?fixtures=1', synthBase);
+  try {
+    await page.until(`document.querySelector('${EXAMPLE}')`, 'example cards');
+    await settle(page);
+    await page.evaluate(`document.querySelector('${EXAMPLE}').scrollIntoView({ block: 'center' })`);
+    assert.ok(await page.evaluate('scrollY') > 300, 'the example sits below the fold');
+    await page.evaluate(`document.querySelector('${EXAMPLE}').click()`);
+    await page.until(CALENDAR_READY, 'calendar after an example');
+    assert.equal(await page.evaluate('scrollY'), 0);
+    assert.equal(await page.evaluate('document.activeElement.id'), 'main-view', 'focus moves off the removed card');
+  } finally { await page.close(); }
+});
+
+test('synthetic data turns on every tab; Sensors shows R, the steps, a keyboard chart, a table and its own CSV', { skip }, async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'pr-sensors-'));
+  const page = await browser.newPage({ width: 1280, height: 900, downloadDir: dir });
+  try {
+    await page.goto(`${synthBase}/web/?fixtures=1`);
+    await openExample(page);
+    assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('[role=tab]')].map((t) => t.dataset.view)`), ['calendar', 'sensors', 'anomalies', 'live']);
+    await page.click('#tab-sensors');
+    await page.until(`!document.querySelector('.view-sensors').hidden && document.querySelector('.sensors-chart')`, 'Sensors view');
+    assert.equal(await page.evaluate(`document.querySelector('[data-slot=verdict]').hidden`), true, 'the calendar verdict gives way to the answer card');
+    assert.match(await page.evaluate(`document.querySelector('.context .eyebrow').textContent`), /^Sensors · two records, one series · Synthetic data$/);
+    const answer = await page.evaluate(`document.querySelector('.sensors-answer').textContent`);
+    assert.match(answer, /Where both sensors flew · 2012–2012/);
+    assert.match(answer, /Synthetic/);
+    assert.match(answer, /\d\.\d×VIIRS ÷ MODIS/);
+    assert.match(answer, /Preview/);
+    assert.match(answer, /Not yet reviewed by the science team/);
+    assert.equal(await page.evaluate(`document.querySelectorAll('.sensors-steps .build-step').length`), 3);
+    assert.equal(await page.evaluate(`document.querySelector('.sensors-stamp').textContent`), 'SYNTHETIC DATA');
+    assert.match(await page.evaluate(`document.querySelector('.sensors-chart').getAttribute('aria-label')`), /^Synthetic data\. /);
+    await page.evaluate(`document.querySelector('.sensors-chart').focus()`);
+    await page.press('Home');
+    await page.until(`document.querySelector('#sensors-readout').textContent.startsWith('2000.')`, 'readout on the first year');
+    await page.press('ArrowRight');
+    await page.until(`document.querySelector('#sensors-readout').textContent.startsWith('2001.')`, 'arrow moves a year');
+    assert.equal(await page.evaluate(`!document.querySelector('.sensors-tip').hidden`), true, 'tooltip follows the keyboard');
+    await settle(page);
+    await page.click('.sensors-card .seg[aria-label="Display"] [data-id="table"]');
+    await page.until(`document.querySelector('.sensors-table .data-table')?.offsetParent !== null`, 'table shown');
+    assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.sensors-table thead th')].map((t) => t.textContent)`), ['Year', 'MODIS', 'VIIRS', 'Harmonized', 'Source']);
+    assert.match(await page.evaluate(`document.querySelector('.sensors-table caption').textContent`), /Synthetic data/);
+    await page.click('.export-button');
+    for (let i = 0; i < 50 && !(await readdir(dir)).some((f) => f.endsWith('.csv')); i++) await wait(100);
+    const [file] = (await readdir(dir)).filter((f) => f.endsWith('.csv'));
+    assert.match(file, /^prime-radiant-sensors-/);
+    const lines = (await readFile(join(dir, file), 'utf8')).split('\n');
+    assert.match(lines[0], /^# SYNTHETIC DEMO DATA/);
+    assert.ok(lines.includes('month,modis,viirs,harmonized,source'));
+    assert.deepEqual(page.problems, []);
+  } finally { await page.close(); await rm(dir, { recursive: true, force: true }); }
+});
+
+test('synthetic Anomalies and Live: answer cards, percentile words, the anomaly Radiant, labels on every number', { skip }, async () => {
+  const page = await open(1280, '?fixtures=1', synthBase);
+  try {
+    await openExample(page);
+    await page.click('#tab-anomalies');
+    await page.until(`!document.querySelector('.view-anomalies').hidden && document.querySelector('.anomaly-answer .radiant')`, 'Anomalies view');
+    assert.match(await page.evaluate(`document.querySelector('.anomaly-answer').textContent`), /Synthetic.*Preview.*\d+(st|nd|rd|th) percentile/);
+    assert.equal(await page.evaluate(`document.querySelectorAll('.anomaly-answer .radiant path.rb[class*="rd-"]').length > 0 && !document.querySelector('.anomaly-answer .radiant [class*="rb-"]')`), true, 'the Radiant uses the diverging ramp');
+    assert.match(await page.evaluate(`document.querySelector('.view-anomalies .cal-cell[data-row] .long')?.textContent ?? 'none'`), /^(\d+(st|nd|rd|th)|Low|High)?$/);
+    assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.view-anomalies .legend .legend-item')].map((li) => li.textContent)`), ['Flagged as unusual', 'No rank (baseline too short)', 'No data'], 'the foot keeps only the marks');
+    assert.equal(await page.evaluate(`document.querySelector('.view-anomalies .chart-stamp-html').textContent`), 'SYNTHETIC DATA');
+    await settle(page);
+    await page.click('.anomaly-card .seg-opt[data-id="table"]');
+    await page.until(`document.querySelector('.anomaly-card .data-table')?.offsetParent !== null`, 'anomaly table');
+    await page.click('#tab-live');
+    await page.until(`!document.querySelector('.view-live').hidden && document.querySelector('.live-answer')`, 'Live view');
+    const live = await page.evaluate(`document.querySelector('.live-answer').textContent`);
+    assert.match(live, /Synthetic/);
+    assert.match(live, /Provisional/);
+    assert.match(live, /Fetched (just now|\d+ (min|h) ago) · \d+ [A-Z][a-z]{2}, \d\d:\d\d UTC/);
+    assert.equal(await page.evaluate(`document.querySelector('.live-chart .chart-stamp').textContent`), 'SYNTHETIC DATA');
+    assert.equal(await page.evaluate(`getComputedStyle(document.querySelector('.live-tick')).fontSize`), '12px', 'axis text is not scaled');
     assert.deepEqual(page.problems, []);
   } finally { await page.close(); }
 });

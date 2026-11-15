@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { liveModel, liveTableModel, nextPoint, periodLabel, spreadLabels } from './live-view.js';
+import { fetchedLabel, liveAnswer, liveModel, liveTableModel, nextPoint, periodLabel, shortPeriod, spreadLabels } from './live-view.js';
 
 const NOW = new Date('2026-11-14T12:00:00Z');
 const input = (over = {}) => ({
@@ -27,7 +27,7 @@ test('47 h old is available, 49 h is not', () => {
 test('provisional badge, fetched text and the never-mixed note', () => {
   const m = liveModel({ ...input(), now: NOW });
   assert.equal(m.badge, 'Provisional');
-  assert.equal(m.fetchedText, 'Fetched 2026-11-14T06:00:00Z');
+  assert.equal(m.fetchedText, 'Fetched 6 h ago · 14 Nov, 06:00 UTC');
   assert.match(m.note, /never added to the harmonized totals/);
   assert.equal(liveModel({ ...input(), provisional: false, now: NOW }).badge, null);
 });
@@ -65,8 +65,13 @@ test('point labels carry value, provisional flag, median and middle half', () =>
 test('direct labels never overlap', () => {
   const m = liveModel({ ...input({ live: { ...input().live, values: [90, 150, 160, 120] } }), now: NOW });
   const ys = m.labels.map((l) => l.y);
-  for (let i = 1; i < ys.length; i++) assert.ok(ys[i] - ys[i - 1] >= 14);
-  assert.deepEqual(m.labels.map((l) => l.text).sort(), ['Current season', 'Historical median', 'Middle half of past years']);
+  for (let i = 1; i < ys.length; i++) assert.ok(ys[i] - ys[i - 1] >= 16);
+  // The band is wide enough to carry its own label inside, so only two direct labels remain.
+  assert.deepEqual(m.labels.map((l) => l.text).sort(), ['Current season', 'Historical median']);
+  assert.equal(m.bandLabel.text, 'Middle half of past years');
+  const thin = liveModel({ ...input({ band: { p25: [89, 149, 159, 119], median: [90, 150, 160, 120], p75: [91, 151, 161, 121] } }), now: NOW });
+  assert.equal(thin.bandLabel, null);
+  assert.ok(thin.labels.some((l) => l.text === 'Middle half of past years'), 'a thin band gets a direct label');
 });
 
 test('spreadLabels keeps order and spacing', () => {
@@ -121,11 +126,35 @@ test('chartWidth uses the real width below 640 so text is not scaled, and moves 
   const { chartWidth, liveModel } = await import('./live-view.js');
   assert.equal(chartWidth(360), 360);
   assert.equal(chartWidth(0), 640);
-  assert.equal(chartWidth(1000), 640);
+  assert.equal(chartWidth(1000), 1000, 'desktop uses the real width too');
+  assert.equal(chartWidth(3000), 1400);
   const input = { fetched_at: '2026-11-14T00:00:00Z', now: new Date('2026-11-14T01:00:00Z'), live: { id: 'live', comparable: false, start: '2026-01', values: [1, 2, 3] }, band: { p25: [0, 1, 1], median: [1, 1, 2], p75: [2, 2, 3] } };
   const narrow = liveModel({ ...input, width: 360 });
   assert.equal(narrow.width, 360);
   assert.equal(narrow.labels.length, 0);
   assert.equal(narrow.key.length, 3);
   assert.equal(liveModel(input).key.length, 0);
+});
+
+test('fetched label: relative then absolute in UTC', () => {
+  assert.equal(fetchedLabel('2026-11-14T11:59:40Z', NOW), 'Fetched just now · 14 Nov, 11:59 UTC');
+  assert.equal(fetchedLabel('2026-11-14T11:30:00Z', NOW), 'Fetched 30 min ago · 14 Nov, 11:30 UTC');
+  assert.equal(fetchedLabel('2026-11-13T22:00:00Z', NOW), 'Fetched 14 h ago · 13 Nov, 22:00 UTC');
+});
+
+test('x labels are short months, with the year only on January', () => {
+  assert.deepEqual([0, 1, 2, 3].map((i) => shortPeriod('2025-11', 'month', i)), ['Nov', 'Dec', 'Jan 2026', 'Feb']);
+});
+
+test('answer: latest value so far and the signed difference from its median', () => {
+  assert.deepEqual(liveAnswer(input()), { headline: 'November 2026 so far: 150 fire-cell-days', delta: '+25% vs the November median' });
+  const below = liveAnswer(input({ band: { ...input().band, median: [90, 150, 160, 200] } }));
+  assert.equal(below.delta, '−25% vs the November median');
+  assert.equal(liveAnswer(input({ band: { ...input().band, median: [90, 150, 160, 0] } })).delta, null, 'no percent against a zero median');
+  assert.equal(liveAnswer({ ...input(), provisional: false }).headline, 'November 2026: 150 fire-cell-days');
+});
+
+test('table caption says synthetic and Preview', () => {
+  assert.match(liveTableModel(input(), { synthetic: true }).caption, /Synthetic data, not real fire detections\. Median and percentiles are a Preview\./);
+  assert.doesNotMatch(liveTableModel(input()).caption, /Synthetic/);
 });

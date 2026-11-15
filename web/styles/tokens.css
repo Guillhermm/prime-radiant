@@ -58,6 +58,7 @@
   --bin-5-text: #0b0c14;
   --bin-6-text: #0b0c14;
   --cell-edge: rgb(255 255 255 / 0.14);
+  --anomaly-edge: transparent;
 
   --nodata-bg: #1d2036;
   --nodata-stripe: #6b7490;
@@ -155,6 +156,7 @@
     --sensor-modis: #a78bfa;
     --sensor-viirs: #ff8a4c;
     --sensor-harm: #fbba1f;
+    --chart-overlap: rgb(255 255 255 / 0.045);
     --bar: #3a4266;
     --bar-sel: #4da3ff;
     --current: #4da3ff;
@@ -224,6 +226,7 @@
     --bin-5-text: #000000;
     --bin-6-text: #000000;
     --cell-edge: #6b7490;
+    --anomaly-edge: var(--cell-edge);
 
     --nodata-bg: #e4e8f2;
     --nodata-stripe: #6b7490;
@@ -274,6 +277,7 @@
     --sensor-modis: #6d4fc4;
     --sensor-viirs: #c2410c;
     --sensor-harm: #151622;
+    --chart-overlap: rgb(21 22 34 / 0.04);
     --bar: #c3c9da;
     --bar-sel: #0050d8;
     --current: #0050d8;
@@ -328,6 +332,7 @@
     --bin-5-text: #000000;
     --bin-6-text: #000000;
     --cell-edge: #6b7490;
+    --anomaly-edge: var(--cell-edge);
 
     --nodata-bg: #e4e8f2;
     --nodata-stripe: #6b7490;
@@ -378,6 +383,7 @@
     --sensor-modis: #6d4fc4;
     --sensor-viirs: #c2410c;
     --sensor-harm: #151622;
+    --chart-overlap: rgb(21 22 34 / 0.04);
     --bar: #c3c9da;
     --bar-sel: #0050d8;
     --current: #0050d8;

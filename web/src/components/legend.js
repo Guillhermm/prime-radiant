@@ -41,7 +41,7 @@ export const ramp = (layer = 'counts') => {
     const m = anomalyLegendModel();
     return h('div', { class: 'ramp ramp-div', 'aria-hidden': 'true' },
       h('div', { class: 'ramp-bar' }, m.bins.map((b) => h('i', { class: `div-${b.id}` }))),
-      h('div', { class: 'ramp-ends' }, h('span', { text: 'Below median' }), h('span', { text: 'Median' }), h('span', { text: 'Above' })));
+      h('div', { class: 'ramp-ends' }, h('span', { text: 'Less fire' }), h('span', { text: 'Median' }), h('span', { text: 'More fire' })));
   }
   return h('div', { class: 'ramp', 'aria-hidden': 'true' },
     h('div', { class: 'ramp-bar' }, BINS.map((b) => h('i', { class: `bin-${b.id}` }))),
@@ -57,20 +57,21 @@ const countsLegend = () => {
   return [bins, extras, h('p', { class: 'legend-unit legend-estimated-note', text: ESTIMATED_NOTE }), h('p', { class: 'legend-unit', text: m.unit })];
 };
 
-const anomalyLegend = () => {
+// The stepped bar in the card header carries the colors; the foot keeps the marks and, under
+// the Calendar's anomaly layer, the unit sentence. The classes stay listed for screen readers.
+const anomalyLegend = ({ marksOnly = false } = {}) => {
   const m = anomalyLegendModel();
-  const list = h('ul', { class: 'legend-ramp' }, m.bins.map((b) => h('li', { class: `swatch div-${b.id}`, title: b.text, 'aria-label': b.text })));
-  const ends = h('p', { class: 'legend-ends', 'aria-hidden': 'true' }, h('span', { text: m.ends.low }), h('span', { text: m.ends.center }), h('span', { text: m.ends.high }));
+  const list = h('ul', { class: 'legend-list sr-only' }, m.bins.map((b) => h('li', { text: b.text })));
   const extras = h('ul', { class: 'legend-list' },
     h('li', { class: 'legend-item' }, h('span', { class: 'swatch mark-flagged', 'aria-hidden': 'true' }), h('span', { text: m.marks[0].label })),
     h('li', { class: 'legend-item' }, h('span', { class: 'swatch div-norank', 'aria-hidden': 'true' }), h('span', { text: m.norank })),
     h('li', { class: 'legend-item' }, h('span', { class: 'swatch nodata', 'aria-hidden': 'true' }), h('span', { text: 'No data' })));
-  return [list, ends, extras, h('p', { class: 'legend-unit', text: m.unit })];
+  return marksOnly ? [list, extras] : [list, extras, h('p', { class: 'legend-unit', text: m.unit })];
 };
 
-/** mount(container, {layer}). Returns {update({layer}), destroy()}. */
-export const mount = (container, { layer = 'counts' } = {}) => {
-  const paint = (l) => container.replaceChildren(h('div', { class: 'legend', role: 'group', 'aria-label': 'Legend' }, l === 'anomaly' ? anomalyLegend() : countsLegend()));
+/** mount(container, {layer, marksOnly}). Returns {update({layer}), destroy()}. */
+export const mount = (container, { layer = 'counts', marksOnly = false } = {}) => {
+  const paint = (l) => container.replaceChildren(h('div', { class: 'legend', role: 'group', 'aria-label': 'Legend' }, l === 'anomaly' ? anomalyLegend({ marksOnly }) : countsLegend()));
   paint(layer);
   return { update: (next) => paint(next.layer), destroy: () => container.replaceChildren() };
 };

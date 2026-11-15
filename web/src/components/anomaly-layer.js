@@ -1,5 +1,6 @@
 import { binClass } from '../bins.js';
-import { monthLabel } from '../format.js';
+import { MONTH_NAMES, monthLabel } from '../format.js';
+import { tableModel } from './data-table.js';
 import { gridModel, cellLabel, initialPosition, nextPosition } from './calendar-grid.js';
 import { h } from './h.js';
 
@@ -72,7 +73,8 @@ export const anomalyCellModel = (m, aoiCells) => {
     div: cls,
     cls: cell.value === null ? 'nodata' : ranked ? `div-${cls}` : 'div-norank',
     label: anomalyLabel(cell, aoiCells),
-    text: ranked ? String(Math.round(cell.rank * 100)) : '',
+    text: ranked ? extremeWord(cell.rank) ?? ordinal(Math.round(cell.rank * 100)) : '',
+    short: ranked ? String(Math.round(cell.rank * 100)) : '',
     flagged: ranked && cell.flagged === true,
     bin: binClass(cell.value, aoiCells),
   };
@@ -82,6 +84,51 @@ export const anomalyCellModel = (m, aoiCells) => {
 export const anomalyGridModel = (cells, { aoiCells }) => {
   const model = gridModel(cells, { aoiCells });
   return { ...model, rows: model.rows.map((r) => ({ ...r, cells: r.cells.map((m) => (m ? anomalyCellModel(m, aoiCells) : null)) })) };
+};
+
+// Only an exact 0 or 1 is the lowest or highest of its month; a rank that merely rounds there is not.
+const extremeWord = (rank) => ({ 0: 'Low', 1: 'High' })[rank] ?? null;
+
+const sideWords = { 'below median': 'Below the median', 'near median': 'Near the median', 'above median': 'Above the median' };
+
+/**
+ * Answer card for the Anomalies tab: the latest ranked month, its side of the median, and the
+ * flagged months of the range (newest first). null when no month has a rank.
+ */
+export const anomalyAnswer = (cells) => {
+  const ranked = cells.filter((c) => c.value !== null && typeof c.rank === 'number').sort((a, b) => b.year - a.year || b.month - a.month);
+  if (!ranked.length) return null;
+  const c = ranked[0];
+  const name = MONTH_NAMES[c.month - 1];
+  const flagged = ranked.filter((x) => x.flagged);
+  return {
+    cell: c,
+    headline: `${monthLabel(c.year, c.month)} · ${ordinal(Math.round(c.rank * 100))} percentile`,
+    sentence: `${c.flagged ? 'Flagged as unusual' : sideWords[side(divClass(c.rank))]} for ${/^[AEIOU]/.test(name) ? 'an' : 'a'} ${name}.`,
+    flagged,
+    flaggedText: `${flagged.length} ${flagged.length === 1 ? 'month' : 'months'} flagged in this range`,
+  };
+};
+
+/** Table alternative: one row per year (newest first), one column per month, the percentile in words. */
+export const anomalyTableModel = (cells, { synthetic = false } = {}) => {
+  const years = [...new Set(cells.map((c) => c.year))].sort((a, b) => b - a);
+  const at = new Map(cells.map((c) => [`${c.year}-${c.month}`, c]));
+  const counted = (month) => cells.filter((c) => c.month === month && c.value !== null).length;
+  const text = (c) => {
+    if (!c) return '';
+    if (c.value === null) return 'No data';
+    if (typeof c.rank !== 'number') return 'No rank';
+    const name = `${MONTH_NAMES[c.month - 1]}s`;
+    const word = { 0: `lowest of ${counted(c.month)} ${name}`, 1: `highest of ${counted(c.month)} ${name}` }[c.rank];
+    return `${word ?? ordinal(Math.round(c.rank * 100))}${c.flagged ? ', flagged' : ''}`;
+  };
+  return tableModel({
+    caption: `Percentile of each month among the same month in other years.${synthetic ? ' Synthetic data, not real fire detections.' : ''} Preview, not reviewed by the science team.`,
+    corner: 'Year',
+    columns: MONTH_NAMES.map((m) => m.slice(0, 3)),
+    rows: years.map((y) => ({ header: String(y), cells: MONTH_NAMES.map((_, i) => text(at.get(`${y}-${i + 1}`))) })),
+  });
 };
 
 const NAV_KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'];
@@ -130,7 +177,7 @@ export const mount = (container, deps) => {
         const node = h('div', {
           role: 'gridcell', class: cellClass(m), tabindex: pos && pos.row === r && pos.col === c ? '0' : '-1',
           'aria-label': m.label, 'data-row': r, 'data-col': c,
-        }, h('span', { class: 'cal-num', 'aria-hidden': 'true', text: m.text }));
+        }, h('span', { class: 'cal-num', 'aria-hidden': 'true' }, h('span', { class: 'long', text: m.text }), h('span', { class: 'short', text: m.short })));
         nodes.set(key(r, c), node);
         return node;
       })));

@@ -42,7 +42,7 @@ export const ringRadii = (i, n, { inner, outer, hairline } = RADIANT) => {
  * Geometry for the cells in range. Months without data (value null) draw nothing.
  * @returns {{years: number[], slices: {year, month, ring, d, bin, cell}[], labels: {text, x, y}[], viewBox: string}}
  */
-export const radiantModel = (cells, { aoiCells, labels = true, compact = false } = {}) => {
+export const radiantModel = (cells, { aoiCells, labels = true, compact = false, classOf = null } = {}) => {
   const years = [...new Set(cells.map((c) => c.year))].sort((a, b) => a - b);
   const { hairline, gap } = compact ? COMPACT : RADIANT;
   const slices = [];
@@ -53,7 +53,7 @@ export const radiantModel = (cells, { aoiCells, labels = true, compact = false }
     const [a0, a1] = monthAngles(c.month, gap);
     const bin = binClass(c.value, aoiCells);
     if (bin === NODATA) continue;
-    slices.push({ year: c.year, month: c.month, ring, d: sectorPath(ri, ro, a0, a1), bin, cell: c });
+    slices.push({ year: c.year, month: c.month, ring, d: sectorPath(ri, ro, a0, a1), bin, cls: classOf ? classOf(c) : `rb rb-${bin}`, cell: c });
   }
   const r = RADIANT.outer + RADIANT.labelGap + (labels === 'abbr' ? 4 : 0);
   const labelList = labels ? MONTH_NAMES.map((name, i) => {
@@ -118,7 +118,7 @@ export const mount = (container, deps) => {
     svg.setAttribute('aria-label', radiantLabel(model.years));
     const slices = svgEl('g', { class: 'rad-slices' });
     for (const s of model.slices) {
-      const p = svgEl('path', { d: s.d, class: `rb rb-${s.bin}`, 'data-key': keyOf(s.year, s.month) });
+      const p = svgEl('path', { d: s.d, class: s.cls, 'data-key': keyOf(s.year, s.month) });
       byKey.set(keyOf(s.year, s.month), s);
       slices.append(p);
     }

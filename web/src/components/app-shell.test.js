@@ -36,6 +36,8 @@ test('hero names the matching example area and the period', () => {
 
 test('hero falls back to a custom area and to a prompt without an area', () => {
   assert.equal(heroModel({ view: 'live', bbox: [1, 2, 3, 4] }, { presets: [] }).title, 'Custom area');
+  assert.equal(heroModel({ view: 'sensors', bbox: [1, 2, 3, 4] }, { synthetic: true }).eyebrow, 'Sensors · two records, one series · Synthetic data');
+  assert.equal(heroModel({ view: 'anomalies', bbox: [1, 2, 3, 4] }).eyebrow, 'Anomalies · each month against its own history');
   const none = heroModel({ view: 'calendar', bbox: null });
   assert.equal(none.title, 'Choose an area');
   assert.match(none.subtitle, /example area/);

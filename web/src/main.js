@@ -1,4 +1,4 @@
-import { VIEWS } from './views.js';
+import { PREVIEW_VIEWS, viewsFor } from './views.js';
 import { createStore, parseHash, serializeHash } from './state.js';
 import { findPreset, presetsFor } from './presets.js';
 import * as appShell from './components/app-shell.js';
@@ -8,6 +8,7 @@ import { h } from './components/h.js';
 import * as legend from './components/legend.js';
 import * as themeControl from './components/theme-control.js';
 import * as exportMenu from './components/export-menu.js';
+import { exportFilename } from './components/export-menu.js';
 import * as toast from './components/toast.js';
 import * as verdictRow from './components/verdict-row.js';
 import * as calendarGrid from './components/calendar-grid.js';
@@ -17,13 +18,18 @@ import * as cellDetail from './components/cell-detail.js';
 import * as methodDrawer from './components/method-drawer.js';
 import * as states from './components/states.js';
 import * as anomalyLayer from './components/anomaly-layer.js';
+import * as radiant from './components/radiant.js';
+import * as dataTable from './components/data-table.js';
 import * as liveView from './components/live-view.js';
+import * as sensorsView from './components/sensors-view.js';
+import { segmented } from './components/segmented.js';
+import { sensorsCsv } from './sensors-model.js';
 import * as offlineChip from './components/offline-chip.js';
 import * as syntheticBand from './components/synthetic-band.js';
 import { icon } from './components/icons.js';
 import { PREVIEW_NOTE, previewAnomaly, previewLive } from './preview-stubs.js';
 import { createDataSource, dataSourceConfig } from './data-source.js';
-import { buildResult, csvMeta, isSyntheticManifest } from './view-data.js';
+import { buildResult, csvMeta, isSyntheticManifest, sliceSeries } from './view-data.js';
 import { closeIosHint, isIOS, registerSW, showIosHint } from './pwa.js';
 
 const offerUpdate = (apply) => {
@@ -59,41 +65,29 @@ const mountResults = (data, deps, component, el) => {
   return () => ctl;
 };
 
-const previewNote = () => h('p', { class: 'hint anomaly-preview-note', text: PREVIEW_NOTE });
+const previewNote = (synthetic) => h('p', { class: 'hint anomaly-preview-note', text: synthetic ? `Synthetic data. ${PREVIEW_NOTE}` : PREVIEW_NOTE });
+
+// Placeholder ranks for a result, computed once per result.
+const ranked = new WeakMap();
+const anomalyCells = (r) => {
+  if (!ranked.has(r)) ranked.set(r, anomalyLayer.withAnomaly(r.cells, previewAnomaly(r.cells)));
+  return ranked.get(r);
+};
 
 const anomalyDeps = (r, { onSelect, onClose }) => ({
-  cells: anomalyLayer.withAnomaly(r.cells, previewAnomaly(r.cells)), aoiCells: r.aoiCells,
+  cells: anomalyCells(r), aoiCells: r.aoiCells,
   onSelect: (cell) => onSelect(cell, { layer: 'anomaly' }), onClose,
 });
 
-const segmented = (label, options, onPick) => {
-  const btns = options.map((o) => h('button', { type: 'button', role: 'radio', class: 'seg-opt', 'data-id': o.id, 'aria-checked': String(o.on) }, o.label));
-  const group = h('div', { class: 'seg', role: 'radiogroup', 'aria-label': label }, btns);
-  const set = (id) => btns.forEach((b) => { const on = b.dataset.id === id; b.setAttribute('aria-checked', String(on)); b.tabIndex = on ? 0 : -1; });
-  group.addEventListener('click', (e) => { const b = e.target.closest('[role=radio]'); if (b) { set(b.dataset.id); onPick(b.dataset.id); } });
-  group.addEventListener('keydown', (e) => {
-    const i = btns.indexOf(document.activeElement);
-    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
-    if (i < 0 || !step) return;
-    e.preventDefault();
-    const b = btns[(i + step + btns.length) % btns.length];
-    b.focus();
-    set(b.dataset.id);
-    onPick(b.dataset.id);
-  });
-  set(options.find((o) => o.on)?.id);
-  return { el: group, set };
-};
-
 /** The calendar card: header (title, stepped legend bar, layer and display switches), grid(s), legend foot. */
 const mountCalendarCard = (el, ctx) => {
-  const { store, data, preview, views, onSelect, onClose } = ctx;
+  const { store, data, preview, synthetic, views, onSelect, onClose } = ctx;
   const sub = h('p', { class: 'sub' });
   const rampHost = h('div', { class: 'ramp-host' });
   const tools = h('div', { class: 'cal-tools' });
   const head = h('div', { class: 'cal-head' }, h('div', { class: 'cal-head-text' }, h('h2', { text: 'Fire-cell-days by month' }), sub), rampHost, tools);
   const countsEl = h('div');
-  const anomalyEl = h('div', { hidden: true }, previewNote(), h('div'));
+  const anomalyEl = h('div', { hidden: true }, previewNote(synthetic), h('div'));
   const foot = h('div', { class: 'cal-foot' });
   el.replaceChildren(h('section', { class: 'card cal-card', 'aria-label': 'Fire-cell-days by month' }, head, countsEl, preview ? anomalyEl : null, foot));
 
@@ -138,25 +132,71 @@ export const MOUNTS = {
       onSelect: (c) => ctx.onSelect(c), onHover: (c) => ctx.grids[0]?.()?.link(c && { year: c.year, month: c.month }),
     }), verdictRow, el);
   },
-  sensors: () => {}, // M1-K10: Sensors view
-  anomalies: (el, { data, preview, onSelect, onClose }) => {
+  sensors: (el, ctx) => {
+    const { data, preview, synthetic, span } = ctx;
     if (!preview) return;
+    mountResults(data, (r) => ({
+      sensors: { modis: sliceSeries(r.sensors.modis, r.from, r.to), viirs: sliceSeries(r.sensors.viirs, r.from, r.to) }, harmonized: r.series,
+      satellites: r.manifest.satellites, viirsFrom: r.manifest.coverage?.viirs?.[0], span, synthetic,
+      onWiden: () => ctx.goTo({ from: span?.from ?? null, to: span?.to ?? null }),
+    }), sensorsView, el);
+  },
+  anomalies: (el, { data, preview, synthetic, onSelect, onClose }) => {
+    if (!preview) return;
+    const answer = h('section', { class: 'card answer-card anomaly-answer', 'aria-label': 'Latest month against its history' });
+    const answerText = h('div');
+    const radiantHost = h('div');
+    answer.append(answerText, radiantHost);
     const grid = h('div');
+    const tableHost = h('div', { hidden: true });
     const key = h('div', { class: 'anomaly-key' });
-    el.replaceChildren(h('section', { class: 'card' }, previewNote(), grid, key));
+    const display = segmented('Display', [{ id: 'grid', label: 'Grid', on: true }, { id: 'table', label: 'Table', on: false }], (id) => {
+      grid.hidden = id === 'table';
+      tableHost.hidden = id !== 'table';
+    });
+    const head = h('div', { class: 'cal-head' },
+      h('div', { class: 'cal-head-text' },
+        h('h2', {}, 'How unusual was each month ', h('span', { class: 'tag', text: 'Preview' })),
+        h('p', { class: 'sub', text: 'Number: percentile among the same month in other years. Placeholder method, not reviewed by the science team.' })),
+      legend.ramp('anomaly'), h('div', { class: 'cal-tools' }, display.el));
+    el.replaceChildren(h('div', { class: 'anomaly-view' }, answer,
+      h('section', { class: 'card cal-card anomaly-card', 'aria-label': 'How unusual was each month' },
+        head, synthetic ? h('span', { class: 'chart-stamp-html', 'aria-hidden': 'true', text: 'SYNTHETIC DATA' }) : null, grid, tableHost, key)));
     mountResults(data, (r) => anomalyDeps(r, { onSelect, onClose }), anomalyLayer, grid);
-    legend.mount(key, { layer: 'anomaly' });
+    legend.mount(key, { layer: 'anomaly', marksOnly: true });
+    let rad = null;
+    let shown = null;
+    data.subscribe(({ result: r }) => {
+      if (!r || r === shown) return;
+      shown = r;
+      const cells = anomalyCells(r);
+      dataTable.mount(tableHost, { model: anomalyLayer.anomalyTableModel(cells, { synthetic }) });
+      const a = anomalyLayer.anomalyAnswer(cells);
+      const tags = [synthetic ? h('span', { class: 'tag tag-synth', text: 'Synthetic' }) : null, h('span', { class: 'tag', text: 'Preview' })];
+      if (!a) {
+        answerText.replaceChildren(h('p', { class: 'eyebrow answer-eyebrow' }, h('span', { text: 'Latest month' }), tags),
+          h('p', { class: 'answer-lead', text: 'No month in this range has enough earlier years to rank it.' }));
+      } else {
+        const list = h('details', { class: 'flag-list' }, h('summary', { text: a.flaggedText }),
+          h('ul', {}, a.flagged.map((c) => h('li', {}, h('button', { type: 'button', text: `${c.year}-${String(c.month).padStart(2, '0')}`, onclick: () => onSelect(c, { layer: 'anomaly' }) })))));
+        answerText.replaceChildren(h('p', { class: 'eyebrow answer-eyebrow' }, h('span', { text: 'Latest month' }), tags),
+          h('p', { class: 'answer-big live-headline', text: a.headline }),
+          h('p', { class: 'answer-lead', text: a.sentence }),
+          a.flagged.length ? list : h('p', { class: 'hint', text: a.flaggedText }));
+      }
+      const radDeps = { cells, aoiCells: r.aoiCells, labels: 'abbr', classOf: (c) => (typeof c.rank === 'number' ? `rb rd-${anomalyLayer.divClass(c.rank)}` : 'rb rd-norank'), onSelect: (c) => onSelect(c, { layer: 'anomaly' }) };
+      if (rad) rad.update(radDeps);
+      else rad = radiant.mount(radiantHost, radDeps);
+    });
   },
   live: (el, ctx) => {
-    const { data, preview } = ctx;
+    const { data, preview, synthetic } = ctx;
     if (!preview) return;
-    const chart = h('div');
-    el.replaceChildren(h('section', { class: 'card' }, previewNote(), chart));
     mountResults(data, (r) => {
       const input = previewLive(r.cells);
       ctx.setTabDot?.('live', states.liveStatus(input.fetched_at).available ? `updated in the last ${states.LIVE_STALE_HOURS} hours` : null);
-      return { input };
-    }, liveView, chart);
+      return { input, synthetic };
+    }, liveView, el);
   },
 };
 
@@ -194,15 +234,12 @@ const mountInstall = (slot) => {
 export const start = async (root = document.getElementById('app')) => {
   const params = new URLSearchParams(location.search);
   const fixtures = params.get('fixtures') === '1';
-  // ?preview=1 turns on Sensors (empty until M1-K10) and the Anomalies and Live views, fed by
-  // placeholder numbers (preview-stubs.js).
-  const preview = params.get('preview') === '1';
-  const views = preview ? VIEWS.map((v) => ({ ...v, enabled: true })) : VIEWS;
   const presets = presetsFor({ fixtures });
   const source = createDataSource(dataSourceConfig({ fixtures }));
   let manifestError = null;
   const manifest = await source.manifest().catch((e) => { manifestError = e; return null; });
   const synthetic = isSyntheticManifest(manifest);
+  const { views, preview } = viewsFor({ synthetic, previewParam: params.get('preview') === '1' });
   const span = manifest ? spanFromManifest(manifest) : null;
   const { state, errors } = parseHash(location.hash, { span, views });
   const store = createStore(state);
@@ -211,7 +248,7 @@ export const start = async (root = document.getElementById('app')) => {
     views,
     activeView: state.view,
     onView: (view) => viewTransition(() => store.set({ view })),
-    previewIds: preview ? ['live'] : [],
+    previewIds: preview ? PREVIEW_VIEWS : [],
     synthetic,
   });
   const { slots } = shell;
@@ -258,16 +295,26 @@ export const start = async (root = document.getElementById('app')) => {
     getSeries: () => data.get().result?.series ?? null,
     getMeta: () => (data.get().result ? csvMeta(data.get().result) : {}),
     isSynthetic: () => synthetic,
+    getFile: () => {
+      const r = data.get().result;
+      if (!r || store.get().view !== 'sensors' || !preview) return null;
+      const modis = sliceSeries(r.sensors.modis, r.from, r.to);
+      return {
+        filename: exportFilename(modis, { prefix: 'prime-radiant-sensors' }),
+        text: sensorsCsv({ modis, viirs: sliceSeries(r.sensors.viirs, r.from, r.to) }, r.series, csvMeta(r)),
+      };
+    },
   });
 
-  const ctx = { store, slots, span, data, preview, views, grids: [], verdict: null, setTabDot: shell.setTabDot };
+  const ctx = { store, slots, span, data, preview, synthetic, views, goTo, grids: [], verdict: null, setTabDot: shell.setTabDot };
   const grid = () => ctx.grids[0]?.();
   const allGrids = () => ctx.grids.map((g) => g()).filter(Boolean);
   const detail = cellDetail.mount(slots.detail, {
     aoiCells: 0,
     context: () => {
       const r = data.get().result;
-      return r ? { cells: r.cells, allCells: r.allCells, manifest: r.manifest } : {};
+      // Ranks ride along so the anomaly panel can color its bar strip; the counts panel ignores them.
+      return r ? { cells: preview ? anomalyCells(r) : r.cells, allCells: r.allCells, manifest: r.manifest } : {};
     },
     onClose: () => { allGrids().forEach((g) => g.select?.(null)); ctx.verdict?.()?.select(null); },
     onStep: (key) => (store.get().layer === 'anomaly' && preview ? ctx.grids[1]?.() : grid())?.step?.(key),
@@ -296,7 +343,13 @@ export const start = async (root = document.getElementById('app')) => {
   };
   const stateView = states.mount(slots.empty, {
     presets, manifest, synthetic, loadExample,
-    onPick: (id) => goTo(queryBar.presetPatch(findPreset(id, presets), store.get(), span)),
+    // The picked card sits below the fold on phone and the result is shorter than the first-run
+    // screen, so without this the page would open scrolled past the verdict.
+    onPick: (id) => {
+      goTo(queryBar.presetPatch(findPreset(id, presets), store.get(), span));
+      window.scrollTo({ top: 0 });
+      document.getElementById('main-view')?.focus({ preventScroll: true });
+    },
     onRetry: () => run(store.get()),
     onDraw: (btn) => qb.open('map', btn),
     onCoords: (btn) => qb.open('area', btn),
@@ -306,7 +359,8 @@ export const start = async (root = document.getElementById('app')) => {
     const d = data.get();
     const screen = states.screenState({ hasArea: store.get().bbox !== null, status: d.status, cells: d.result?.cells });
     slots.empty.hidden = screen.kind === null;
-    slots.verdict.hidden = !screen.results;
+    // Sensors, Anomalies and Live bring their own answer card.
+    slots.verdict.hidden = !screen.results || store.get().view !== 'calendar';
     slots.caveat.hidden = store.get().bbox === null;
     if (!screen.results) shell.groups.forEach((g) => { g.hidden = true; });
     const next = screen.kind === 'error' ? states.errorState(d.error, { offline: offline.state().online === false }) : screen.kind && { kind: screen.kind };
@@ -356,7 +410,7 @@ export const start = async (root = document.getElementById('app')) => {
   window.addEventListener('offline', () => { shownState = null; paintState(); });
 
   const render = (s) => {
-    shell.update({ view: s.view, hasArea: s.bbox !== null, hero: appShell.heroModel(s, { presets, span }) });
+    shell.update({ view: s.view, hasArea: s.bbox !== null, hero: appShell.heroModel(s, { presets, span, synthetic }) });
     paintState();
   };
   data.subscribe(() => render(store.get()));

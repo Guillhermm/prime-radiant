@@ -54,7 +54,8 @@ test('flag is independent of color class', () => {
 test('a zero count with a rank keeps its rank class (zero is a value, not no data)', () => {
   const m = anomalyCellModel({ cell: cell(2024, 1, 0, { rank: 0.1, flagged: false }) }, 1000);
   assert.equal(m.cls, 'div-1');
-  assert.equal(m.text, '10');
+  assert.equal(m.text, '10th');
+  assert.equal(m.short, '10');
 });
 
 test('withAnomaly matches series values and flags by month and nulls outside it', () => {
@@ -73,4 +74,40 @@ test('grid model newest year first, 12 slots, cells colored', () => {
   assert.equal(m.rows[0].cells[0].cls, 'div-8');
   assert.equal(m.rows[1].cells[11].cls, 'div-2');
   assert.equal(m.rows[0].cells[5], null);
+});
+
+test('answer: newest ranked month, its side of the median, and the flagged months', async () => {
+  const { anomalyAnswer } = await import('./anomaly-layer.js');
+  const cells = [
+    cell(2024, 9, 5, { rank: 0.95, flagged: true }),
+    cell(2024, 10, 3, { rank: 0.48, flagged: false }),
+    cell(2024, 11, null, { rank: null, flagged: false }),
+  ];
+  const a = anomalyAnswer(cells);
+  assert.equal(a.headline, 'October 2024 · 48th percentile');
+  assert.equal(a.sentence, 'Near the median for an October.');
+  assert.equal(a.flaggedText, '1 month flagged in this range');
+  assert.deepEqual(a.flagged.map((c) => c.month), [9]);
+  assert.equal(anomalyAnswer([cell(2024, 9, 5, { rank: 0.95, flagged: true })]).sentence, 'Flagged as unusual for a September.');
+  assert.equal(anomalyAnswer([cell(2024, 9, 5, { rank: null })]), null);
+});
+
+test('table: years newest first, percentile in words, no data and no rank kept apart', async () => {
+  const { anomalyTableModel } = await import('./anomaly-layer.js');
+  const t = anomalyTableModel([cell(2023, 1, 4, { rank: 0.92, flagged: true }), cell(2024, 1, null), cell(2024, 2, 0, { rank: null })], { synthetic: true });
+  assert.deepEqual(t.rows.map((r) => r.header), ['2024', '2023']);
+  assert.deepEqual(t.rows[0].cells.slice(0, 3), ['No data', 'No rank', '']);
+  assert.equal(t.rows[1].cells[0], '92nd, flagged');
+  assert.match(t.caption, /Synthetic data/);
+  assert.match(t.caption, /Preview/);
+});
+
+test('extremes: Low and High only for an exact 0 or 1, spelled out with the month count in the table', async () => {
+  const { anomalyTableModel } = await import('./anomaly-layer.js');
+  assert.equal(anomalyCellModel({ cell: cell(2024, 10, 1, { rank: 0 }) }, 1000).text, 'Low');
+  assert.equal(anomalyCellModel({ cell: cell(2024, 10, 9, { rank: 1 }) }, 1000).text, 'High');
+  assert.equal(anomalyCellModel({ cell: cell(2024, 10, 9, { rank: 1 }) }, 1000).short, '100', 'the phone keeps digits');
+  assert.equal(anomalyCellModel({ cell: cell(2024, 10, 9, { rank: 0.996 }) }, 1000).text, '100th');
+  const t = anomalyTableModel([cell(2022, 10, 1, { rank: 0 }), cell(2023, 10, 5, { rank: 0.5 }), cell(2024, 10, 9, { rank: 1, flagged: true }), cell(2021, 10, null)]);
+  assert.deepEqual(t.rows.map((r) => r.cells[9]), ['highest of 3 Octobers, flagged', '50th', 'lowest of 3 Octobers', 'No data']);
 });

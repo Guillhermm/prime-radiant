@@ -1,6 +1,7 @@
-import { formatCount, monthLabel } from '../format.js';
+import { formatCount, MONTH_ABBR, MONTH_NAMES, monthLabel } from '../format.js';
 import { mount as mountTable, tableModel } from './data-table.js';
 import { h } from './h.js';
+import { segmented } from './segmented.js';
 import { liveStatus, mount as mountStates } from './states.js';
 
 /**
@@ -22,13 +23,14 @@ import { liveStatus, mount as mountStates } from './states.js';
  * Percentiles of the same calendar month (or day) across the baseline years; computed by core.
  */
 
-export const VIEW = { width: 640, height: 320, left: 56, right: 152, top: 16, bottom: 40 };
-// Below this width the series labels leave the plot for a key under it, and the viewBox is the
-// real pixel width, so the 0.75rem text is not scaled down.
+export const VIEW = { width: 640, height: 300, left: 52, right: 136, top: 16, bottom: 32 };
+// Below this width the series labels leave the plot for a key under it. The viewBox is always the
+// real pixel width, so the 0.75rem text is never scaled.
 export const COMPACT_BELOW = 640;
 const MIN_WIDTH = 280;
+const MAX_WIDTH = 1400;
 
-export const chartWidth = (px) => (px > 0 && px < COMPACT_BELOW ? Math.max(MIN_WIDTH, Math.round(px)) : VIEW.width);
+export const chartWidth = (px) => (px > 0 ? Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(px))) : VIEW.width);
 const GAP = 14;
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -44,17 +46,55 @@ export const periodLabel = (start, step, i) => {
   return monthLabel(Math.floor(idx / 12), (idx % 12) + 1);
 };
 
-const niceMax = (v) => {
+export const niceMax = (v) => {
   if (!(v > 0)) return 1;
   const p = 10 ** Math.floor(Math.log10(v));
   return Math.ceil(v / p) * p;
+};
+
+/** Short x label: "Nov", "Jan 2026" (the year only on January), or the day for daily data. */
+export const shortPeriod = (start, step, i) => {
+  if (step === 'day') return periodLabel(start, step, i).slice(5);
+  const idx = Number(start.slice(0, 4)) * 12 + Number(start.slice(5, 7)) - 1 + i;
+  const m = idx % 12;
+  return m === 0 ? `${MONTH_ABBR[0]} ${Math.floor(idx / 12)}` : MONTH_ABBR[m];
+};
+
+/** "Fetched 2 h ago · 14 Nov, 23:39 UTC": relative, then absolute in UTC. */
+export const fetchedLabel = (fetchedAt, now = new Date()) => {
+  const t = new Date(fetchedAt);
+  const min = Math.max(0, Math.round((now - t) / 60000));
+  let ago = 'just now';
+  if (min >= 1 && min < 60) ago = `${min} min ago`;
+  else if (min >= 60 && min < 48 * 60) ago = `${Math.round(min / 60)} h ago`;
+  else if (min >= 48 * 60) ago = `${Math.round(min / 1440)} days ago`;
+  const hh = String(t.getUTCHours()).padStart(2, '0');
+  const mm = String(t.getUTCMinutes()).padStart(2, '0');
+  return `Fetched ${ago} · ${t.getUTCDate()} ${MONTH_ABBR[t.getUTCMonth()]}, ${hh}:${mm} UTC`;
+};
+
+/** Answer card texts: the latest period against its median (a Preview statistic). */
+export const liveAnswer = ({ live, band, provisional = true }) => {
+  const step = live.step ?? 'month';
+  const last = live.values.length - 1;
+  const v = live.values[last];
+  const med = band.median[last];
+  const when = periodLabel(live.start, step, last);
+  const name = step === 'month' ? MONTH_NAMES[(Number(live.start.slice(5, 7)) - 1 + last) % 12] : 'same day';
+  const headline = typeof v === 'number' ? `${when}${provisional ? ' so far' : ''}: ${formatCount(v)} fire-cell-days` : `${when}: no data yet`;
+  let delta = null;
+  if (typeof v === 'number' && typeof med === 'number' && med > 0) {
+    const pct = Math.round(((v - med) / med) * 100);
+    delta = `${pct > 0 ? '+' : pct < 0 ? '−' : ''}${Math.abs(pct)}% vs the ${name} median`;
+  }
+  return { headline, delta };
 };
 
 /** Integer-only y ticks from 0 to the nice maximum: 0, half and max, dropping halves that are not whole. */
 export const niceTicks = (max) => [0, max / 2, max].filter((v, i, a) => Number.isInteger(v) && a.indexOf(v) === i);
 
 /** Runs of consecutive indices where every listed array has a number. */
-const runs = (n, ...arrays) => {
+export const runs = (n, ...arrays) => {
   const out = [];
   let cur = null;
   for (let i = 0; i < n; i++) {
@@ -90,9 +130,10 @@ export const liveModel = ({ fetched_at: fetchedAt = null, live, band, provisiona
   validate({ live, band });
   const step = live.step ?? 'month';
   const n = live.values.length;
-  const { height, left, top, bottom } = VIEW;
+  const { height, top, bottom } = VIEW;
   const compact = width < COMPACT_BELOW;
-  const right = compact ? 16 : VIEW.right;
+  const left = compact ? 44 : VIEW.left;
+  const right = compact ? 12 : VIEW.right;
   const innerW = width - left - right;
   const innerH = height - top - bottom;
   const all = [...live.values, ...band.p75, ...band.p25, ...band.median].filter((v) => typeof v === 'number');
@@ -127,9 +168,9 @@ export const liveModel = ({ fetched_at: fetchedAt = null, live, band, provisiona
   });
 
   const ticks = niceTicks(yMax).map((v) => ({ y: y(v), text: formatCount(v) }));
-  const every = Math.max(1, Math.ceil(n / (compact ? 3 : 6)));
-  const xticks = Array.from({ length: n }, (_, i) => i).filter((i) => i === last || (i % every === 0 && last - i > every + 1))
-    .map((i) => ({ x: x(i), text: periodLabel(live.start, step, i), anchor: i === last && last % every !== 0 ? 'end' : 'middle' }));
+  const every = Math.max(1, Math.ceil(n / (compact ? 4 : 12)));
+  const xticks = Array.from({ length: n }, (_, i) => i).filter((i) => i === last || (i % every === 0 && last - i >= every))
+    .map((i) => ({ x: x(i), text: shortPeriod(live.start, step, i), anchor: compact && i === last ? 'end' : 'middle' }));
 
   const labelX = width - right + 8;
   const raw = [];
@@ -137,8 +178,15 @@ export const liveModel = ({ fetched_at: fetchedAt = null, live, band, provisiona
   const tail = (arr) => arr[last];
   if (typeof lv === 'number') raw.push({ text: 'Current season', cls: 'live', y: y(lv) + 4 });
   if (typeof tail(band.median) === 'number') raw.push({ text: 'Historical median', cls: 'median', y: y(tail(band.median)) + 4 });
-  if (typeof tail(band.p75) === 'number') raw.push({ text: 'Middle half of past years', cls: 'band', y: y(tail(band.p75)) + 4 });
-  const labels = compact ? [] : spreadLabels(raw).map((l) => ({ ...l, x: labelX }));
+  // The band is named inside itself where it is widest; when it is too thin there, it gets a direct label.
+  let widest = null;
+  band.p25.forEach((lo, i) => {
+    const hi = band.p75[i];
+    if (typeof lo === 'number' && typeof hi === 'number' && (!widest || y(lo) - y(hi) > widest.h)) widest = { i, h: y(lo) - y(hi), top: y(hi) };
+  });
+  const bandLabel = !compact && widest && widest.h >= 36 ? { text: 'Middle half of past years', x: x(widest.i), y: widest.top + 16 } : null;
+  if (!bandLabel && typeof tail(band.p75) === 'number') raw.push({ text: 'Middle half of past years', cls: 'band', y: y(tail(band.p75)) + 4 });
+  const labels = compact ? [] : spreadLabels(raw, 16).map((l) => ({ ...l, x: labelX }));
   const key = compact ? raw.map(({ text, cls }) => ({ text, cls })) : [];
 
   const current = typeof lv === 'number'
@@ -146,23 +194,23 @@ export const liveModel = ({ fetched_at: fetchedAt = null, live, band, provisiona
     : null;
 
   return {
-    available: true, status, fetchedText: `Fetched ${fetchedAt}`, step, current,
+    available: true, status, fetchedText: fetchedLabel(fetchedAt, now), step, current, bandLabel,
     badge: provisional ? 'Provisional' : null,
     note: 'Live detections are shown on their own. They are never added to the harmonized totals.',
-    width, height, left, innerW, bottom: top + innerH,
+    width, height, left, innerW, bottom: top + innerH, compact,
     linePath, tailPath, medianPath, bandPath, points, ticks, xticks, labels, key,
   };
 };
 
 /** Data-table alternative to the chart: one row per period, the live value next to the band. */
-export const liveTableModel = ({ live, band, provisional = true }) => {
+export const liveTableModel = ({ live, band, provisional = true }, { synthetic = false } = {}) => {
   validate({ live, band });
   const step = live.step ?? 'month';
   const last = live.values.length - 1;
   // A null live value means no data; a null band value means too few past years to compute it.
   const cell = (v, missing) => (typeof v === 'number' ? formatCount(v) : missing);
   return tableModel({
-    caption: 'Current season fire-cell-days against past years',
+    caption: `Current season fire-cell-days against past years.${synthetic ? ' Synthetic data, not real fire detections.' : ''} Median and percentiles are a Preview.`,
     corner: step === 'day' ? 'Day' : 'Month',
     columns: ['Current season', 'Historical median', '25th percentile', '75th percentile'],
     rows: live.values.map((v, i) => ({
@@ -192,13 +240,19 @@ const s = (tag, attrs = {}, ...kids) => {
 };
 const text = (t, attrs, tag = 'text') => { const el = s(tag, attrs); el.textContent = t; return el; };
 
+const tagEl = (t, cls = '') => h('span', { class: `tag ${cls}`.trim(), text: t });
+
 /**
- * mount(container, {input, now}). `input` is the contract above; update(next) takes a new input
- * (same shape, optional `now`). Returns {update, destroy}.
+ * mount(container, {input, now, synthetic}). `input` is the contract above; update(next) takes a
+ * new input (same shape, optional `now`). Renders an answer card and the chart card. Returns
+ * {update, destroy}.
  */
 export const mount = (container, deps = {}) => {
   let tableOn = false;
-  let width = chartWidth(container.clientWidth);
+  // The chart sits in a card: its padding and border come off the slot's width.
+  const plotWidth = () => chartWidth(container.clientWidth - 46);
+  let width = plotWidth();
+  const synthetic = deps.synthetic === true;
   const paint = ({ input, now }) => {
     const m = liveModel({ ...input, now, width });
     if (!m.available) {
@@ -207,21 +261,32 @@ export const mount = (container, deps = {}) => {
       mountStates(box, {}).show(m.state);
       return;
     }
+    const a = liveAnswer(input);
+    const answer = h('section', { class: 'card answer-card live-answer', 'aria-label': 'This season so far' },
+      h('p', { class: 'eyebrow answer-eyebrow' }, h('span', { text: 'This fire season' }), synthetic ? tagEl('Synthetic', 'tag-synth') : null,
+        m.badge ? tagEl(m.badge, 'tag-fire') : null),
+      h('p', { class: 'answer-big live-headline', text: a.headline }),
+      a.delta ? h('p', { class: 'answer-lead' }, a.delta, ' ', tagEl('Preview')) : null,
+      h('p', { class: 'hint', text: m.fetchedText }));
+
     const readout = h('p', { class: 'live-readout', 'aria-hidden': 'true' });
     const circles = m.points.map((p, k) => s('circle', {
       class: `live-point${p.provisional ? ' is-provisional' : ''}`, cx: p.x, cy: p.y, r: 5, tabindex: k === m.points.length - 1 ? 0 : -1,
       role: 'img', 'aria-label': p.aria, 'data-k': k,
     }));
-    const svg = s('svg', { class: 'live-chart', viewBox: `0 0 ${m.width} ${m.height}`, role: 'group', 'aria-label': 'Current season against the historical band' },
-      text('Current season fire-cell-days against the 25th to 75th percentile band and median of past years', {}, 'title'),
+    const prefix = synthetic ? 'Synthetic data. ' : '';
+    const svg = s('svg', { class: 'live-chart', viewBox: `0 0 ${m.width} ${m.height}`, role: 'group', 'aria-label': `${prefix}Current season against the historical band, a Preview` },
+      text(`${prefix}Current season fire-cell-days against the 25th to 75th percentile band and median of past years`, {}, 'title'),
       m.ticks.map((t) => s('g', {}, s('line', { class: 'live-grid', x1: m.left, x2: m.left + m.innerW, y1: t.y, y2: t.y }), text(t.text, { class: 'live-tick', x: m.left - 6, y: t.y + 4, 'text-anchor': 'end' }))),
       m.xticks.map((t) => text(t.text, { class: 'live-tick', x: t.x, y: m.bottom + 18, 'text-anchor': t.anchor })),
       s('path', { class: 'live-band', d: m.bandPath }),
+      m.bandLabel ? text(m.bandLabel.text, { class: 'live-band-label', x: m.bandLabel.x, y: m.bandLabel.y, 'text-anchor': 'middle' }) : null,
       s('path', { class: 'live-median', d: m.medianPath }),
       s('path', { class: 'live-line', d: m.linePath }),
       s('path', { class: 'live-tail', d: m.tailPath }),
       circles,
-      m.labels.map((l) => text(l.text, { class: `live-label live-label-${l.cls}`, x: l.x, y: l.y })));
+      m.labels.map((l) => text(l.text, { class: `live-label live-label-${l.cls}`, x: l.x, y: l.y })),
+      synthetic ? text('SYNTHETIC DATA', { class: 'chart-stamp', x: m.compact ? m.left + 8 : m.left + m.innerW - 8, y: 30, 'text-anchor': m.compact ? 'start' : 'end' }) : null);
     let at = circles.length - 1;
     const go = (k) => {
       if (k === null || k === at) return;
@@ -246,26 +311,28 @@ export const mount = (container, deps = {}) => {
     readout.textContent = m.current?.text ?? '';
     const chartBox = h('div', { hidden: tableOn }, svg, readout);
     const tableHost = h('div', { class: 'live-table', hidden: !tableOn });
-    mountTable(tableHost, { model: liveTableModel(input) });
-    const toggle = h('button', { type: 'button', class: 'cal-toggle', 'aria-pressed': String(tableOn), text: tableOn ? 'Chart view' : 'Table view' });
-    toggle.addEventListener('click', () => {
-      tableOn = !tableOn;
-      toggle.setAttribute('aria-pressed', String(tableOn));
-      toggle.textContent = tableOn ? 'Chart view' : 'Table view';
+    mountTable(tableHost, { model: liveTableModel(input, { synthetic }) });
+    const display = segmented('Display', [{ id: 'chart', label: 'Chart', on: !tableOn }, { id: 'table', label: 'Table', on: tableOn }], (id) => {
+      tableOn = id === 'table';
       chartBox.hidden = tableOn;
       tableHost.hidden = !tableOn;
     });
-    container.replaceChildren(h('div', { class: 'live-view' },
-      h('div', { class: 'live-head' }, m.badge && h('span', { class: 'badge', text: m.badge }), h('span', { class: 'live-fetched', text: m.fetchedText }), toggle),
+    const card = h('section', { class: 'card live-card', 'aria-labelledby': 'live-title' },
+      h('div', { class: 'cal-head' },
+        h('div', { class: 'cal-head-text' },
+          h('h2', { id: 'live-title' }, 'Current season against past years ', tagEl('Preview')),
+          h('p', { class: 'sub', text: 'The last 12 months. The band and the median come from earlier years of this area.' })),
+        display.el),
       chartBox,
       m.key.length ? h('ul', { class: 'live-key' }, m.key.map((k) => h('li', { class: `live-key-${k.cls}`, text: k.text }))) : null,
-      tableHost, h('p', { class: 'hint', text: m.note })));
+      tableHost, h('p', { class: 'hint', text: m.note }));
+    container.replaceChildren(h('div', { class: 'live-view' }, answer, card));
   };
   let current = { input: deps.input, now: deps.now ?? new Date() };
   paint(current);
   // The view is hidden at mount time (zero width) and the window can resize: repaint when the chart width changes.
   const watcher = globalThis.ResizeObserver ? new ResizeObserver(() => {
-    const next = chartWidth(container.clientWidth);
+    const next = plotWidth();
     if (next === width || !container.clientWidth) return;
     width = next;
     paint(current);
