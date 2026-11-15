@@ -170,3 +170,39 @@ test('R window: default ends 2021-12, later months do not change R, window recor
   assert.deepEqual(c.R.window, { from: '2013-01', to: '2030-12' });
   assert.ok(c.R.value > 2);
 });
+
+// 2018-04..2022-12, S-NPP 4 vs NOAA-20 2 (K = 2); 2022-07 is an S-NPP outage month (observed 1)
+const outageLevel = (nAt = () => 2) => level('aoi', '2018-04', 57, {
+  m: () => 2, v: (i, ym) => (ym === '2022-07' ? 1 : 4), n: (i, ym) => nAt(ym),
+});
+const outageManifest = (over = {}) => manifest({
+  coverage: { modis: ['2000-11', '2030-12'], viirs: ['2012-01', '2030-12'], noaa20: ['2018-04', '2030-12'] },
+  partial_months: { modis: [], viirs: ['2012-01', '2022-07'], noaa20: [] }, ...over,
+});
+const idx = (ym) => (Number(ym.slice(0, 4)) - 2018) * 12 + Number(ym.slice(5)) - 4;
+
+test('S-NPP outage month inside NOAA-20 coverage is NOAA-20 x K, flagged; fits exclude it', () => {
+  const h = harmonize([outageLevel()], outageManifest(), { seed: 1, draws: 200 });
+  assert.equal(h.K.value, 2); // the outage month (1 vs 2) is not in the fit
+  assert.equal(h.series.values[idx('2022-07')], 4);
+  assert.equal(h.series.values[idx('2022-06')], 4); // neighbours stay observed
+  const f = (ym) => h.series.flags.filter((x) => x.month === ym).map((x) => x.flag).sort();
+  assert.deepEqual(f('2022-07'), ['estimated', 'viirs-outage-filled']);
+  assert.deepEqual(f('2022-06'), []);
+  assert.deepEqual(validateSeries(h.series), []);
+});
+
+test('outage month stays observed when NOAA-20 is null there, partial for NOAA-20, or K is not usable', () => {
+  const nul = harmonize([outageLevel((ym) => (ym === '2022-07' ? null : 2))], outageManifest(), { seed: 1, draws: 200 });
+  assert.equal(nul.series.values[idx('2022-07')], 1);
+  assert.ok(!nul.series.flags?.some((x) => x.flag === 'viirs-outage-filled'));
+  const pn = harmonize([outageLevel()], outageManifest({
+    partial_months: { modis: [], viirs: ['2012-01', '2022-07'], noaa20: ['2022-07'] },
+  }), { seed: 1, draws: 200 });
+  assert.equal(pn.series.values[idx('2022-07')], 1);
+  const short = level('aoi', '2022-01', 12, { m: () => 2, v: (i, ym) => (ym === '2022-07' ? 1 : 4), n: () => 2 });
+  const un = harmonize([short], outageManifest(), { seed: 1, draws: 200 }); // 1 year: K not usable
+  assert.equal(un.K.usable, false);
+  assert.equal(un.series.values[6], 1);
+  assert.ok(!un.series.flags?.some((x) => x.flag === 'viirs-outage-filled'));
+});

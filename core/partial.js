@@ -16,10 +16,12 @@ export function lastMonthIncomplete(ym, manifest) {
 
 /**
  * Which sensor supplied month `ym` of the harmonized series (mirrors harmonize.js): 'viirs' when
- * observed, else 'noaa20' after the S-NPP archive ends while NOAA-20 covers it, else 'modis'.
+ * observed, 'noaa20' for an outage month filled inside S-NPP coverage, else 'noaa20' after the S-NPP archive ends while NOAA-20 covers it, else 'modis'.
  */
 export function supplier(ym, estimated, manifest) {
   if (!estimated) return 'viirs';
+  if (inCoverage(manifest?.coverage?.viirs, ym) && inCoverage(manifest?.coverage?.noaa20, ym)
+    && (manifest?.partial_months?.viirs ?? []).includes(ym)) return 'noaa20'; // estimated inside S-NPP coverage: outage fill
   const sEnd = manifest?.coverage?.viirs?.[1] ?? null;
   return sEnd !== null && ym > sEnd && inCoverage(manifest?.coverage?.noaa20, ym) ? 'noaa20' : 'modis';
 }

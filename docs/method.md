@@ -128,7 +128,13 @@ months, NOAA-20 for NOAA-20 x K months (`core/partial.js`).
   `viirs-not-archived` (months after the S-NPP archive ends but before S-NPP stopped,
   2026-08 to 2026-10 in the first build: estimated, not observed); `terra-only`
   (before 2002-07: MODIS operated but the value is null, not scaled); `low-confidence`
-  (an applied R or K failed 4.2 at every level).
+  (an applied R or K failed 4.2 at every level); `viirs-outage-filled` (see below).
+- S-NPP outage months (gate V2 A1): a month partial for S-NPP (`partial_months.viirs`) that
+  falls inside NOAA-20 coverage and is not partial for NOAA-20 is NOAA-20 x K (per-month K
+  when K is per-month, else annual), flagged `estimated` and `viirs-outage-filled`, instead
+  of the undercounted S-NPP value. R and K fits keep excluding these months. If K is not
+  usable or NOAA-20 is missing, the month stays observed (and partial). The supplier of such
+  a month is NOAA-20, so the baseline treats it as complete.
 - Validated values (gate V1, Brazil build of 2026-11-14 with outage months excluded,
   R window 2012-02..2021-12): Brazil R = 2.516 (95% CI 2.46-2.58, per-month), K = 0.984
   (0.978-0.991); Pantanal box R = 1.89; Amazon arc box R = 2.22 (annual); a small Sao

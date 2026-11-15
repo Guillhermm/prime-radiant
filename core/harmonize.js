@@ -112,6 +112,7 @@ function chooseRatio(levels, numKey, denKey, eligible, seed, nDraws) {
   return chosen;
 }
 
+const inCoverage = (cov, ym) => Array.isArray(cov) && ym >= cov[0] && ym <= cov[1];
 const flagKey = (f) => `${f.month}|${f.flag}`;
 
 /**
@@ -123,6 +124,8 @@ const flagKey = (f) => `${f.month}|${f.flag}`;
  * that is usable, else from the last, with usable false. The harmonized series is built from
  * the first level (the AOI itself): S-NPP as observed, MODIS x R before S-NPP (from 2002-07),
  * NOAA-20 x K after S-NPP ends (MODIS x R when NOAA-20 is null), estimated months flagged.
+ * A month partial for S-NPP (outage) inside NOAA-20 coverage, not partial for NOAA-20, is NOAA-20 x K
+ * (usable K only), flagged `estimated` and `viirs-outage-filled`; else it stays observed.
  * Terra-only months stay null, flagged `terra-only`. Months after the S-NPP archive ends but
  * while S-NPP still operated (through 2026-10) are estimated and flagged `viirs-not-archived`.
  * A series that applies a factor that is not usable carries `{month: null, flag: 'low-confidence'}`.
@@ -173,6 +176,7 @@ export function harmonize(levels, manifest, { seed = 20260, draws = 1000, rWindo
   const flags = [...inputFlags];
   let lowConfidence = false;
   let notArchived = 0;
+  const outageFilled = [];
   for (let i = 0; i < len; i++) {
     const ym = addMonths(start, i);
     const v = base.viirs.values[i];
@@ -180,7 +184,10 @@ export function harmonize(levels, manifest, { seed = 20260, draws = 1000, rWindo
     const n = base.noaa20?.values[i] ?? null;
     let out = null;
     let estimated = false;
-    if (v !== null) out = v;
+    if (v !== null && pv.has(ym) && !pn.has(ym) && n !== null && K?.usable && factor(K, ym) !== null
+      && inCoverage(manifest.coverage?.noaa20, ym)) {
+      out = n * factor(K, ym); estimated = true; outageFilled.push(ym);
+    } else if (v !== null) out = v;
     else if (sEnd !== null && ym > sEnd && n !== null && K && factor(K, ym) !== null) {
       out = n * factor(K, ym); estimated = true; lowConfidence ||= !K.usable;
     } else if (m !== null && ym >= FIRST_SCALED_MONTH && (sStart === null || ym < sStart || (sEnd !== null && ym > sEnd))
@@ -189,12 +196,14 @@ export function harmonize(levels, manifest, { seed = 20260, draws = 1000, rWindo
     } else if (m !== null && ym < FIRST_SCALED_MONTH) flags.push({ month: ym, flag: 'terra-only' });
     values.push(out);
     if (estimated) flags.push({ month: ym, flag: 'estimated' });
+    if (outageFilled.at(-1) === ym) flags.push({ month: ym, flag: 'viirs-outage-filled' });
     if (sEnd !== null && ym > sEnd && ym <= SNPP_LAST_FULL_MONTH && v === null) {
       flags.push({ month: ym, flag: 'viirs-not-archived' });
       notArchived++;
     }
   }
   if (notArchived) reasons.push(`S-NPP operated after ${sEnd} but ${notArchived} month(s) are not archived yet: estimated, not observed`);
+  if (outageFilled.length) reasons.push(`${outageFilled.length} S-NPP outage month(s) supplied by NOAA-20 x K`);
   if (lowConfidence) flags.push({ month: null, flag: 'low-confidence' });
   return { series: mk(values, flags), R, K, reasons };
 }
