@@ -22,10 +22,12 @@ export const VIIRS_ERA_START = '2012-02';
 export const LIVE_MIN_CELLS = 2000;
 /** More than this fraction of the days so far missing (null) makes the comparison low confidence. */
 export const LIVE_MAX_MISSING = 1 / 3;
+/** Days a month must count when its first days were not observed (gate V3 re-check). */
+export const LIVE_MIN_COUNTED_DAYS = 7;
 
 /** Caveat ids for live data, kind 'live' (kind 'caveat' is the drawer's fixed 9). */
 export const LIVE_CAVEAT_IDS = ['live-nrt', 'live-approximate', 'live-not-harmonized', 'live-unfiltered', 'live-provisional',
-  'live-sensor', 'live-archive-lag', 'live-access'];
+  'live-sensor', 'live-archive-lag', 'live-brazil', 'live-access'];
 
 /**
  * The live caveats, in order, resolved against a gate map (preliminary until gate V3 passes).
@@ -191,7 +193,10 @@ const inc = (share, month, d) => share[month - 1][d - 1] - (d > 1 ? share[month 
  * the sum of the complete (non-null) days; a null (partial or missing) day is skipped, never
  * counted as 0, and later complete days still count. values[d-1] is the running sum through
  * day d, null on a missing day itself; band[d-1] the band for the days counted through d.
- * null (with `reason`) when live data starts after the 1st. `daysCounted` and `daysMissing` (day
+ * When live data starts after the 1st, the days before it are not observed (`daysNotObserved`,
+ * apart from the partial days in `daysMissing`): skipped like a missing day, the band uses only the
+ * days counted, the result is low confidence, and with fewer than LIVE_MIN_COUNTED_DAYS days counted
+ * the month is null with a `reason` (gate V3 re-check, 2026-11-15). `daysCounted` and `daysMissing` (day
  * strings) are returned for the month. When more than a third of the days so far are missing the result is
  * low confidence (`lowConfidence`, reason in `lowConfidenceReasons`).
  * `season`: step 'month', one value per month from the first month fully covered by live data
@@ -224,7 +229,7 @@ export function liveComparison({ live, harmonized, share, fetchedAt = null, now 
   const reasons = [];
   if (cells !== null && cells < LIVE_MIN_CELLS) reasons.push(`small area: ${cells} cells, under ${LIVE_MIN_CELLS}`);
   if (live.lowConfidence) reasons.push('K not usable');
-  const out = { fetched_at: fetchedAt, stale, month: null, season: null, lastCompleteDay: null, daysCounted: 0, daysMissing: [],
+  const out = { fetched_at: fetchedAt, stale, month: null, season: null, lastCompleteDay: null, daysCounted: 0, daysMissing: [], daysNotObserved: [],
     lowConfidence: null, lowConfidenceReasons: reasons, typeAdjusted: false, typeBias: null };
   const verdict = () => { out.lowConfidence = reasons.length ? true : cells === null ? null : false; return out; };
   const days = live.values?.length ? dayList(live) : [];
@@ -241,9 +246,13 @@ export function liveComparison({ live, harmonized, share, fetchedAt = null, now 
   const first = days[0].day;
 
   // Current month: days 1..last day with data; complete days count, missing ones are skipped.
-  const ds = days.filter((d) => d.day.startsWith(cur) && d.day <= lastData.day);
-  if (first > `${cur}-01`) {
-    out.reason = `live data starts after the 1st of ${cur}`;
+  // Days before the first live day were not observed: skipped the same way, and named apart.
+  const notObserved = [];
+  for (let d = `${cur}-01`; d < first; d = dayStr(dayNum(d) + 1)) notObserved.push({ day: d, value: null });
+  const ds = [...notObserved, ...days.filter((d) => d.day.startsWith(cur) && d.day <= lastData.day)];
+  const counted = ds.filter((d) => d.value !== null).length;
+  if (notObserved.length && counted < LIVE_MIN_COUNTED_DAYS) {
+    out.reason = `live data starts on ${first}: ${counted} complete day${counted === 1 ? '' : 's'} of ${cur} so far, under ${LIVE_MIN_COUNTED_DAYS}`;
   } else {
     const pool = pastYears(harmonized, cur, partial);
     let acc = 0, frac = 0;
@@ -253,14 +262,17 @@ export function liveComparison({ live, harmonized, share, fetchedAt = null, now 
       else { acc += d.value; frac += inc(share, curNo, dom(d)); values.push(acc * ratio(cur)); }
       fracs.push(frac);
     }
-    const missing = ds.filter((d) => d.value === null).map((d) => d.day);
-    out.daysCounted = ds.length - missing.length;
+    const unseen = notObserved.map((d) => d.day);
+    const missing = ds.filter((d) => d.value === null && d.day >= first).map((d) => d.day);
+    out.daysCounted = counted;
     out.daysMissing = missing;
-    if (missing.length > ds.length * LIVE_MAX_MISSING) reasons.push(`${missing.length} of ${ds.length} days so far are missing`);
+    out.daysNotObserved = unseen;
+    if (unseen.length) reasons.push(`${unseen[0]} to ${unseen.at(-1)} not observed (live data starts on ${first})`);
+    else if (missing.length > ds.length * LIVE_MAX_MISSING) reasons.push(`${missing.length} of ${ds.length} days so far are missing`);
     const band = toBand(fracs.map((f) => bandAt(pool, f, minYears)));
     out.lastCompleteDay = lastData.day;
     out.month = { live: { ...meta, step: 'day', start: `${cur}-01`, values }, band, provisional: true, month: cur,
-      daysCounted: out.daysCounted, daysMissing: missing, basis: { years: pool.length, share: frac } };
+      daysCounted: counted, daysMissing: missing, daysNotObserved: unseen, basis: { years: pool.length, share: frac } };
   }
 
   // Season: months fully covered by live data; a month sums its complete days.

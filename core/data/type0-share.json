@@ -1,0 +1,4 @@
+{
+ "source": "FIRMS archive S-NPP VIIRS standard, country files country/viirs-snpp_{2012..2025}_Brazil.csv, 2012-02 on: fire-cell-days of type 0 divided by fire-cell-days of every type, per calendar month (gate V3 L5, computed by the Second Foundation mathematician on 2026-11-15; 5,510,684 fire-cell-days of every type)",
+ "share": [0.9705, 0.9561, 0.9514, 0.9405, 0.954, 0.9677, 0.9793, 0.9903, 0.9939, 0.9944, 0.9918, 0.9872]
+}

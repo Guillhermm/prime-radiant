@@ -40,17 +40,19 @@ const DEFS = [
   ['live-nrt', 'live', 'Near-real-time data.',
     'Live detections are near-real-time (FIRMS NRT, within about 3 hours of the overpass). They can differ from the archive product, which uses the same algorithm but follows after a 2-3 month lag (FIRMS FAQ).'],
   ['live-approximate', 'live', 'Live comparison is approximate.',
-    'The comparison is approximate: the archive band is the median and middle half of the same month in earlier VIIRS-era years (2012 on), scaled to the day by the mean share of a month counted by that day. Small areas deviate most (the Pantanal 25-30% either way) and are marked low confidence.'],
+    'The comparison is approximate: the archive band is the median and middle half of the same month in earlier VIIRS-era years (2012 on), scaled to the day by the mean share of a month counted by that day. Small areas deviate most (measured in Brazil: the Pantanal 25-30% either way) and are marked low confidence.'],
   ['live-not-harmonized', 'live', 'Live is not harmonized.',
     'Live detections are NOAA-20 scaled to S-NPP units (x K), not the MODIS-and-VIIRS harmonized series, and are never added to the harmonized totals or baseline.'],
   ['live-unfiltered', 'live', 'Live is unfiltered by type.',
-    'Near-real-time detections carry no detection type, so static sources are not removed as in the archive. The bias is small in Aug-Nov (about 0.4% to 1.5%) and larger in the wet season (up to 3% to 10% in Feb-May).'],
+    'Near-real-time detections carry no detection type, so static sources are not removed as in the archive. Live values are multiplied by the archive\'s share of type-0 detections for the same calendar month (Brazil, S-NPP 2012-2025: 94% in April to 99% in October), an average that cannot remove one particular static source.'],
   ['live-provisional', 'live', 'Current period is provisional.',
-    'The current month is still open: the line ends at the last complete day in the area (a UTC day), the day of the fetch is never counted, and a partial day is skipped, never counted as 0.'],
+    'The current month is still open: the line ends at the last complete day of the live data (a UTC day), the day of the fetch is never counted, and a partial day is skipped, never counted as 0. Days are marked incomplete only when a satellite feed fails worldwide; a regional data gap over Brazil can show as a low day rather than a missing one.'],
   ['live-sensor', 'live', 'Live uses NOAA-20 scaled to S-NPP.',
     'S-NPP near-real-time files ended on 2026-11-02, so live values are NOAA-20 detections multiplied by K to S-NPP equivalent units, the unit of the archive band.'],
   ['live-archive-lag', 'live', 'The archive follows later.',
     'The archive product replaces near-real-time data after a 2-3 month lag (FIRMS FAQ); live values for a month are provisional until then.'],
+  ['live-brazil', 'live', 'Live covers Brazil only.',
+    'The live comparison is built for Brazil, where its method was checked (gate V3): the within-month shares and the type-0 shares were measured there. Live data is clipped to Brazil, so an area outside it has no live comparison.'],
   ['live-access', 'live', 'Live source may require a login.',
     'FIRMS documentation says an Earthdata Login is required for its files; they are served without one today. If that is enforced, live data becomes unavailable and the view says so.'],
   // flag explanations
@@ -86,11 +88,10 @@ export const NO_GATES = Object.freeze(Object.fromEntries(CAVEAT_IDS.map((id) => 
 
 /**
  * Status after gate V1 (docs/gates/V1.md, passed with caveats on 2026-11-14): every item
- * passed except near-real-time data (gate V3) and the anomaly items (gate V2 re-check).
+ * passed; V2 and V3 passed on their re-checks (docs/gates/V2.md, V3.md).
  */
-// Gates V1 and V2 passed (docs/gates/V1.md, V2.md); near-real-time data waits for V3.
-const LIVE_IDS = ['live-nrt', 'live-approximate', 'live-not-harmonized', 'live-unfiltered', 'live-provisional', 'live-sensor', 'live-archive-lag', 'live-access'];
-const PRELIMINARY = new Set(['nrt-unfiltered', ...LIVE_IDS]);
+// Gate V3 passed on its re-check (docs/gates/V3.md), so the live items are no longer preliminary.
+const PRELIMINARY = new Set(['nrt-unfiltered']);
 export const DEFAULT_GATES = Object.freeze(Object.fromEntries(
   CAVEAT_IDS.map((id) => [id, PRELIMINARY.has(id) ? 'preliminary' : 'passed'])));
 
@@ -130,7 +131,7 @@ export function caveatsFor(result, { gates = DEFAULT_GATES, live = false, flags 
   if (gates['not-validated'] !== 'passed') on.add('not-validated');
   if (have.has('estimated')) on.add('estimated-before-viirs');
   if (wide) on.add('regional-ratio');
-  if (live) on.add('nrt-unfiltered');
+  // With live data on, the live-* items (liveCaveats) explain the type bias; nrt-unfiltered is the pre-M3 placeholder.
   if (result?.anomaly) {
     for (const id of ['anomaly-rule', 'anomaly-small-n', 'anomaly-scaled-years', 'anomaly-sparse', 'anomaly-archive']) on.add(id);
     for (const l of result.anomaly.labels ?? []) for (const t of l) on.add(t);

@@ -99,11 +99,22 @@ test('a partial archive month leaves the pool', () => {
   assert.equal(r.month.band.median[0], 50 / 31); // 10..80,100
 });
 
-test('live data starting after the 1st of the current month: no month, no season, a reason', () => {
-  const r = run(day('2026-11-05', Array(10).fill(1)));
-  assert.equal(r.month, null);
+test('live data starting after the 1st: the days before are not observed, skipped, named apart, low confidence', () => {
+  const r = run(day('2026-11-05', Array(10).fill(1))); // Nov 5..14, the last one open
   assert.equal(r.season, null);
-  assert.match(r.reason, /after the 1st/);
+  assert.deepEqual(r.month.daysNotObserved, ['2026-11-01', '2026-11-02', '2026-11-03', '2026-11-04']);
+  assert.deepEqual(r.month.daysMissing, []);
+  assert.equal(r.month.live.values.length, r.month.band.median.length);
+  assert.deepEqual(r.month.live.values.slice(0, 5), [null, null, null, null, 1]);
+  assert.equal(r.month.band.median[3], 0, 'nothing counted yet: the band holds no share either');
+  assert.equal(r.lowConfidence, true);
+  assert.ok(r.lowConfidenceReasons.some((x) => /not observed/.test(x)));
+});
+
+test('with days not observed, under 7 complete days gives no month and a reason', () => {
+  const r = run(day('2026-11-10', Array(6).fill(1)));
+  assert.equal(r.month, null);
+  assert.match(r.reason, /under 7/);
 });
 
 test('season: whole months, current month to its last complete day with the share band', () => {
@@ -198,10 +209,10 @@ test('K not usable marks the built Series and the comparison low confidence', ()
   assert.equal(liveSeriesFromTiles({ x17y13: tile }, manifest, [-10, 40, -9.9, 40.1], { K: { value: 1, usable: true } }).lowConfidence, false);
 });
 
-test('liveCaveats: kind live, preliminary until V3, carry the V3 wording', () => {
+test('liveCaveats: kind live, validated at the V3 re-check, carry the V3 wording', () => {
   const c = liveCaveats();
-  assert.equal(c.length, 8);
-  assert.ok(c.every((x) => x.kind === 'live' && x.preliminary));
+  assert.equal(c.length, 9);
+  assert.ok(c.every((x) => x.kind === 'live' && !x.preliminary));
   const text = c.map((x) => x.long).join(' ');
-  for (const w of ['approximate', 'NOAA-20', 'S-NPP', 'last complete day in the area', '2026-11-02', 'Earthdata Login', '2-3 month lag', 'type']) assert.ok(text.includes(w), w);
+  for (const w of ['approximate', 'NOAA-20', 'S-NPP', 'last complete day of the live data', '2026-11-02', 'Earthdata Login', '2-3 month lag', 'type', 'clipped to Brazil', 'fails worldwide']) assert.ok(text.includes(w), w);
 });

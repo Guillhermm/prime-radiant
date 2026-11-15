@@ -89,7 +89,7 @@ export const buildResult = ({ bbox, from, to, manifest, tiles, domain = null, gl
   // Density is per 0.1 degree cell holding data: inside the domain only, whatever level core summed.
   const aoiCells = domain ? seriesForAoi(bbox, {}, manifest, { res: 0.1, domain }).domain.inside : cellCount(bbox, 0.1);
   return {
-    bbox, from, to, manifest, sensors, harmonized,
+    bbox, from, to, manifest, sensors, harmonized, partialMonths,
     domain: { ...aoi.domain, outside: aoi.domain.inside === 0, info: manifest.domain ?? null },
     series: sliceSeries(harmonized.series, from, to),
     cells: sliceCells(allCells, from, to),

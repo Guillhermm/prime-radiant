@@ -9,14 +9,13 @@ test('catalog: nine caveats plus anomaly caveats and flags, short and long text,
     ['unconfirmed', 'cross-era', 'sparse-baseline', 'estimated', 'viirs-outage-filled', 'viirs-not-archived', 'terra-only',
       'low-confidence', 'partial-domain', 'outside-domain']);
   assert.equal(all.filter((c) => c.kind === 'anomaly').length, 6);
-  assert.equal(all.filter((c) => c.kind === 'live').length, 8);
+  assert.equal(all.filter((c) => c.kind === 'live').length, 9);
   assert.equal(new Set(CAVEAT_IDS).size, CAVEAT_IDS.length);
   for (const c of all) assert.ok(c.short && c.long && c.long.length >= c.short.length, c.id);
 });
 
-test('preliminary: after V1 and V2 only the near-real-time items stay preliminary', () => {
-  assert.deepEqual(catalog().filter((c) => c.preliminary).map((c) => c.id),
-    ['nrt-unfiltered', 'live-nrt', 'live-approximate', 'live-not-harmonized', 'live-unfiltered', 'live-provisional', 'live-sensor', 'live-archive-lag', 'live-access']);
+test('preliminary: after V1, V2 and V3 only the pre-M3 nrt-unfiltered placeholder stays preliminary', () => {
+  assert.deepEqual(catalog().filter((c) => c.preliminary).map((c) => c.id), ['nrt-unfiltered']);
   assert.equal(DEFAULT_GATES['not-validated'], 'passed');
 });
 
@@ -42,8 +41,9 @@ test('caveatsFor: estimated, wide level, low confidence, flags, live', () => {
   const r = { series: { flags: [{ month: '2010-01', flag: 'estimated' }, { month: '2000-01', flag: 'terra-only' },
     { month: null, flag: 'low-confidence' }] }, R: { level: 'tiles' }, K: { level: 'aoi' } };
   const got = ids(r, { live: true, flags: ['partial-domain'] });
-  for (const id of ['estimated-before-viirs', 'regional-ratio', 'nrt-unfiltered', 'estimated', 'terra-only',
+  for (const id of ['estimated-before-viirs', 'regional-ratio', 'estimated', 'terra-only',
     'low-confidence', 'partial-domain']) assert.ok(got.includes(id), id);
+  assert.ok(!got.includes('nrt-unfiltered'), 'with live on, the live-* items explain the type bias');
   assert.ok(!got.includes('outside-domain') && !got.includes('viirs-not-archived'));
   assert.ok(ids({ series: {}, R: { level: 'global' } }).includes('regional-ratio'));
   assert.ok(!ids({ series: { flags: [{ month: null, flag: 'low-confidence' }] }, R: { level: 'aoi' } }).includes('regional-ratio'));

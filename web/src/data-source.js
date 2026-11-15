@@ -1,4 +1,4 @@
-import { validateManifest, validateTile, validateDomain, validateOverview, validatePlaces, validateGlobalLevel } from '../../core/schema.js';
+import { validateManifest, validateTile, validateDomain, validateOverview, validatePlaces, validateGlobalLevel, validateLiveManifest, validateLiveTile } from '../../core/schema.js';
 import { tilesForBbox, cellCount, fallbackLevels, MAX_FINE_CELLS } from '../../core/index.js';
 import { createDomain } from '../../core/domain.js';
 import { parseTileId } from '../../core/grid.js';
@@ -23,6 +23,7 @@ export const dataSourceConfig = ({ fixtures = false } = {}) => ({
   withOverview: !fixtures,
   withPlaces: !fixtures,
   withGlobal: !fixtures,
+  liveManifestUrl: fixtures ? null : '../data/live/manifest.json',
 });
 
 const baseOf = (manifest, root) => {
@@ -86,7 +87,7 @@ export const tilesNeeded = (bbox, manifest, domain = null, { ringOnly = false } 
  * The manifest, the domain and validated tiles are cached for the session; a failed or aborted
  * fetch is not.
  */
-export const createDataSource = ({ manifestUrl, root = '', withOverview = true, withPlaces = true, withGlobal = true, fetchFn = (...a) => fetch(...a), concurrency = 6 }) => {
+export const createDataSource = ({ manifestUrl, root = '', withOverview = true, withPlaces = true, withGlobal = true, liveManifestUrl = null, fetchFn = (...a) => fetch(...a), concurrency = 6 }) => {
   const tileCache = new Map();
   let manifestPromise = null;
   let domainPromise = null;
@@ -212,5 +213,36 @@ export const createDataSource = ({ manifestUrl, root = '', withOverview = true, 
     }
   };
 
-  return { manifest, overview, places, domain: async () => domain(await manifest()), load, cancel: () => current?.abort() };
+  // Live data is optional too: missing, invalid or offline means null and the view says so.
+  let liveManifestPromise = null;
+  const liveTileCache = new Map();
+  const live = async (bbox) => {
+    if (!liveManifestUrl) return null;
+    try {
+      liveManifestPromise ??= (async () => {
+        const m = await getJson(liveManifestUrl);
+        if (validateLiveManifest(m).length) return null;
+        const url = domainUrl(m, root);
+        const d = url ? await getJson(url) : null;
+        return { manifest: m, domain: d && !validateDomain(d).length ? d : null };
+      })().catch((err) => { liveManifestPromise = null; throw err; });
+      const lm = await liveManifestPromise;
+      if (!lm) return null;
+      const ids = new Set(tilesForBbox(bbox, lm.manifest));
+      const tiles = {};
+      for (const id of lm.manifest.tiles.filter((t) => ids.has(t))) {
+        if (!liveTileCache.has(id)) {
+          const t = await getJson(tileUrl(lm.manifest, id, 0.1, root));
+          if (validateLiveTile(t, { manifest: lm.manifest }).length) return null;
+          liveTileCache.set(id, t);
+        }
+        tiles[id] = liveTileCache.get(id);
+      }
+      return { manifest: lm.manifest, domain: lm.domain, tiles };
+    } catch {
+      return null;
+    }
+  };
+
+  return { manifest, overview, places, live, domain: async () => domain(await manifest()), load, cancel: () => current?.abort() };
 };

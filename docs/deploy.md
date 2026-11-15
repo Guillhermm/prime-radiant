@@ -86,9 +86,19 @@ Status: live. `pipeline/publish.js` and the publish workflow are unit tested wit
 - Compression (found 2026-11-15): Cloudflare compresses the bucket's JSON with zstd for clients that accept it, and the Vercel cache for the `/data/` rewrite does not vary on `Accept-Encoding`. Once a zstd copy is cached, every client gets it, including the ones that cannot decode it (Safari through 18.7 on iOS, per [caniuse](https://caniuse.com/zstd)). Seen on the root `manifest.json`: `content-encoding: zstd` returned to a request that accepted only gzip. Fixed the same day: a Cloudflare compression rule (zone phase `http_response_compression`) on `data.primeradiantdata.com` allows gzip only, so every copy Vercel caches is one all browsers decode. Checked after the change: the root manifest, `domain.json` and all 34 tiles answer gzip through `/data/` from the São Paulo edge; other Vercel regions not checked, a redeploy drops any zstd copy left there. The admin token needs Zone, Response Compression, Edit for this rule.
 - Roll back: `node pipeline/publish.js --rollback <dataVersion>` copies `v/{dataVersion}/manifest.json` to the root. Only the previous version is kept, so that is the one to roll back to. Browsers and Vercel see the change within the root manifest's 5 minutes.
 
+## Live data (M3-K2)
+
+- Layout in the same bucket: `live/v/{fetched}/manifest.json`, `live/v/{fetched}/domain.json`, `live/v/{fetched}/tiles/0.1/*.json`
+  (immutable, `{fetched}` is `fetched_at` as digits) and the root `live/manifest.json` (`max-age=300`, `base_url`
+  `data/live/v/{fetched}/`). The app reads `/data/live/manifest.json` through the same `/data/` rewrite.
+- `node pipeline/publish.js --live --in <dir>` validates the live manifest and tiles, uploads, lists them back, writes the root
+  manifest, then prunes every live version but the new one and the previous one. A version already published is refused.
+- `.github/workflows/live.yml` (daily cron and `workflow_dispatch`) uses the four `R2_*` secrets; a failed step publishes
+  nothing, so the app keeps the last live data and shows it as unavailable after 48 hours.
+
 ## Live proxy
 
-`api/live.js` is a Vercel Node function (`GET /api/live?bbox=w,s,e,n&days=1|2`) that queries the FIRMS area API for the live view. It is optional: the daily Action path needs no key. Status: built, unit tested with a stubbed `fetch`, deployed without `MAP_KEY` (answers 503).
+`api/live.js` is a Vercel Node function (`GET /api/live?bbox=w,s,e,n&days=1|2`) that queries the FIRMS area API. It is not used: the live view reads the daily job's data, which needs no key, and the proxy's union of sensors is not comparable to the band (gate V3). Status: built, unit tested with a stubbed `fetch`, deployed without `MAP_KEY` (answers 503).
 
 - Env var: `MAP_KEY` (the FIRMS map key). It is read only from the function environment and never reaches the repository, the client, logs or responses.
 - Set it later: Vercel dashboard, Project, Settings, Environment Variables, add `MAP_KEY` for Production (and Preview if wanted), then redeploy. Without it the function answers 503. The web app does not call the proxy yet (planned), so nothing on screen depends on it.

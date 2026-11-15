@@ -14,7 +14,7 @@ export const SHELL_FILES = [
   'fonts/fira-sans-latin-600-normal.woff2', 'fonts/fira-sans-latin-700-normal.woff2',
   'vendor/leaflet/leaflet.js', 'vendor/leaflet/leaflet.css',
   'vendor/leaflet/images/layers.png', 'vendor/leaflet/images/layers-2x.png',
-  'src/bins.js', 'src/data-source.js', 'src/format.js', 'src/main.js', 'src/places.js', 'src/place-search.js', 'src/presets.js',
+  'src/bins.js', 'src/data-source.js', 'src/format.js', 'src/live-data.js', 'src/main.js', 'src/places.js', 'src/place-search.js', 'src/presets.js',
   'src/preview-stubs.js', 'src/pwa.js', 'src/satellites.js', 'src/state.js', 'src/stats.js', 'src/theme.js', 'src/view-data.js', 'src/sensors-model.js', 'src/views.js',
   'src/components/anomaly-layer.js', 'src/components/aoi-form.js', 'src/components/area-drawer.js', 'src/components/app-shell.js',
   'src/components/calendar-grid.js', 'src/components/caveat-strip.js', 'src/components/cell-detail.js',
@@ -23,7 +23,7 @@ export const SHELL_FILES = [
   'src/components/legend.js', 'src/components/live-view.js', 'src/components/map-picker.js', 'src/components/sensors-view.js', 'src/components/segmented.js',
   'src/components/method-drawer.js', 'src/components/name-field.js', 'src/components/query-bar.js', 'src/components/radiant.js', 'src/components/states.js',
   'src/components/synthetic-band.js', 'src/components/theme-control.js', 'src/components/toast.js', 'src/components/popover.js', 'src/components/share-menu.js', 'src/components/offline-chip.js', 'src/components/verdict-row.js',
-  '../core/aggregate.js', '../core/anomaly.js', '../core/baseline.js', '../core/calendar.js', '../core/caveats.js', '../core/csv.js', '../core/data/daily-share.json', '../core/domain.js',
+  '../core/aggregate.js', '../core/anomaly.js', '../core/baseline.js', '../core/calendar.js', '../core/caveats.js', '../core/csv.js', '../core/data/daily-share.json', '../core/data/type0-share.json', '../core/domain.js',
   '../core/grid.js', '../core/harmonize.js', '../core/index.js', '../core/live.js', '../core/months.js', '../core/partial.js', '../core/periods.js', '../core/schema.js', '../core/series.js', '../core/tiles.js',
 ];
 

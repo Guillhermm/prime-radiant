@@ -211,7 +211,7 @@ months, NOAA-20 for NOAA-20 x K months (`core/partial.js`).
    Areas outside read as no data; border cells hold only detections inside the outline, so they
    undercount. A global build has no domain and does not show this caveat.
 
-## 6b. Live comparison (M3-K3, gate V3 fixes L1-L6 applied, re-check pending)
+## 6b. Live comparison (M3-K3, gate V3 accepted with caveats on 2026-11-15)
 
 - **Series**: NOAA-20 x K for the whole live period (S-NPP units; S-NPP NRT ended 2026-11-02, MODIS is
   never used without x R). `liveSeriesFromTiles` builds it from the live tiles for an AOI and
@@ -232,9 +232,16 @@ months, NOAA-20 for NOAA-20 x K months (`core/partial.js`).
   Brazil). This replaces the earlier d/N scaling, which was 20-28% too high in Jun-Aug.
 - **Low confidence**: K not usable (method 4.2), more than a third of the days so far missing, or an area under 2,000 in-domain 0.1 degree cells (about 20,000 km2, a Foundation choice not
   yet validated; the Pantanal was 25-30% off either way).
-- **Type filter**: the simplest honest option is taken: values are kept and the per-month bias is
-  stated (`typeBiasStatement`). `type0Share(allTypes, type0)` computes the archive's monthly type-0
-  ratio when an all-types monthly series is built; `liveComparison` then multiplies by it.
+- **Type filter**: live values are multiplied by the archive's type-0 share of their calendar month,
+  `core/data/type0-share.json` (S-NPP archive 2012-2025 over Brazil, 0.94 in April to 0.99 in October;
+  an assumption, stated on screen). Without the table `liveComparison` keeps the values and states the
+  per-month bias (`typeBiasStatement`).
+- **Live starting mid-month**: days of the current month before the first live day are not observed
+  (`daysNotObserved`), skipped like a missing day, and the band uses only the days counted. Under 7
+  counted days (`LIVE_MIN_COUNTED_DAYS`) the month is null with a reason; otherwise it is low confidence.
+- **Extent**: Brazil only (the live build is clipped to the Brazil domain); the type shares, the share
+  table and the partial-day rule were measured there. Partial days are found on global record counts,
+  before the clip.
 - **Wording**: approximate; NOAA-20 scaled to S-NPP; near-real-time; unfiltered by type; last complete
   day; S-NPP NRT ended 2026-11-02; FIRMS documentation says an Earthdata Login is required; the
   archive follows after a 2-3 month lag (FIRMS FAQ). Caveat items `live-*` in `core/caveats.js`.

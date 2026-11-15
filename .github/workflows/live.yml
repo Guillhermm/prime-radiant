@@ -1,0 +1,43 @@
+name: live
+# Daily near-real-time update (docs/deploy.md, "Live data"): downloads the FIRMS NOAA-20 NRT 7-day
+# file (keyless), builds daily tiles clipped to Brazil (gate V3 measured the live method there),
+# merges them into the live data already published and publishes the result under live/ in R2.
+# A failed step leaves the published live data as it was.
+on:
+  schedule:
+    - cron: '30 3 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: live
+  cancel-in-progress: false
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - name: Download the NOAA-20 NRT 7-day file
+        run: |
+          mkdir -p raw/nrt
+          curl -fsSL -A prime-radiant-live-job -o raw/nrt/J1_VIIRS_C2_Global_7d.csv https://firms.modaps.eosdis.nasa.gov/data/active_fire/noaa-20-viirs-c2/csv/J1_VIIRS_C2_Global_7d.csv
+          wc -l raw/nrt/J1_VIIRS_C2_Global_7d.csv
+      - name: Build, merge with the published live data
+        run: |
+          node pipeline/live.js --in raw/nrt --out raw/live-new --domain pipeline/domain/brazil.geojson
+          node pipeline/live-merge.js --prev https://data.primeradiantdata.com --next raw/live-new --out raw/live
+      - name: Test
+        run: node --test 'pipeline/*.test.js' 'core/*.test.js' 'test/integration/*.test.js'
+      - name: Publish to R2
+        run: node pipeline/publish.js --live --in raw/live
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}

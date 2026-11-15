@@ -53,7 +53,7 @@ test('provenance: fetch time, per-sensor day coverage, skipped NOAA-21, clipped,
   assert.equal(manifest.fetched_at, '2026-11-13T00:30:00Z');
   assert.deepEqual(manifest.partial_days, { modis: [], viirs: [], noaa20: [] });
   // in-domain records per day and pass: the point outside the box (11-12, D) is not counted
-  assert.deepEqual(manifest.daily_records.modis, { '2026-11-10': { D: 1, N: 1 }, '2026-11-11': { D: 1, N: 1 }, '2026-11-12': { D: 1, N: 1 } });
+  assert.deepEqual(manifest.daily_records.modis, { '2026-11-10': { D: 1, N: 1 }, '2026-11-11': { D: 1, N: 1 }, '2026-11-12': { D: 2, N: 1 } });
   assert.deepEqual(manifest.coverage, { modis: ['2026-11-10', '2026-11-12'], viirs: ['2026-11-11', '2026-11-12'], noaa20: ['2026-11-12', '2026-11-12'] });
   assert.deepEqual(manifest.skipped, { NOAA21: 1 });
   assert.equal(manifest.clipped_by_domain, 1);

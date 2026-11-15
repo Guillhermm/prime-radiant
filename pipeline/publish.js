@@ -2,6 +2,7 @@
  * Publish a build to Cloudflare R2 (decision H5), through R2's S3 API signed with AWS SigV4.
  *   node pipeline/publish.js --in raw/build [--dry-run]
  *   node pipeline/publish.js --rollback <dataVersion>
+ *   node pipeline/publish.js --live --in raw/live
  * Env: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET.
  *
  * Bucket layout: v/{dataVersion}/... holds one build, immutable; manifest.json at the root
@@ -14,7 +15,7 @@ import path from 'node:path';
 import { createHash, createHmac } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
-import { validateManifest, validateTile, validateDomain, validateOverview, validatePlaces, validateGlobalLevel } from '../core/schema.js';
+import { validateManifest, validateTile, validateDomain, validateOverview, validatePlaces, validateGlobalLevel, validateLiveManifest, validateLiveTile } from '../core/schema.js';
 
 export const IMMUTABLE = 'public, max-age=31536000, immutable';
 export const ROOT_CACHE = 'public, max-age=300';
@@ -209,6 +210,59 @@ export const publish = async ({ dir, env, fetchFn = fetch, dryRun = false, log =
   return { version, previous, kept: [...keep], removed: drop, sent: true };
 };
 
+/**
+ * Publish a live build (pipeline/live-merge.js output) under live/: live/v/{version}/... with the
+ * version taken from fetched_at, then the root live/manifest.json, then prune live/v/ to the new
+ * and the previous version. Same rules as the archive: validated first, verified after upload,
+ * a published version never rewritten.
+ */
+export const publishLive = async ({ dir, env, fetchFn = fetch, dryRun = false, log = console.log }) => {
+  const read = (rel) => JSON.parse(fs.readFileSync(path.join(dir, rel), 'utf8'));
+  const manifest = read('manifest.json');
+  const errors = validateLiveManifest(manifest);
+  if (errors.length) throw new Error(`publish: live manifest.json fails validation: ${errors.map((e) => `${e.code} ${e.path}`).join('; ')}`);
+  const files = walk(dir);
+  for (const id of manifest.tiles) {
+    const rel = `tiles/0.1/${id}.json`;
+    if (!files.includes(rel)) throw new Error(`publish: ${rel} is listed in the live manifest but missing`);
+    const e = validateLiveTile(read(rel), { manifest });
+    if (e.length) throw new Error(`publish: ${rel} fails validation: ${e[0].code} ${e[0].path}`);
+  }
+  if (manifest.domain) {
+    if (!files.includes(manifest.domain.file)) throw new Error(`publish: ${manifest.domain.file} is named in the live manifest but missing`);
+    const e = validateDomain(read(manifest.domain.file));
+    if (e.length) throw new Error(`publish: live ${manifest.domain.file} fails validation`);
+  }
+  const version = manifest.fetched_at.replace(/\D/g, '').slice(0, 14);
+  const prefix = `live/v/${version}/`;
+  const root = JSON.stringify({ ...manifest, base_url: `data/${prefix}` });
+  const uploads = files.filter((f) => f !== 'manifest.json');
+  log(`publish: live ${version} valid, ${uploads.length + 1} files to ${prefix}`);
+  if (dryRun) return { version, keys: [...uploads.map((f) => prefix + f), `${prefix}manifest.json`, 'live/manifest.json'], sent: false };
+
+  const r2 = createR2({ ...r2Config(env), fetchFn });
+  if ((await r2.get(`${prefix}manifest.json`)) !== null) throw new Error(`publish: ${prefix} is already published`);
+  const live = await r2.get('live/manifest.json');
+  const previous = live ? (() => { try { return JSON.parse(live).base_url?.match(/live\/v\/([^/]+)\//)?.[1] ?? null; } catch { return null; } })() : null;
+  await pool(uploads, CONCURRENCY, (f) => r2.put(prefix + f, fs.readFileSync(path.join(dir, f)), { contentType: TYPES[path.extname(f)] ?? 'application/octet-stream', cacheControl: IMMUTABLE }));
+  await r2.put(`${prefix}manifest.json`, root, { contentType: TYPES['.json'], cacheControl: IMMUTABLE });
+  const expected = [...uploads.map((f) => prefix + f), `${prefix}manifest.json`];
+  const listed = new Set((await r2.list(prefix)).keys);
+  const missing = expected.filter((k) => !listed.has(k));
+  if (missing.length) throw new Error(`publish: ${missing.length} live keys missing after upload (first: ${missing[0]}); live/manifest.json was not changed`);
+  await r2.put('live/manifest.json', root, { contentType: TYPES['.json'], cacheControl: ROOT_CACHE });
+  log(`publish: live/manifest.json now points at ${prefix}`);
+  const present = (await r2.list('live/v/', { delimiter: '/' })).prefixes.map((p) => p.slice('live/v/'.length, -1));
+  const keep = keepVersions(version, previous, present);
+  const drop = present.filter((v) => !keep.has(v));
+  for (const v of drop) {
+    const { keys } = await r2.list(`live/v/${v}/`);
+    await pool(keys, CONCURRENCY, (k) => r2.del(k));
+    log(`publish: removed live/v/${v}/ (${keys.length} keys)`);
+  }
+  return { version, previous, kept: [...keep], removed: drop, sent: true };
+};
+
 /** Point the root manifest back at an earlier version still in the bucket. */
 export const rollback = async ({ version, env, fetchFn = fetch, log = console.log }) => {
   if (!VERSION.test(version ?? '')) throw new Error('publish: --rollback needs a dataVersion');
@@ -222,13 +276,13 @@ export const rollback = async ({ version, env, fetchFn = fetch, log = console.lo
 };
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const { values } = parseArgs({ options: { in: { type: 'string' }, 'dry-run': { type: 'boolean', default: false }, rollback: { type: 'string' } } });
+  const { values } = parseArgs({ options: { in: { type: 'string' }, 'dry-run': { type: 'boolean', default: false }, rollback: { type: 'string' }, live: { type: 'boolean', default: false } } });
   if (!values.rollback && !values.in) {
-    console.error('usage: node pipeline/publish.js --in <build dir> [--dry-run] | --rollback <dataVersion>');
+    console.error('usage: node pipeline/publish.js --in <build dir> [--live] [--dry-run] | --rollback <dataVersion>');
     process.exit(2);
   }
   const run = values.rollback
     ? rollback({ version: values.rollback, env: process.env })
-    : publish({ dir: values.in, env: process.env, dryRun: values['dry-run'] });
+    : (values.live ? publishLive : publish)({ dir: values.in, env: process.env, dryRun: values['dry-run'] });
   run.catch((e) => { console.error(e.message); process.exit(1); });
 }

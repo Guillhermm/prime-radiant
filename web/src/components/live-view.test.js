@@ -158,3 +158,19 @@ test('table caption says synthetic and Preview', () => {
   assert.match(liveTableModel(input(), { synthetic: true }).caption, /Synthetic data, not real fire detections\. Median and percentiles are a Preview\./);
   assert.doesNotMatch(liveTableModel(input()).caption, /Synthetic/);
 });
+
+test('a reason replaces the chart with its own status line', async () => {
+  const { stateModel } = await import('./states.js');
+  const m = liveModel({ fetched_at: '2026-11-14T06:00:00Z', reason: 'Live data covers Brazil only.', now: NOW });
+  assert.equal(m.available, false);
+  assert.deepEqual(stateModel(m.state).lines, ['Live data covers Brazil only.', 'The calendar keeps working.']);
+});
+
+test('validated live drops Preview from the table caption', () => {
+  assert.doesNotMatch(liveTableModel({ ...input(), preview: false }).caption, /Preview/);
+});
+
+test('daily running totals: the answer names the month and the last day', () => {
+  const daily = input({ live: { id: 'live', unit: 'fire-cell-days', comparable: false, step: 'day', start: '2026-11-01', values: [10, 20, null, 150] } });
+  assert.deepEqual(liveAnswer(daily), { headline: 'November 2026 through day 4 so far: 150 fire-cell-days', delta: '+25% vs the median of the same days in past years' });
+});

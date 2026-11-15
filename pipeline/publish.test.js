@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { IMMUTABLE, ROOT_CACHE, keepVersions, publish, publishedManifest, rollback, sign, signingKey } from './publish.js';
+import { IMMUTABLE, ROOT_CACHE, keepVersions, publish, publishLive, publishedManifest, rollback, sign, signingKey } from './publish.js';
 
 const ENV = { R2_ACCOUNT_ID: 'a'.repeat(32), R2_ACCESS_KEY_ID: 'AKID-TEST', R2_SECRET_ACCESS_KEY: 'secret-test-value', R2_BUCKET: 'prime-radiant-data' };
 const fixture = (rel) => fs.readFileSync(new URL(`../fixtures/${rel}`, import.meta.url));
@@ -149,4 +149,29 @@ test('rollback copies a kept version\'s manifest to the root', async () => {
   assert.equal(r2.store.get('manifest.json').body, old);
   assert.equal(r2.store.get('manifest.json').headers['cache-control'], ROOT_CACHE);
   await assert.rejects(rollback({ version: '20250101', env: ENV, fetchFn: r2.fetchFn, log: () => {} }), /not in the bucket/);
+});
+
+const makeLive = (fetchedAt = '2026-11-15T06:10:00Z') => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pr-publish-live-'));
+  dirs.push(dir);
+  const manifest = { ...JSON.parse(fixture('golden/live/manifest.json')), fetched_at: fetchedAt };
+  fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(manifest));
+  fs.writeFileSync(path.join(dir, 'domain.json'), fixture('golden/live/domain.json'));
+  fs.mkdirSync(path.join(dir, 'tiles', '0.1'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'tiles', '0.1', 'x17y13.json'), fixture('golden/live/tiles/0.1/x17y13.json'));
+  return dir;
+};
+
+test('live publish: under live/v/{fetched_at}/, root live/manifest.json last, archive versions untouched, older live pruned', async () => {
+  const r2 = fakeR2({ 'manifest.json': '{"dataVersion":"20261115"}', 'v/20261115/manifest.json': '{}' });
+  const first = await publishLive({ dir: makeLive('2026-11-14T06:10:00Z'), env: ENV, fetchFn: r2.fetchFn, log: () => {} });
+  assert.equal(first.version, '20261114061000');
+  const root = JSON.parse(r2.store.get('live/manifest.json').body);
+  assert.equal(root.base_url, 'data/live/v/20261114061000/');
+  assert.ok(r2.store.has('live/v/20261114061000/tiles/0.1/x17y13.json'));
+  await publishLive({ dir: makeLive('2026-11-15T06:10:00Z'), env: ENV, fetchFn: r2.fetchFn, log: () => {} });
+  const third = await publishLive({ dir: makeLive('2026-11-16T06:10:00Z'), env: ENV, fetchFn: r2.fetchFn, log: () => {} });
+  assert.deepEqual(third.removed, ['20261114061000']);
+  assert.ok(r2.store.has('v/20261115/manifest.json'), 'the archive is not touched');
+  await assert.rejects(publishLive({ dir: makeLive('2026-11-16T06:10:00Z'), env: ENV, fetchFn: r2.fetchFn, log: () => {} }), /already published/);
 });

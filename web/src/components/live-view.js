@@ -5,7 +5,7 @@ import { segmented } from './segmented.js';
 import { liveStatus, mount as mountStates } from './states.js';
 
 /**
- * Input contract (expected from core/live.js and pipeline/live.js, M3; not built yet).
+ * Input contract (built by web/src/live-data.js from core/live.js; preview-stubs.js for synthetic data).
  *
  *   {
  *     fetched_at: string|null,          // ISO 8601 UTC of the last successful live fetch (manifest or tile)
@@ -19,6 +19,9 @@ import { liveStatus, mount as mountStates } from './states.js';
  *       p25: (number|null)[], median: (number|null)[], p75: (number|null)[],
  *     },
  *     provisional?: boolean,            // default true: the last value is the current, still-open period
+ *     preview?: boolean,                // default true: tags the statistics Preview (false once gate V3 passed)
+ *     reason?: string,                  // instead of live and band: why there is no comparison
+ *     title?, sub?: string, lowConfidence?: boolean, lowConfidenceReasons?: string[], notes?: string[],
  *   }
  * Percentiles of the same calendar month (or day) across the baseline years; computed by core.
  */
@@ -79,13 +82,15 @@ export const liveAnswer = ({ live, band, provisional = true }) => {
   const last = live.values.length - 1;
   const v = live.values[last];
   const med = band.median[last];
-  const when = periodLabel(live.start, step, last);
-  const name = step === 'month' ? MONTH_NAMES[(Number(live.start.slice(5, 7)) - 1 + last) % 12] : 'same day';
+  const day = periodLabel(live.start, step, last);
+  // Daily values are the month's running total, so the answer names the month and the last day.
+  const when = step === 'day' ? `${monthLabel(Number(day.slice(0, 4)), Number(day.slice(5, 7)))} through day ${Number(day.slice(8))}` : day;
+  const name = step === 'month' ? `${MONTH_NAMES[(Number(live.start.slice(5, 7)) - 1 + last) % 12]} median` : 'median of the same days in past years';
   const headline = typeof v === 'number' ? `${when}${provisional ? ' so far' : ''}: ${formatCount(v)} fire-cell-days` : `${when}: no data yet`;
   let delta = null;
   if (typeof v === 'number' && typeof med === 'number' && med > 0) {
     const pct = Math.round(((v - med) / med) * 100);
-    delta = `${pct > 0 ? '+' : pct < 0 ? '−' : ''}${Math.abs(pct)}% vs the ${name} median`;
+    delta = `${pct > 0 ? '+' : pct < 0 ? '−' : ''}${Math.abs(pct)}% vs the ${name}`;
   }
   return { headline, delta };
 };
@@ -124,9 +129,10 @@ const validate = ({ live, band }) => {
  * View model. When the data is missing or stale, returns {available: false, state} for
  * states.mount; otherwise geometry in SVG user units plus labels, points and texts.
  */
-export const liveModel = ({ fetched_at: fetchedAt = null, live, band, provisional = true, now = new Date(), width = VIEW.width } = {}) => {
+export const liveModel = ({ fetched_at: fetchedAt = null, live, band, provisional = true, reason = null, now = new Date(), width = VIEW.width } = {}) => {
   const status = liveStatus(fetchedAt, now);
   if (!status.available) return { available: false, status, state: { kind: 'live-unavailable', fetchedAt, now } };
+  if (reason) return { available: false, status, state: { kind: 'live-unavailable', fetchedAt, now, reason } };
   validate({ live, band });
   const step = live.step ?? 'month';
   const n = live.values.length;
@@ -203,14 +209,14 @@ export const liveModel = ({ fetched_at: fetchedAt = null, live, band, provisiona
 };
 
 /** Data-table alternative to the chart: one row per period, the live value next to the band. */
-export const liveTableModel = ({ live, band, provisional = true }, { synthetic = false } = {}) => {
+export const liveTableModel = ({ live, band, provisional = true, preview = true }, { synthetic = false } = {}) => {
   validate({ live, band });
   const step = live.step ?? 'month';
   const last = live.values.length - 1;
   // A null live value means no data; a null band value means too few past years to compute it.
   const cell = (v, missing) => (typeof v === 'number' ? formatCount(v) : missing);
   return tableModel({
-    caption: `Current season fire-cell-days against past years.${synthetic ? ' Synthetic data, not real fire detections.' : ''} Median and percentiles are a Preview.`,
+    caption: `Current season fire-cell-days against past years.${synthetic ? ' Synthetic data, not real fire detections.' : ''}${preview ? ' Median and percentiles are a Preview.' : ''}`,
     corner: step === 'day' ? 'Day' : 'Month',
     columns: ['Current season', 'Historical median', '25th percentile', '75th percentile'],
     rows: live.values.map((v, i) => ({
@@ -261,11 +267,14 @@ export const mount = (container, deps = {}) => {
       return;
     }
     const a = liveAnswer(input);
+    const preview = input.preview !== false;
+    const low = input.lowConfidence === true;
     const answer = h('section', { class: 'card answer-card live-answer', 'aria-label': 'This season so far' },
       h('p', { class: 'eyebrow answer-eyebrow' }, h('span', { text: 'This fire season' }), synthetic ? tagEl('Synthetic', 'tag-synth') : null,
-        m.badge ? tagEl(m.badge, 'tag-fire') : null),
+        m.badge ? tagEl(m.badge, 'tag-fire') : null, low ? tagEl('Low confidence') : null),
       h('p', { class: 'answer-big live-headline', text: a.headline }),
-      a.delta ? h('p', { class: 'answer-lead' }, a.delta, ' ', tagEl('Preview')) : null,
+      a.delta ? h('p', { class: 'answer-lead' }, a.delta, preview ? ' ' : null, preview ? tagEl('Preview') : null) : null,
+      low && input.lowConfidenceReasons?.length ? h('p', { class: 'hint', text: `Low confidence: ${input.lowConfidenceReasons.join('; ')}.` }) : null,
       h('p', { class: 'hint', text: m.fetchedText }));
 
     const readout = h('p', { class: 'live-readout', 'aria-hidden': 'true' });
@@ -321,11 +330,11 @@ export const mount = (container, deps = {}) => {
     const card = h('section', { class: 'card live-card', 'aria-labelledby': 'live-title' },
       h('div', { class: 'cal-head' },
         h('div', { class: 'cal-head-text' },
-          h('h2', { id: 'live-title' }, 'Current season against past years ', tagEl('Preview')),
-          h('p', { class: 'sub', text: 'The last 12 months. The band and the median come from earlier years of this area.' })),
+          h('h2', { id: 'live-title' }, `${input.title ?? 'Current season against past years'} `, preview ? tagEl('Preview') : null),
+          h('p', { class: 'sub', text: input.sub ?? 'The last 12 months. The band and the median come from earlier years of this area.' })),
         display.el),
       chartBox,
-      tableHost, h('p', { class: 'hint', text: m.note }));
+      tableHost, (input.notes ?? []).map((t) => h('p', { class: 'hint', text: t })), h('p', { class: 'hint', text: m.note }));
     container.replaceChildren(h('div', { class: 'live-view' }, answer, card));
   };
   let current = { input: deps.input, now: deps.now ?? new Date() };

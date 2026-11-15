@@ -36,7 +36,7 @@ export const EMPTY_LEAD = 'Pick an area and see every month of satellite fire de
 
 /**
  * State model. kinds: empty, zero, outside, loading, error, live-unavailable.
- * `error` takes {what, hint}; `live-unavailable` takes {fetchedAt, now}.
+ * `error` takes {what, hint}; `live-unavailable` takes {fetchedAt, now, reason?}, where `reason` replaces the status line.
  */
 export const stateModel = (state, { presets = [], region = null } = {}) => {
   switch (state.kind) {
@@ -54,7 +54,7 @@ export const stateModel = (state, { presets = [], region = null } = {}) => {
     case 'error':
       return { kind: 'error', role: 'alert', busy: false, title: 'Could not load fire data', lines: [`Could not load ${state.what ?? 'the data'}.`, state.hint ?? 'Check your connection and try again. Your area and dates are kept.'], chips: [], action: { id: 'retry', label: 'Try again' } };
     case 'live-unavailable':
-      return { kind: 'live-unavailable', role: 'status', busy: false, lines: [liveStatus(state.fetchedAt, state.now).text, 'The calendar keeps working.'], chips: [], action: null };
+      return { kind: 'live-unavailable', role: 'status', busy: false, lines: [state.reason ?? liveStatus(state.fetchedAt, state.now).text, 'The calendar keeps working.'], chips: [], action: null };
     default:
       throw new RangeError(`states: unknown kind "${state.kind}"`);
   }

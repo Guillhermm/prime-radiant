@@ -30,6 +30,7 @@ import * as syntheticBand from './components/synthetic-band.js';
 import { icon } from './components/icons.js';
 import { PREVIEW_NOTE, previewAnomaly, previewLive } from './preview-stubs.js';
 import { createDataSource, dataSourceConfig } from './data-source.js';
+import { liveInput, loadLiveTables, LIVE_REASONS } from './live-data.js';
 import { buildResult, csvMeta, isSyntheticManifest, sliceSeries } from './view-data.js';
 import { closeIosHint, isIOS, registerSW, showIosHint } from './pwa.js';
 
@@ -206,13 +207,32 @@ export const MOUNTS = {
     });
   },
   live: (el, ctx) => {
-    const { data, preview, synthetic } = ctx;
-    if (!preview) return;
-    mountResults(data, (r) => {
-      const input = previewLive(r.cells);
-      ctx.setTabDot?.('live', states.liveStatus(input.fetched_at).available ? `updated in the last ${states.LIVE_STALE_HOURS} hours` : null);
-      return { input, synthetic };
-    }, liveView, el);
+    const { data, preview, synthetic, source } = ctx;
+    const dot = (input) => ctx.setTabDot?.('live', input.reason === undefined && states.liveStatus(input.fetched_at).available ? `updated in the last ${states.LIVE_STALE_HOURS} hours` : null);
+    if (synthetic) {
+      if (!preview) return;
+      mountResults(data, (r) => {
+        const input = previewLive(r.cells);
+        dot(input);
+        return { input, synthetic };
+      }, liveView, el);
+      return;
+    }
+    // Real data: the NOAA-20 live record over Brazil against the archive band (gate V3).
+    let ctl = null;
+    let shown = null;
+    const paint = async ({ result: r }) => {
+      if (!r || r === shown) return;
+      shown = r;
+      const [live, t] = await Promise.all([source.live(r.bbox), loadLiveTables()]);
+      if (shown !== r) return;
+      const input = t ? liveInput({ result: r, live, share: t.share, type0: t.type0 }) : { reason: LIVE_REASONS.unavailable, fetched_at: null };
+      dot(input);
+      if (ctl) ctl.update({ input });
+      else ctl = liveView.mount(el, { input });
+    };
+    data.subscribe(paint);
+    paint(data.get());
   },
 };
 
@@ -353,7 +373,7 @@ export const start = async (root = document.getElementById('app')) => {
     },
   });
 
-  const ctx = { store, slots, span, data, preview, synthetic, views, goTo, grids: [], verdict: null, setTabDot: shell.setTabDot };
+  const ctx = { store, slots, span, data, source, preview, synthetic, views, goTo, grids: [], verdict: null, setTabDot: shell.setTabDot };
   const grid = () => ctx.grids[0]?.();
   const allGrids = () => ctx.grids.map((g) => g()).filter(Boolean);
   const detail = cellDetail.mount(slots.detail, {

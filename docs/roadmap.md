@@ -397,18 +397,18 @@ Sync **S4**: anomaly stub replaced by real core; V2, D2, Q2; deploy.
 - Tests: unit + integration `test/integration/live.test.js` on fixtures (no network).
 - Files: `pipeline/live.js`, `fixtures/nrt-*.csv`.
 
-**M3-K2 Daily GitHub Action** · M · depends: M3-K1, H5
+✅ **M3-K2 Daily GitHub Action** · M · depends: M3-K1, H5
 - Deliverable: `.github/workflows/live.yml` on a daily cron: download NRT CSVs, run `pipeline/live.js`, publish live tiles to the H5 host (R2 upload, or redeploy if tiles ship with the site); upload credentials as GitHub secrets only; failure keeps the previous live data and marks `fetched_at`.
 - Acceptance: a manual `workflow_dispatch` run publishes; a failed download leaves the last good data in place.
 - Tests: pipeline tests cover logic; the workflow is checked by one manual run, recorded in `docs/deploy.md`.
 - Files: `.github/workflows/live.yml`, `docs/deploy.md`.
 
-**M3-K3 Live comparison model and gate V3** · S · depends: M3-K1, M1-K7
+✅ **M3-K3 Live comparison model and gate V3** · S · depends: M3-K1, M1-K7
 - Deliverable: `core` function for current season vs historical band (per-day cumulative or monthly to date vs median and interquartile band of earlier years, method from V3), Series `live` with `comparable:false` unless V3 says otherwise; caveat "near-real-time, not yet harmonized, unfiltered by type".
 - Acceptance: V3 verdict written; wording on screen matches it.
 - Tests: unit on band computation.
 - Files: `core/live.js`, `core/caveats.js`, `docs/method.md`.
-- Status: in progress. `core/live.js` is built and the V3 verdict is written (`docs/gates/V3.md`: rejected until fixes L1-L6 land). The fixes are in the code (daily share table `core/data/daily-share.json`, partial days, NOAA-20 x K series, VIIRS-era band, type-0 share, live caveats); the V3 re-check is not recorded yet, so the live view stays preliminary.
+- Status: done. V3 re-check on 2026-11-15: accepted with caveats, live clipped to Brazil (`docs/gates/V3.md`).
 
 ### Guilherme
 
@@ -425,7 +425,7 @@ Sync **S4**: anomaly stub replaced by real core; V2, D2, Q2; deploy.
 - Open (gate V3): `api/live.js` counts a fire-cell-day from the union of NOAA-20, NOAA-21 and MODIS NRT, which is not comparable to the single-sensor band and includes NOAA-21, which the archive excludes. Align it with `core/live.js` (NOAA-20 x K) before the live view uses the proxy.
 - Files: `api/live.js`, `vercel.json`.
 
-**M3-G3 Live release** · S · depends: M3-G1, M3-K2, V3
+✅ **M3-G3 Live release** · S · depends: M3-G1, M3-K2, V3
 - Deliverable: enable `live` in VIEWS, e2e on fixture live data, secret scan, audit, D3, Q3, deploy, README and demo true.
 - Tests: `test/e2e/live.test.js`.
 - Files: `web/src/views.js`, `test/e2e/`, `README.md`, `docs/demo.md`.

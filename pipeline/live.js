@@ -132,7 +132,7 @@ const median = (v) => {
 };
 
 /**
- * Partial days of one sensor (gate V3, L2): counts are in-domain records (after the domain clip, any
+ * Partial days of one sensor (gate V3, L2): counts are records of the whole feed (before the domain clip, any
  * type) per day and pass, `{day: {D, N}}` (`A` when the file has no day/night field). A day is partial
  * when any pass has under 50% of the median of that pass over the 7 days centered on it, the day itself
  * excluded (fewer neighbors at the edges of the coverage window; days with no records count 0). The
@@ -165,9 +165,9 @@ export function partialDays(counts, cov, fetchDay, lastDay = cov.last) {
 
 /**
  * Live manifest. `coverage` and `partial_days` are in "YYYY-MM-DD"; `daily_records` holds the
- * in-domain record count per sensor, day and pass (D, N) that `partial_days` is derived from.
+ * record count of the whole feed per sensor, day and pass (D, N) that `partial_days` is derived from.
  * @param {{fetchedAt: string, days: Object<string, {first: string, last: string}>,
- *   dayCounts?: Object<string, Object<string, Object<string, number>>> sensor -> day -> pass -> in-domain records, tiles: string[],
+ *   dayCounts?: Object<string, Object<string, Object<string, number>>> sensor -> day -> pass -> records of the whole feed, tiles: string[],
  *   sources: object[], domain?: object, stats?: object, baseUrl?: string}} o
  */
 export function buildLiveManifest({ fetchedAt, days, dayCounts = {}, tiles, sources, domain, stats, baseUrl = 'data/live/' }) {
@@ -244,12 +244,14 @@ export async function buildLive({ inputs, outDir, fetchedAt, domainFile, baseUrl
           if (rec.utcDay < d.first) d.first = rec.utcDay;
           if (rec.utcDay > d.last) d.last = rec.utcDay;
         }
-        if (clipper && !(inBbox(domainBox, rec.lon, rec.lat) && clipper.contains(rec.lon, rec.lat))) { clippedByDomain++; continue; }
+        // Partial days are judged on the whole feed, before the clip (gate V3 L2 re-check): in-domain
+        // counts flag ordinary low-fire days and push month totals up.
         if (fam) {
           const c = ((dayCounts[SENSOR_OF[fam]] ??= {})[rec.utcDay] ??= {});
           const pass = rec.daynight ?? 'A';
           c[pass] = (c[pass] ?? 0) + 1;
         }
+        if (clipper && !(inBbox(domainBox, rec.lon, rec.lat) && clipper.contains(rec.lon, rec.lat))) { clippedByDomain++; continue; }
         yield rec;
       }
     };

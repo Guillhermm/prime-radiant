@@ -148,12 +148,14 @@ tiles and a live manifest. `--fetched-at` is the time the files were fetched (de
   rolling window starts mid-day, and the last day when it is the fetch day or earlier than `last_day`, i.e. the sensor stopped
   or lags, as S-NPP on 2026-11-02), `sources` (file, records, has_type),
   `skipped`, `duplicates`, `clipped_by_domain`, `fire_cell_days`, `domain`, `citation` (NRT product DOIs), `caveats`.
-- **Partial days (gate V3, L2):** per sensor and day, in-domain records (after the domain clip, any type) are counted
+- **Partial days (gate V3, L2, re-check 2026-11-15):** per sensor and day, all records of the file (before the domain clip, any type) are counted
   separately for the daytime and night-time passes (`daynight` D/N; one pass `A` for a file without the field). A day is
   partial when either pass has under 50% of the median of that pass over the 7 days centered on it, the day itself excluded
   (fewer neighbors at the edges; a day with no records counts 0). The fetch day (day of `fetched_at`) is always partial; so
   is a sensor's last day when it is earlier than the manifest `last_day` (a feed that ended mid-day). The first day is not
-  partial by default. Without `--domain` every record counts. Partial days are `null` in the tiles (never 0, never the
+  partial by default. Counting before the clip means a day is incomplete only when a feed fails worldwide: a regional gap
+  over Brazil shows as a low day, not a missing one (caveat `live-provisional`). The real-run figures below were taken with
+  the earlier in-domain rule. Partial days are `null` in the tiles (never 0, never the
   partial count) and listed in `partial_days`; `daily_records` holds `{sensor: {day: {D, N}}}`. Real run (2026-11-14 fetch,
   Brazil): NOAA-20 2026-09-07, 10-27 and 11-05 are partial (daytime pass 0 or almost empty against 2,000-6,700), 10-12 is
   not (day 5,768 against about 5,700-7,200 around it); early August is not flagged. NOAA-20 also lists 10-13 (no night
@@ -168,14 +170,26 @@ tiles and a live manifest. `--fetched-at` is the time the files were fetched (de
   (MODIS from 2026-09-01, S-NPP to 2026-11-02, NOAA-20 to 2026-11-14). Fire-cell-days: MODIS 56,330; S-NPP 137,688;
   NOAA-20 158,778. 17 tiles, 3.5 MB raw, 359 KB brotli. 67 s, 420 MB peak RSS, Node 24.
 
+## Daily live job (M3-K2)
+
+`.github/workflows/live.yml` runs once a day (03:30 UTC) and on demand. FIRMS NRT is updated within about 3 hours and its
+text files hourly (FIRMS FAQ); the job polls once a day, well under the "at most hourly" limit. It downloads
+`J1_VIIRS_C2_Global_7d.csv` (NOAA-20 only, keyless, `User-Agent: prime-radiant-live-job`), builds it with
+`pipeline/live.js --domain pipeline/domain/brazil.geojson`, and merges it into the published live data with
+`node pipeline/live-merge.js --prev https://data.primeradiantdata.com --next <new build> --out <dir>`: per sensor and day the
+new build wins, except its first day (cut mid-day by the rolling window), where the earlier build's day is kept; days
+before the 1st of the previous month are dropped; partial days are derived again on the merged daily record counts. A
+build over another domain is not merged. The first run has only the last 7 days, so the current month starts with days
+not observed (method 6b). Then the tests run and `pipeline/publish.js --live` publishes (docs/deploy.md, "Live data").
+
 ## Daily share table (gate V3, L1)
 
 `core/data/daily-share.json` is a derived constant, committed: `share[m][d-1]` is the mean, over complete S-NPP months of
 calendar month m+1, of the cumulative fire-cell-days by the end of day d divided by the month's total (a day past the end
 of a month is 1). Source: FIRMS archive national S-NPP files `raw/country/viirs-snpp_{2012..2025}_Brazil.csv`, `type = 0`,
-Brazil domain clip, the archive dedupe; months in `partial_months.viirs` of `data/brazil/manifest.json` and empty months are
-left out. 14 years, 168 months. Command (2 minutes):
-`node pipeline/daily-share.js --in raw/country --years 2012-2025 --domain pipeline/domain/brazil.geojson --manifest data/brazil/manifest.json --out core/data/daily-share.json`.
+Brazil domain clip, the archive dedupe; months in `partial_months.viirs` of a Brazil build's manifest (11 months) and empty
+months are left out. 14 years, 168 months. Command (2 minutes), after a Brazil build into `raw/build-brazil`:
+`node pipeline/daily-share.js --in raw/country --years 2012-2025 --domain pipeline/domain/brazil.geojson --manifest raw/build-brazil/manifest.json --out core/data/daily-share.json`.
 Day 14: July 0.350, September 0.471, November 0.501 (the mathematician's check: about 0.36, 0.48, 0.50).
 
 ## Global build (M4-K1)
