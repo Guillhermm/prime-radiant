@@ -1085,6 +1085,14 @@ test('home Radiant: a click on a month opens the calendar there with the month s
       await page.evaluate(`document.querySelector('.hero-art path[data-key="2019-9"]').dispatchEvent(new MouseEvent('click', { bubbles: true }))`);
       await page.until(`${CALENDAR_READY} && ${PANEL_MONTH} === 'September 2019'`, `calendar with September 2019 selected at ${width}`);
       assert.equal(await page.evaluate(`document.querySelector('.view-calendar .cal-cell.is-selected')?.getAttribute('aria-label').split(',')[0]`), 'September 2019');
+      // The cell is wholly on screen: above the sheet on phone, near the middle beside the docked panel.
+      await page.until(`(() => { const r = document.querySelector('.view-calendar .cal-cell.is-selected').getBoundingClientRect(); const sheet = document.querySelector('.panel-host.is-sheet .panel'); const bottom = sheet ? innerHeight - sheet.offsetHeight : innerHeight; return r.top >= 0 && r.bottom <= bottom; })()`, `selected cell fully in view at ${width}`);
+      if (width === 1280) {
+        await settle(page);
+        const mid = await page.evaluate(`(() => { const r = document.querySelector('.view-calendar .cal-cell.is-selected').getBoundingClientRect(); return Math.abs((r.top + r.bottom) / 2 - innerHeight / 2); })()`);
+        assert.ok(mid < 40, `cell near the vertical center (${mid}px off)`);
+        assert.equal(await page.evaluate(`document.activeElement.classList.contains('is-selected')`), true, 'focus on the selected cell');
+      }
       assert.ok((await page.evaluate('location.hash')).includes('view=calendar'));
 
       await page.evaluate(`document.getElementById('tab-home').click()`);

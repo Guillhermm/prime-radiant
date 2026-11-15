@@ -42,6 +42,21 @@ const offerUpdate = (apply) => {
 const reducedMotion = () => Boolean(globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
 const isPhone = () => Boolean(globalThis.matchMedia?.('(max-width: 40rem)').matches);
 
+// Calls fn once el's position on the page has been the same for three frames, or after `ms`.
+const whenStill = (el, fn, ms = 1000) => {
+  const t0 = performance.now();
+  let last = null;
+  let still = 0;
+  const tick = () => {
+    const y = el.getBoundingClientRect().top + scrollY;
+    still = y === last ? still + 1 : 0;
+    last = y;
+    if (still >= 3 || performance.now() - t0 > ms) fn();
+    else requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+};
+
 // Same-document View Transition where supported (Baseline 2025); a plain swap otherwise.
 const viewTransition = (fn) => {
   if (!document.startViewTransition || reducedMotion()) { fn(); return; }
@@ -477,9 +492,20 @@ export const start = async (root = document.getElementById('app')) => {
     const cell = result.cells.find((c) => c.year === want.year && c.month === want.month);
     if (!cell) return;
     ctx.onSelect(cell);
-    // Desktop keeps focus in the grid beside the docked panel, as a click on a cell does; the phone
-    // sheet takes focus itself.
-    if (!isPhone()) grid()?.focus();
+    const el = document.querySelector('.view-calendar .cal-cell.is-selected');
+    if (!el) return;
+    // Beside a docked panel, focus goes to the cell as a click on it would, and the cell is scrolled to
+    // the middle of the screen. Under a sheet (which takes focus), the cell is scrolled just clear of
+    // it, as for a tapped cell. Either way only once the rows above the grid stop growing (1 s at most).
+    const sheet = () => document.querySelector('.panel-host.is-sheet .panel');
+    if (!sheet() && !isPhone()) el.focus({ preventScroll: true });
+    whenStill(el, () => {
+      const panel = sheet();
+      if (!panel) { el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: reducedMotion() ? 'instant' : 'smooth' }); return; }
+      const r = el.getBoundingClientRect();
+      const by = cellDetail.scrollForSheet({ cellTop: r.top, cellBottom: r.bottom, sheetTop: window.innerHeight - panel.offsetHeight });
+      if (by) window.scrollBy(0, by);
+    });
   });
   // Home is the bare `#`: going there drops every parameter and closes whatever was open over the page.
   const hashOf = (s) => (s.bbox ? serializeHash(s) : '');
