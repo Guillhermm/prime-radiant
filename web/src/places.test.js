@@ -30,6 +30,8 @@ test('hotspots become example areas in rank order, labeled by place when the fil
     ['hotspot-1', 1, '6.5°S 44.5°W', null, 3391],
     ['hotspot-2', 2, 'Eaststate, Testland', '5.5°S 40.5°W', 1999],
   ]);
+  // The area name a pick carries: the place only, never the coordinates.
+  assert.deepEqual(p.map((x) => x.name), [null, 'Eaststate, Testland']);
   assert.deepEqual(hotspotPresets(null), []);
 });
 

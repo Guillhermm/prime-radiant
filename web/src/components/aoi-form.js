@@ -81,7 +81,7 @@ export const mount = (container, { bbox = null, maxAreaDeg2 = Infinity, presets 
     },
   });
 
-  container.append(h('fieldset', { class: 'aoi' }, h('legend', {}, 'Area'), row, bboxMsg), presetBox);
+  container.append(...[h('fieldset', { class: 'aoi' }, h('legend', {}, 'Area'), row, bboxMsg), presetBox].filter(Boolean));
   refresh();
   return {
     set(b) {

@@ -27,6 +27,7 @@ let base;
 let synthBase;
 let downloadDir;
 let synthOverview;
+let synthPlaces;
 
 before(async () => {
   if (skip) return;
@@ -40,7 +41,8 @@ before(async () => {
   const serveFile = server.listeners('request')[0];
   const synth = generate({ last: '2019-12', now: new Date('2026-11-14T00:00:00Z') });
   synthOverview = synth.overview;
-  const files = new Map([['/data/manifest.json', synth.manifest], ['/data/domain.json', synth.domain], ['/data/overview.json', synth.overview],
+  synthPlaces = synth.places;
+  const files = new Map([['/data/manifest.json', synth.manifest], ['/data/domain.json', synth.domain], ['/data/overview.json', synth.overview], ['/data/places.json', synth.places],
     ...Object.entries(synth.tiles).map(([id, t]) => [`/data/tiles/0.1/${id}.json`, t]),
     ...Object.entries(synth.coarse).map(([id, t]) => [`/data/tiles/1/${id}.json`, t])]);
   synthServer = createServer((req, res) => {
@@ -977,6 +979,38 @@ test('without overview.json the picker offers the manual path, quietly', { skip 
     await page.until(`document.activeElement.id === 'aoi-south'`, 'the coordinates form, South focused');
     await page.press('Escape');
     await page.until(`document.activeElement.classList.contains('areas-button')`, 'focus back on Areas');
+    assert.deepEqual(page.problems, []);
+  } finally { await page.close(); }
+});
+
+test('area name: typing "pant" suggests Pantanal, picking it fills the area, the title shows it and survives a reload', { skip }, async () => {
+  const page = await open(1280, '', synthBase);
+  try {
+    await page.until(`document.querySelector('.cta .btn')`, 'first-run buttons');
+    await settle(page);
+    await page.click('.cta .btn:nth-child(2)');
+    await page.until(`document.activeElement.id === 'aoi-south'`, 'coordinates form open');
+    await settle(page);
+    const gaps = await page.evaluate(`(() => { const r = document.querySelector('.query-form').getBoundingClientRect(); return [r.top, innerHeight - r.bottom]; })()`);
+    assert.ok(Math.abs(gaps[0] - gaps[1]) <= 1, `the form is vertically centered (${gaps})`);
+    assert.equal(await page.evaluate(`document.querySelector('#area-name').value`), 'Custom area');
+    await page.click('#area-name');
+    await page.evaluate(`(() => { const i = document.querySelector('#area-name'); i.value = 'pant'; i.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    await page.until(`document.querySelector('#area-name-list:not([hidden]) [role=option]')?.textContent.startsWith('Pantanal')`, 'Pantanal suggested first');
+    assert.equal(await page.evaluate(`document.querySelector('#area-name').getAttribute('aria-expanded')`), 'true');
+    await page.press('ArrowDown');
+    assert.equal(await page.evaluate(`document.querySelector('#area-name').getAttribute('aria-activedescendant')`), 'area-name-list-0');
+    await page.press('Enter');
+    await page.until(`document.querySelector('#area-name-list').hidden && document.querySelector('#aoi-south').value !== ''`, 'pick fills the coordinates');
+    const typed = await page.evaluate(`['west', 'south', 'east', 'north'].map((k) => document.querySelector('#aoi-' + k).value).join()`);
+    assert.equal(typed, synthPlaces.entries.find((e) => e.name === 'Pantanal').bbox.join());
+    assert.equal(await page.evaluate(`document.querySelector('#area-name').value`), 'Pantanal');
+    await page.click('.query-form .actions .btn-primary');
+    await page.until(`${CALENDAR_READY} && document.querySelector('.context h1').textContent === 'Pantanal'`, 'calendar titled Pantanal');
+    assert.ok((await page.evaluate('location.hash')).includes('name=Pantanal'));
+    assert.equal(await page.evaluate(`document.querySelector('.area-chip .chip-text').textContent`), 'Pantanal');
+    await page.evaluate('location.reload()');
+    await page.until(`${CALENDAR_READY} && document.querySelector('.context h1')?.textContent === 'Pantanal'`, 'the name survives a reload');
     assert.deepEqual(page.problems, []);
   } finally { await page.close(); }
 });

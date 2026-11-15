@@ -6,10 +6,10 @@ import * as toast from './toast.js';
 /** "west,south,east,north" in decimal degrees, the order GIS tools and the link use. */
 export const bboxDecimal = ([w, s, e, n]) => `${w},${s},${e},${n}`;
 
-/** Menu entries for an area; none without one. */
-export const shareItems = (bbox, href) => (bbox ? [
-  { id: 'link', label: 'Copy link', text: href, done: 'Link copied' },
-  { id: 'coords', label: 'Copy coordinates', text: bboxDecimal(bbox), done: `Coordinates copied: ${bboxDecimal(bbox)} (west, south, east, north)` },
+/** Menu entries for an area; none without one. A named area is named in the confirmations. */
+export const shareItems = (bbox, href, name = null) => (bbox ? [
+  { id: 'link', label: 'Copy link', text: href, done: name ? `Link to ${name} copied` : 'Link copied' },
+  { id: 'coords', label: 'Copy coordinates', text: bboxDecimal(bbox), done: `${name ? `Coordinates of ${name}` : 'Coordinates'} copied: ${bboxDecimal(bbox)} (west, south, east, north)` },
 ] : []);
 
 /** Index of the item to focus after `key` in a menu of `n` items, or null for other keys. */
@@ -24,11 +24,11 @@ export const nextItem = (key, i, n) => {
 let seq = 0;
 
 /**
- * create({getBbox, copy, notify}) builds the share button that sits on the area chip and its menu
+ * create({getBbox, getName, copy, notify}) builds the share button that sits on the area chip and its menu
  * (a popover with role menu: arrows, Home and End move, Escape and Tab close, focus returns to the
  * button). Returns {button, menu, update()}; update() hides the button while there is no area.
  */
-export const create = ({ getBbox, copy = (t) => navigator.clipboard.writeText(t), notify = toast.show }) => {
+export const create = ({ getBbox, getName = () => null, copy = (t) => navigator.clipboard.writeText(t), notify = toast.show }) => {
   const id = `share-menu-${++seq}`;
   const button = h('button', {
     type: 'button', class: 'chip share-chip', popovertarget: id, 'aria-haspopup': 'menu', 'aria-controls': id, 'aria-label': 'Share this area',
@@ -37,7 +37,7 @@ export const create = ({ getBbox, copy = (t) => navigator.clipboard.writeText(t)
   let items = [];
   const ctl = popover(menu, [button], {
     onOpen: () => {
-      items = shareItems(getBbox(), location.href);
+      items = shareItems(getBbox(), location.href, getName());
       const r = button.getBoundingClientRect();
       menu.style.setProperty('--pop-top', `${Math.round(r.bottom + 6)}px`);
       menu.style.setProperty('--pop-start', `${Math.round(r.left)}px`);

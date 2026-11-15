@@ -28,8 +28,8 @@ const EYEBROWS = {
 };
 const sameBbox = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((v, i) => v === b[i]);
 
-// Text of the page hero: the area's name (the matching example area, else "Custom area") and the period.
-export const heroModel = ({ view, bbox, from, to }, { presets = [], span = null, synthetic = false } = {}) => {
+// Text of the page hero: the area's name (its own, else the matching example area, else "Custom area") and the period.
+export const heroModel = ({ view, bbox, name = null, from, to }, { presets = [], span = null, synthetic = false } = {}) => {
   const f = from ?? span?.from;
   const t = to ?? span?.to;
   const preset = bbox ? presets.find((p) => sameBbox(p.bbox, bbox)) : null;
@@ -37,7 +37,7 @@ export const heroModel = ({ view, bbox, from, to }, { presets = [], span = null,
   if (bbox) subtitle = f && t ? `Fire-cell-days per month, ${f} to ${t}.` : '';
   return {
     eyebrow: `${EYEBROWS[view] ?? 'Prime Radiant'}${synthetic ? ' · Synthetic data' : ''}`,
-    title: bbox ? (preset?.label ?? 'Custom area') : 'Choose an area',
+    title: bbox ? (name ?? preset?.label ?? 'Custom area') : 'Choose an area',
     subtitle,
   };
 };

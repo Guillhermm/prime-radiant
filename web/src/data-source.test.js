@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { createDataSource, tilesNeeded, tileUrl, domainUrl, overviewUrl, dataSourceConfig, DataSourceError } from './data-source.js';
+import { createDataSource, tilesNeeded, tileUrl, domainUrl, overviewUrl, placesUrl, dataSourceConfig, DataSourceError } from './data-source.js';
 
 const read = (p) => readFileSync(new URL(`../../${p}`, import.meta.url), 'utf8');
 const manifest = JSON.parse(read('fixtures/manifest.json'));
@@ -160,5 +160,38 @@ test('fixture mode does not ask for an overview', async () => {
   assert.equal(dataSourceConfig().withOverview, true);
   const f = withOverview(OVERVIEW);
   assert.equal(await src(f, { withOverview: false }).overview(), null);
+  assert.deepEqual(f.calls, []);
+});
+
+const PLACES = { schema: 1, source: { id: 'test', version: '1' }, entries: [{ name: 'Pantanal', alt: [], kind: 'region', country: null, bbox: [-60.6, -21.4, -54.9, -15.6] }] };
+const withPlaces = (body) => {
+  const inner = fakeFetch();
+  const fn = async (url, opts) => (url.endsWith('places.json')
+    ? (fn.calls.push(url), body === undefined ? { ok: false, status: 404, json: async () => ({}) } : { ok: true, status: 200, json: async () => body })
+    : inner(url, opts));
+  fn.calls = [];
+  return fn;
+};
+
+test('places: next to the tiles, validated, fetched once, and null on any failure', async () => {
+  assert.equal(placesUrl(manifest, '../'), '../fixtures/places.json');
+  const ok = withPlaces(PLACES);
+  const ds = src(ok);
+  assert.deepEqual(await ds.places(), PLACES);
+  assert.deepEqual(await ds.places(), PLACES);
+  assert.deepEqual(ok.calls, ['../fixtures/places.json'], 'cached');
+  const missing = withPlaces(undefined);
+  const dsMissing = src(missing);
+  assert.equal(await dsMissing.places(), null, 'missing');
+  assert.equal(await dsMissing.places(), null);
+  assert.equal(missing.calls.length, 1, 'a missing file is not asked for again');
+  assert.equal(await src(withPlaces({ ...PLACES, schema: 2 })).places(), null, 'invalid');
+  assert.equal(await src(async () => { throw new TypeError('offline'); }).places(), null, 'offline');
+});
+
+test('fixture mode does not ask for places', async () => {
+  assert.equal(dataSourceConfig({ fixtures: true }).withPlaces, false);
+  const f = withPlaces(PLACES);
+  assert.equal(await src(f, { withPlaces: false }).places(), null);
   assert.deepEqual(f.calls, []);
 });

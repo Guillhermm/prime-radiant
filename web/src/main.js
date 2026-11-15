@@ -1,7 +1,7 @@
 import { PREVIEW_VIEWS, viewsFor } from './views.js';
 import { createStore, parseHash, serializeHash } from './state.js';
 import { findPreset, presetsFor } from './presets.js';
-import { defaultArea, hotspotPresets } from './places.js';
+import { defaultArea, hotspotAt, hotspotPresets, placeLabel } from './places.js';
 import * as appShell from './components/app-shell.js';
 import * as queryBar from './components/query-bar.js';
 import { spanFromManifest } from './components/date-range.js';
@@ -263,7 +263,9 @@ export const start = async (root = document.getElementById('app')) => {
   const { slots } = shell;
   const data = createStore({ status: 'idle', result: null, error: null });
   // Everything that changes the query goes through the hash; the hashchange listener feeds the store.
-  const goTo = (patch) => { location.hash = serializeHash({ ...store.get(), ...patch }); };
+  // A new area never inherits the previous one's name.
+  const goTo = (patch) => { location.hash = serializeHash({ ...store.get(), ...('bbox' in patch && !('name' in patch) ? { name: null } : {}), ...patch }); };
+  const titleOf = (s) => appShell.heroModel(s, { presets }).title;
 
   const status = h('p', { class: 'status', role: 'status' });
   const domainText = h('span');
@@ -280,6 +282,8 @@ export const start = async (root = document.getElementById('app')) => {
     onDrawMap: () => map.ctl?.openFull(),
     onMapToggle: () => (isPhone() ? map.ctl?.openFull() : map.ctl?.show()),
     onAreaChip: (chip) => areas.open(chip),
+    titleOf,
+    loadPlaces: () => source.places(),
   });
   map.ctl = mapPicker.mount(slots.map, { bbox: state.bbox, onChange: (b) => qb.aoi.set(b) });
 
@@ -295,7 +299,7 @@ export const start = async (root = document.getElementById('app')) => {
     beforeOpen: () => { map.ctl?.closeFull(); qb.close(); drawer.close(); },
     onCommit: (bbox) => {
       const home = store.get().bbox === null;
-      goTo({ ...queryBar.presetPatch({ bbox }, store.get(), span), ...(home ? { view: 'calendar' } : {}) });
+      goTo({ ...queryBar.presetPatch({ bbox, name: placeLabel(hotspotAt(places.overview, bbox)) }, store.get(), span), ...(home ? { view: 'calendar' } : {}) });
       if (home) window.scrollTo({ top: 0 });
     },
     onManual: (target, back) => qb.open(target === 'both' ? (isPhone() ? 'area' : 'map') : target, back ?? undefined),
@@ -323,14 +327,14 @@ export const start = async (root = document.getElementById('app')) => {
     getFile: () => {
       const r = data.get().result;
       if (!r) return null;
-      const what = { series: r.series, cells: r.cells, sensors: slicedSensors(r), meta: csvMeta(r, { aoi: appShell.heroModel(store.get(), { presets }).title }) };
+      const what = { series: r.series, cells: r.cells, sensors: slicedSensors(r), meta: csvMeta(r, { aoi: titleOf(store.get()) }) };
       return csvExport(store.get().view === 'sensors' ? 'sensors' : 'calendar', what);
     },
     // The image is the calendar of the area and period, whichever view is open.
     getImage: () => {
       const r = data.get().result;
       if (!r) return null;
-      return { cells: r.cells, aoiCells: r.aoiCells, series: r.series, bbox: r.bbox, manifest: r.manifest, title: appShell.heroModel(store.get(), { presets }).title };
+      return { cells: r.cells, aoiCells: r.aoiCells, series: r.series, bbox: r.bbox, manifest: r.manifest, title: titleOf(store.get()) };
     },
   });
 
@@ -379,9 +383,10 @@ export const start = async (root = document.getElementById('app')) => {
   // A view picked on the first screen opens, with nothing selected, the last area chosen this
   // session, else the suggestion (the hottest hotspot, or the fixture area); with neither, the picker.
   let lastArea = state.bbox;
+  let lastName = state.name;
   const openDefault = (view, from) => {
     const pick = defaultArea({ last: lastArea, suggestion: presets[0]?.bbox ?? null });
-    if (pick) openExample({ bbox: pick.bbox }, { view });
+    if (pick) openExample({ bbox: pick.bbox, name: pick.kind === 'last' ? lastName : presets[0]?.name ?? null }, { view });
     else areas.open(from);
   };
   const stateView = states.mount(slots.empty, {
@@ -467,7 +472,7 @@ export const start = async (root = document.getElementById('app')) => {
   };
   let lastQuery = state;
   store.subscribe((s) => {
-    if (s.bbox) lastArea = s.bbox;
+    if (s.bbox) { lastArea = s.bbox; lastName = s.name; }
     if (!s.bbox && lastQuery.bbox) closeAll();
     const next = hashOf(s);
     if (location.hash !== next) location.hash = next;

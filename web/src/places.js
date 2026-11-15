@@ -40,6 +40,7 @@ export const hotspotPresets = (overview) => (overview?.hotspots ?? []).map((hs, 
   id: `hotspot-${i + 1}`,
   rank: i + 1,
   ...hotspotLabels(hs),
+  name: placeLabel(hs),
   bbox: hs.bbox,
   value: hs.value,
 }));

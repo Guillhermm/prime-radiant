@@ -202,7 +202,21 @@ a { color: inherit; text-underline-offset: 0.2em; }
   padding: 1.25rem; border-radius: var(--radius-card); background: var(--color-surface); border: 1px solid var(--color-border); box-shadow: var(--shadow-overlay);
   transform-origin: top left;
 }
-.is-first-run .query-bar.sheet-open .query-form { position: fixed; inset-block-start: calc(var(--topbar-h) + 3rem); inset-inline-start: 50%; translate: -50% 0; }
+/* Opened from the first screen or the place picker: a dialog centered in the viewport, over a scrim.
+   translate keeps it centered as the map opens and closes inside it. */
+.is-first-run .query-bar.sheet-open .query-form, .query-bar.sheet-open .query-form.is-centered {
+  position: fixed; inset-block-start: 50%; inset-inline-start: 50%; translate: -50% -50%; max-block-size: calc(100dvh - 2rem); transform-origin: center;
+}
+html.query-open:has(.query-form.is-centered) { overflow: hidden; }
+/* The centered form can be taller than the screen: Apply stays in reach at its foot. */
+@media (width > 40rem) {
+  html.query-open:has(.query-form.is-centered) body::after { content: ""; position: fixed; inset: 0; z-index: calc(var(--z-popover) - 1); background: var(--scrim); }
+  .query-form.is-centered .actions {
+    position: sticky; inset-block-end: -1.25rem; z-index: calc(var(--z-map) + 1); margin: 0 -1.25rem -1.25rem; padding: 0.75rem 1.25rem 1.25rem;
+    background: var(--color-surface); border-block-start: 1px solid var(--color-border);
+  }
+}
+
 .sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
 .sheet-head strong { font-size: 1.125rem; font-weight: 700; }
 .query-form fieldset { border: 0; margin: 0; padding: 0; min-inline-size: 0; }
@@ -227,6 +241,23 @@ a { color: inherit; text-underline-offset: 0.2em; }
 .actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
 .actions .btn-primary { min-inline-size: 7rem; }
 .draw-map { display: none; align-self: flex-start; }
+
+/* Area name with place suggestions (APG combobox). The list overlays what follows the field. */
+.name-field input { font-family: var(--font-sans); }
+.combo { position: relative; }
+.combo-list {
+  position: absolute; inset-inline: 0; inset-block-start: calc(100% + 0.25rem); z-index: calc(var(--z-map) + 10);
+  max-block-size: min(20rem, 50dvh); overflow: auto; margin: 0; padding: 0.375rem; list-style: none;
+  border: 1px solid var(--color-border); border-radius: var(--radius-ctl); background: var(--color-raised); box-shadow: var(--shadow-overlay);
+}
+.combo-opt {
+  display: flex; flex-direction: column; justify-content: center; gap: 0.0625rem; min-block-size: 2.75rem; padding: 0.375rem 0.75rem;
+  border-radius: calc(var(--radius-ctl) - 0.25rem); cursor: pointer;
+}
+.combo-opt:hover { background: var(--color-surface-2); }
+.combo-opt[aria-selected="true"] { background: var(--color-accent-soft); box-shadow: inset 2px 0 0 var(--color-accent); }
+.combo-name { color: var(--color-text); font-size: 0.9375rem; font-weight: 500; }
+.combo-sub { color: var(--color-text-muted); font-size: 0.75rem; }
 
 .map-panel { border-radius: var(--radius-ctl); }
 .map-panel .skip-link { position: absolute; }
@@ -555,7 +586,7 @@ html.sheet-open, html.drawer-open { overflow: hidden; }
   .query-bar { inline-size: 100%; }
   .query-summary .chip, .query-summary .chip-split { flex: 1 1 auto; }
   .query-summary .share-chip { flex: none; }
-  .query-bar.sheet-open .query-form, .is-first-run .query-bar.sheet-open .query-form {
+  .query-bar.sheet-open .query-form, .is-first-run .query-bar.sheet-open .query-form, .query-bar.sheet-open .query-form.is-centered {
     position: fixed; inset: auto 0 0; translate: none; z-index: var(--z-sheet); inline-size: auto; max-block-size: 92dvh;
     padding: 1rem 1rem calc(1.5rem + env(safe-area-inset-bottom, 0px)); border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
   }
@@ -788,6 +819,7 @@ html.sheet-open, html.drawer-open { overflow: hidden; }
   .area-drawer { animation: fade-in var(--dur-2) linear both; }
 }
 @media (forced-colors: active) {
-  .area-drawer, .hs-row, .ad-manual { border: 1px solid CanvasText; }
+  .area-drawer, .hs-row, .ad-manual, .combo-list { border: 1px solid CanvasText; }
+  .combo-opt[aria-selected="true"] { outline: 2px solid Highlight; }
   .hs-row[aria-pressed="true"] { outline: 2px solid Highlight; }
 }

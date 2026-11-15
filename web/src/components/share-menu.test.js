@@ -10,6 +10,13 @@ test('share items: link and decimal coordinates for an area, nothing without one
   assert.equal(items[1].text, '-58.2,-20.1,-55,-15.3');
   assert.match(items[1].done, /west, south, east, north/);
   assert.equal(bboxDecimal([1, 2, 3, 4]), '1,2,3,4');
+  assert.equal(items[0].done, 'Link copied');
+});
+
+test('a named area is named in the share confirmations', () => {
+  const [link, coords] = shareItems([-58.2, -20.1, -55, -15.3], 'https://x/#', 'Pantanal');
+  assert.equal(link.done, 'Link to Pantanal copied');
+  assert.equal(coords.done, 'Coordinates of Pantanal copied: -58.2,-20.1,-55,-15.3 (west, south, east, north)');
 });
 
 test('menu keys wrap with the arrows, jump with Home and End, ignore the rest', () => {
