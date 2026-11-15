@@ -233,7 +233,7 @@ months, NOAA-20 for NOAA-20 x K months (`core/partial.js`).
   share of a month counted by the end of day d (`core/data/daily-share.json`, 12 x 31, from the
   national S-NPP daily data 2012-2025; gate V3 measured leave-one-year-out bias of at most 4% for
   Brazil). This replaces the earlier d/N scaling, which was 20-28% too high in Jun-Aug.
-- **Low confidence**: K not usable (method 4.2), more than a third of the days so far missing, or an area under 2,000 in-domain 0.1 degree cells (about 20,000 km2, a Foundation choice not
+- **Low confidence**: K not usable (method 4.2), more than a third of the days so far missing, fewer than 7 days so far in the month (about 8% error at p90 with one of 7 days missing), or an area under 2,000 in-domain 0.1 degree cells (about 20,000 km2, a Foundation choice not
   yet validated; the Pantanal was 25-30% off either way).
 - **Type filter**: live values are multiplied by the archive's type-0 share of their calendar month,
   `core/data/type0-share.json` (S-NPP archive 2012-2025 over Brazil, 0.94 in April to 0.99 in October;
