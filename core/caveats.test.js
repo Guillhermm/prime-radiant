@@ -2,17 +2,21 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CAVEAT_IDS, DEFAULT_GATES, NO_GATES, caveat, catalog, caveatsFor } from './caveats.js';
 
-test('catalog: nine caveats plus six flags, short and long text, unique ids', () => {
+test('catalog: nine caveats plus anomaly caveats and flags, short and long text, unique ids', () => {
   const all = catalog();
   assert.equal(all.filter((c) => c.kind === 'caveat').length, 9);
   assert.deepEqual(all.filter((c) => c.kind === 'flag').map((c) => c.id),
-    ['estimated', 'viirs-not-archived', 'terra-only', 'low-confidence', 'partial-domain', 'outside-domain']);
+    ['unconfirmed', 'cross-era', 'sparse-baseline', 'estimated', 'viirs-outage-filled', 'viirs-not-archived', 'terra-only',
+      'low-confidence', 'partial-domain', 'outside-domain']);
+  assert.equal(all.filter((c) => c.kind === 'anomaly').length, 6);
+  assert.equal(all.filter((c) => c.kind === 'live').length, 8);
   assert.equal(new Set(CAVEAT_IDS).size, CAVEAT_IDS.length);
   for (const c of all) assert.ok(c.short && c.long && c.long.length >= c.short.length, c.id);
 });
 
-test('preliminary: after V1 only nrt-unfiltered stays preliminary', () => {
-  assert.deepEqual(catalog().filter((c) => c.preliminary).map((c) => c.id), ['nrt-unfiltered']);
+test('preliminary: after V1 and V2 only the near-real-time items stay preliminary', () => {
+  assert.deepEqual(catalog().filter((c) => c.preliminary).map((c) => c.id),
+    ['nrt-unfiltered', 'live-nrt', 'live-approximate', 'live-not-harmonized', 'live-unfiltered', 'live-provisional', 'live-sensor', 'live-archive-lag', 'live-access']);
   assert.equal(DEFAULT_GATES['not-validated'], 'passed');
 });
 
@@ -44,4 +48,18 @@ test('caveatsFor: estimated, wide level, low confidence, flags, live', () => {
   assert.ok(!got.includes('outside-domain') && !got.includes('viirs-not-archived'));
   assert.ok(ids({ series: {}, R: { level: 'global' } }).includes('regional-ratio'));
   assert.ok(!ids({ series: { flags: [{ month: null, flag: 'low-confidence' }] }, R: { level: 'aoi' } }).includes('regional-ratio'));
+});
+
+test('caveatsFor: anomaly results add the five anomaly caveats and the label flags they carry', () => {
+  const base = { series: { flags: [] } };
+  assert.ok(!ids(base).includes('anomaly-rule'));
+  const plain = ids({ ...base, anomaly: { labels: [[], []] } });
+  for (const id of ['anomaly-rule', 'anomaly-small-n', 'anomaly-scaled-years', 'anomaly-sparse', 'anomaly-archive']) assert.ok(plain.includes(id), id);
+  assert.ok(!plain.includes('cross-era') && !plain.includes('sparse-baseline'));
+  const both = ids({ ...base, anomaly: { labels: [['cross-era'], [], ['sparse-baseline']] } });
+  assert.ok(both.includes('cross-era') && both.includes('sparse-baseline'));
+});
+
+test('caveatsFor: the viirs-outage-filled series flag adds its explanation', () => {
+  assert.ok(ids({ series: { flags: [{ month: '2022-07', flag: 'viirs-outage-filled' }] } }).includes('viirs-outage-filled'));
 });

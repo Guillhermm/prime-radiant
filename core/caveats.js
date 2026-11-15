@@ -4,7 +4,7 @@
  * 'passed'. Default: every item preliminary until gate V1 (roadmap M1-K11 flips entries).
  */
 
-/** @typedef {{id: string, kind: 'caveat'|'flag', short: string, long: string, preliminary: boolean}} Caveat */
+/** @typedef {{id: string, kind: 'caveat'|'anomaly'|'flag'|'live', short: string, long: string, preliminary: boolean}} Caveat */
 
 const DEFS = [
   ['unit-fire-cell-days', 'caveat', 'Counts are fire-cell-days.',
@@ -25,9 +25,47 @@ const DEFS = [
     'The harmonization method has not passed the science gate (V1). Numbers are preliminary.'],
   ['brazil-only', 'caveat', 'Data cover Brazil only.',
     'Data cover Brazil only (Natural Earth 10m outline, v5.1.2). Areas outside read as no data; border cells hold only detections inside the outline, so they undercount.'],
+  // anomaly caveats (gate V2 A6), added when anomaly results are present
+  ['anomaly-rule', 'anomaly', 'Anomaly: rank against earlier years.',
+    'The anomaly is the percentile rank of a month against the same calendar month in earlier years (50% = typical). A month is flagged when it ranks in the top tenth of earlier years (ties count against it) and the same holds on MODIS alone or VIIRS alone.'],
+  ['anomaly-small-n', 'anomaly', 'Few years: a flag is a record.',
+    'With 9 or 10 earlier years a flag means a record or near-record for that month, not a statistical outlier. Months with fewer than 9 earlier years get no rank.'],
+  ['anomaly-scaled-years', 'anomaly', 'Year ranks scale partial months.',
+    'A year with a partial month (satellite outage, before 2012 the S-NPP start) is ranked twice: as observed and with partial months scaled by days observed. When the two disagree the year shows a rank range.'],
+  ['anomaly-sparse', 'anomaly', 'Sparse areas flag easily.',
+    'Where most earlier years had no detections, a single fire-cell-day can flag a month. Flags marked sparse baseline need the most caution.'],
+  ['anomaly-archive', 'anomaly', 'Rank is relative to this archive.',
+    'The rank is relative to this archive and its years, not a standard climatology; another baseline period would rank months differently. MODIS x R months after 2021 (orbit drift) are estimates.'],
+  // live data caveats (M3-K3, gate V3 L6), kind 'live' so the drawer's count of 9 caveats stays
+  ['live-nrt', 'live', 'Near-real-time data.',
+    'Live detections are near-real-time (FIRMS NRT, within about 3 hours of the overpass). They can differ from the archive product, which uses the same algorithm but follows after a 2-3 month lag (FIRMS FAQ).'],
+  ['live-approximate', 'live', 'Live comparison is approximate.',
+    'The comparison is approximate: the archive band is the median and middle half of the same month in earlier VIIRS-era years (2012 on), scaled to the day by the mean share of a month counted by that day. Small areas deviate most (the Pantanal 25-30% either way) and are marked low confidence.'],
+  ['live-not-harmonized', 'live', 'Live is not harmonized.',
+    'Live detections are NOAA-20 scaled to S-NPP units (x K), not the MODIS-and-VIIRS harmonized series, and are never added to the harmonized totals or baseline.'],
+  ['live-unfiltered', 'live', 'Live is unfiltered by type.',
+    'Near-real-time detections carry no detection type, so static sources are not removed as in the archive. The bias is small in Aug-Nov (about 0.4% to 1.5%) and larger in the wet season (up to 3% to 10% in Feb-May).'],
+  ['live-provisional', 'live', 'Current period is provisional.',
+    'The current month is still open: the line ends at the last complete day in the area (a UTC day), the day of the fetch is never counted, and a partial day is skipped, never counted as 0.'],
+  ['live-sensor', 'live', 'Live uses NOAA-20 scaled to S-NPP.',
+    'S-NPP near-real-time files ended on 2026-11-02, so live values are NOAA-20 detections multiplied by K to S-NPP equivalent units, the unit of the archive band.'],
+  ['live-archive-lag', 'live', 'The archive follows later.',
+    'The archive product replaces near-real-time data after a 2-3 month lag (FIRMS FAQ); live values for a month are provisional until then.'],
+  ['live-access', 'live', 'Live source may require a login.',
+    'FIRMS documentation says an Earthdata Login is required for its files; they are served without one today. If that is enforced, live data becomes unavailable and the view says so.'],
   // flag explanations
+  ['viirs-era-record', 'anomaly', 'Record since 2012',
+    'Highest or near-highest for this month in the VIIRS era (2012 on); not a record against 2002-2011, which are scaled MODIS estimates.'],
+  ['unconfirmed', 'flag', 'Not checked against a single sensor',
+    'The month ranks high against the harmonized history, but the raw MODIS and VIIRS series were not supplied, so the flag could not be confirmed. Rank shown, no flag.'],
+  ['cross-era', 'flag', 'Cross-era, not flagged.',
+    'The month ranks high against the harmonized history, but neither the MODIS record nor the VIIRS record alone confirms it, so the rank may come from mixing the two eras. Rank shown, no flag.'],
+  ['sparse-baseline', 'flag', 'Sparse baseline.',
+    'The median of the earlier years for this month is 0: most had no detections, so the flag rests on few fire-cell-days.'],
   ['estimated', 'flag', 'Estimated, not observed.',
     'The value was estimated (MODIS x R or NOAA-20 x K) rather than observed by VIIRS S-NPP.'],
+  ['viirs-outage-filled', 'flag', 'S-NPP outage filled.',
+    'S-NPP had an outage this month, so its undercounted value was replaced by NOAA-20 x K (an estimate, also flagged estimated).'],
   ['viirs-not-archived', 'flag', 'VIIRS not yet archived.',
     'S-NPP still operated but its archive had not reached this month; the value is estimated, not observed.'],
   ['terra-only', 'flag', 'Terra only, no value.',
@@ -48,10 +86,13 @@ export const NO_GATES = Object.freeze(Object.fromEntries(CAVEAT_IDS.map((id) => 
 
 /**
  * Status after gate V1 (docs/gates/V1.md, passed with caveats on 2026-11-14): every item
- * passed except near-real-time data, which waits for gate V3.
+ * passed except near-real-time data (gate V3) and the anomaly items (gate V2 re-check).
  */
+// Gates V1 and V2 passed (docs/gates/V1.md, V2.md); near-real-time data waits for V3.
+const LIVE_IDS = ['live-nrt', 'live-approximate', 'live-not-harmonized', 'live-unfiltered', 'live-provisional', 'live-sensor', 'live-archive-lag', 'live-access'];
+const PRELIMINARY = new Set(['nrt-unfiltered', ...LIVE_IDS]);
 export const DEFAULT_GATES = Object.freeze(Object.fromEntries(
-  CAVEAT_IDS.map((id) => [id, id === 'nrt-unfiltered' ? 'preliminary' : 'passed'])));
+  CAVEAT_IDS.map((id) => [id, PRELIMINARY.has(id) ? 'preliminary' : 'passed'])));
 
 /**
  * One catalog item with `preliminary` resolved against a gate map (missing entry = preliminary).
@@ -75,8 +116,9 @@ export function catalog(gates = DEFAULT_GATES) {
  * (not validated) while its gate entry is not 'passed'.
  * 2 when any month is estimated; 6 when R or K came from a wider level (low confidence at the
  * AOI itself is the `low-confidence` flag item);
- * 7 only when opts.live. Flag items appear for each flag on the series, plus opts.flags.
- * @param {{series: {flags?: {flag: string}[]}, R?: {level?: string}|null, K?: {level?: string}|null}} result
+ * 7 only when opts.live; the five anomaly caveats when `result.anomaly` (an anomaly Series) is
+ * present, plus `cross-era` / `unconfirmed` / `viirs-era-record` / `sparse-baseline` when its labels carry them. Flag items appear for each flag on the series, plus opts.flags.
+ * @param {{series: {flags?: {flag: string}[]}, anomaly?: {labels?: string[][]}, R?: {level?: string}|null, K?: {level?: string}|null}} result
  * @param {{gates?: Record<string, string>, live?: boolean, flags?: string[]}} [opts]
  * @returns {Caveat[]}
  */
@@ -89,6 +131,10 @@ export function caveatsFor(result, { gates = DEFAULT_GATES, live = false, flags 
   if (have.has('estimated')) on.add('estimated-before-viirs');
   if (wide) on.add('regional-ratio');
   if (live) on.add('nrt-unfiltered');
+  if (result?.anomaly) {
+    for (const id of ['anomaly-rule', 'anomaly-small-n', 'anomaly-scaled-years', 'anomaly-sparse', 'anomaly-archive']) on.add(id);
+    for (const l of result.anomaly.labels ?? []) for (const t of l) on.add(t);
+  }
   for (const f of have) on.add(f);
   return CAVEAT_IDS.filter((id) => on.has(id)).map((id) => caveat(id, gates));
 }

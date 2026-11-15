@@ -61,8 +61,11 @@ not checked end to end), **assumption** (a choice the team made) or **unverified
 | VIIRS S-NPP | 2012-01-20 to 2026-11-02 15:40 UTC | VIIRS series and R overlap |
 | VIIRS NOAA-20 | 2018-04-01 onward | K overlap, and VIIRS continuation after S-NPP (section 4.4) |
 
-Partial months for either sensor (2002-07, 2012-01, 2026-11, any outage month) are
-excluded from R and from the baseline.
+Partial months (2002-07, 2012-01, 2026-11, any outage month: a satellite with fewer
+acquisition days than days in the month) are excluded from R and K when partial for
+either sensor of the ratio. For the baseline and anomalies, a month is partial when it is
+partial for the sensor that supplies it: S-NPP for observed months, MODIS for MODIS x R
+months, NOAA-20 for NOAA-20 x K months (`core/partial.js`).
 
 ## 4. Harmonization
 
@@ -125,7 +128,13 @@ excluded from R and from the baseline.
   `viirs-not-archived` (months after the S-NPP archive ends but before S-NPP stopped,
   2026-08 to 2026-10 in the first build: estimated, not observed); `terra-only`
   (before 2002-07: MODIS operated but the value is null, not scaled); `low-confidence`
-  (an applied R or K failed 4.2 at every level).
+  (an applied R or K failed 4.2 at every level); `viirs-outage-filled` (see below).
+- S-NPP outage months (gate V2 A1): a month partial for S-NPP (`partial_months.viirs`) that
+  falls inside NOAA-20 coverage and is not partial for NOAA-20 is NOAA-20 x K (per-month K
+  when K is per-month, else annual), flagged `estimated` and `viirs-outage-filled`, instead
+  of the undercounted S-NPP value. R and K fits keep excluding these months. If K is not
+  usable or NOAA-20 is missing, the month stays observed (and partial). The supplier of such
+  a month is NOAA-20, so the baseline treats it as complete.
 - Validated values (gate V1, Brazil build of 2026-11-14 with outage months excluded,
   R window 2012-02..2021-12): Brazil R = 2.516 (95% CI 2.46-2.58, per-month), K = 0.984
   (0.978-0.991); Pantanal box R = 1.89; Amazon arc box R = 2.22 (annual); a small Sao
@@ -140,6 +149,45 @@ excluded from R and from the baseline.
 - With an all-zero history the median is 0: compare by difference or percentile rank,
   never by ratio.
 
+## 5b. Anomalies (M2-K1, gate V2 fixes A2-A6 applied, re-check pending)
+
+- **Rank (displayed)**: the percentile rank of a month against the same calendar month in
+  earlier years only, with the baseline's exclusions (partial months for the supplying
+  sensor, Terra-only months, null): rank = (below + equal / 2) / n, so ties split evenly
+  and 0.5 (50%) is typical. No rank when n < 9 earlier years. The rank is relative to this
+  archive and its years, not a standard climatology.
+- **Flag rule (A2)**: p = (count of earlier values >= v, plus 1) / (n + 1); a month is a
+  candidate when p <= 0.1 and n >= 9. Ties count against, so the false-flag rate is at
+  most 10% for every n. At n = 9 only a strict record passes; at 9-10 years a flag means a
+  record or near-record.
+- **Single-sensor confirmation (A3)**: a candidate is flagged only when the same p rule
+  also holds on the raw MODIS series alone (2002-08 on, months partial for MODIS excluded)
+  or on the raw VIIRS series alone (months partial for S-NPP excluded, n >= 9). Otherwise
+  the month is labeled `cross-era`: rank kept, flag false. Without the raw series
+  (`opts.sensors`) nothing can be confirmed, so every candidate is labeled `unconfirmed`.
+- **VIIRS-era record**: a month that is not flagged but passes the same p rule on the VIIRS
+  series alone (n >= 9; S-NPP partial months excluded, except outage months filled from
+  NOAA-20 x K, `viirs-outage-filled`, which count with their filled value) carries the non-flag label
+  `viirs-era-record` ("Record since 2012"): a record or near-record of the VIIRS era, not
+  against 2002-2011, which are scaled MODIS estimates.
+- **Sparse baseline (A5)**: a flag whose earlier pool has median 0 carries the label
+  `sparse-baseline` (one fire-cell-day after nine zero years flags).
+- All-zero history: 0 gives rank 0.5 (not flagged); any value above 0 gives rank 1.
+- **Year rank (A4)**: complete years ranked on two totals, as observed and with each
+  partial month multiplied by days in month / days observed (`manifest.acquisition_days`;
+  the supplying sensor's satellites, the minimum over them, a satellite month missing
+  inside its span counts 0 days). A year is ranked when both totals give the same rank
+  (1 = most; ties share the better rank), else it shows `rankRange` [best, worst] with its
+  reason. A year is excluded only for a null month, a Terra-only month, or a partial month
+  with no acquisition days.
+- `confirmedBy: ('modis'|'viirs'|null)[]` names the single sensor that confirmed each flag
+  (MODIS checked first). The same filled months count in the VIIRS pool of the A3 check.
+- Labels travel in `labels: string[][]` parallel to `values` on the anomaly Series;
+  `values` and `flags` keep the contract of the web layer. Caveats: `anomaly-*` items and
+  the labels `cross-era`, `unconfirmed`, `viirs-era-record`, `sparse-baseline` in `core/caveats.js`.
+- Implementation: `core/anomaly.js` (`anomaly`, `yearRank`, `flagRule`); KPIs in
+  `kpis().anomaly` (`flagged`, `crossEra`, `yearRank` with `rankRange`, `reason`).
+
 ## 6. Caveats (shown on screen)
 
 1. Counts are fire-cell-days, not fires or burned area.
@@ -152,10 +200,42 @@ excluded from R and from the baseline.
    burning.
 5. The latest archived month may lag the calendar month.
 6. Sparse areas use a regional ratio (low confidence).
-7. Near-real-time data cannot be filtered by type (planned, M3).
+7. Near-real-time data cannot be filtered by type (no `type` field in NRT files). The live view
+   states the bias: about 0.4-1.5% extra in Aug-Nov, up to 3-10% in Feb-May (gate V3), unless the
+   archive's type-0 share is supplied, in which case live values are scaled by it. The live
+   comparison is approximate; see section 6b.
 8. Method not yet validated (preliminary) until gate V1.
 9. Data cover Brazil only (Natural Earth 10m outline, v5.1.2). Areas outside read as
    no data; border cells hold only detections inside the outline, so they undercount.
+
+## 6b. Live comparison (M3-K3, gate V3 fixes L1-L6 applied, re-check pending)
+
+- **Series**: NOAA-20 x K for the whole live period (S-NPP units; S-NPP NRT ended 2026-11-02, MODIS is
+  never used without x R). `liveSeriesFromTiles` builds it from the live tiles for an AOI and
+  declares `units: 'snpp-equivalent'`; `liveComparison` refuses any other unit. Days outside NOAA-20
+  coverage, listed in `partial_days`, and the fetch day are null, never 0.
+- **Month to date**: from the 1st to the last day with data, the sum of the complete (non-null) days.
+  A partial or missing day is skipped, never counted as 0, and later complete days still count;
+  `daysCounted` and `daysMissing` are returned, and when more than a third of the days so far are
+  missing the result is low confidence. Season: monthly sums of complete days, the same rule for past
+  months (a month with partial days gets its increment band, not null), the current month provisional.
+  The last complete day is the last complete day in the area. Series id `live`, `comparable: false`,
+  never added to harmonized totals.
+- **Band**: median and quartiles (type 7) of the same calendar month in earlier years of the VIIRS era
+  (2012-02 on, baseline exclusions; at least 5 years, else null) multiplied by the sum of the
+  increments (share[d] - share[d-1], share[0] = 0) of exactly the days counted, from the mean cumulative
+  share of a month counted by the end of day d (`core/data/daily-share.json`, 12 x 31, from the
+  national S-NPP daily data 2012-2025; gate V3 measured leave-one-year-out bias of at most 4% for
+  Brazil). This replaces the earlier d/N scaling, which was 20-28% too high in Jun-Aug.
+- **Low confidence**: K not usable (method 4.2), more than a third of the days so far missing, or an area under 2,000 in-domain 0.1 degree cells (about 20,000 km2, a Foundation choice not
+  yet validated; the Pantanal was 25-30% off either way).
+- **Type filter**: the simplest honest option is taken: values are kept and the per-month bias is
+  stated (`typeBiasStatement`). `type0Share(allTypes, type0)` computes the archive's monthly type-0
+  ratio when an all-types monthly series is built; `liveComparison` then multiplies by it.
+- **Wording**: approximate; NOAA-20 scaled to S-NPP; near-real-time; unfiltered by type; last complete
+  day; S-NPP NRT ended 2026-11-02; FIRMS documentation says an Earthdata Login is required; the
+  archive follows after a 2-3 month lag (FIRMS FAQ). Caveat items `live-*` in `core/caveats.js`.
+- Implementation: `core/live.js`.
 
 ## 7. Open questions
 

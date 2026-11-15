@@ -343,22 +343,25 @@ Sync points:
 
 ### Kaue
 
-**M2-K1 Anomaly core** · M · depends: M1-K7, V1
+✅ **M2-K1 Anomaly core** · M · depends: M1-K7, V1
 - Deliverable: `core/anomaly.js`: percentile rank of a month against its baseline with ties split evenly, year rank by total, flag when rank >= 90th percentile (threshold from V2, default 0.9) and n >= 9 baseline years; Series `id:"anomaly"`; KPI additions: count, rank of year, current-month anomaly.
 - Acceptance: mathematician known answers (MAD 0 sparse case handled, ties split, n < 9 never flagged, year excluded from own baseline).
 - Tests: unit `core/anomaly.test.js`.
 - Files: `core/anomaly.js`, `core/calendar.js`, `core/index.js`.
+- Status: built with the V2 fixes A1-A6 (S-NPP outage months filled from NOAA-20 x K, single-sensor confirmation, scaled year ranks, sparse-baseline labels).
 
 **M2-K2 Flagged periods list and figures** · M · depends: M2-K1, M1-G10
 - Deliverable: `flag-list.js` (flagged months grouped into consecutive periods, rule stated on screen, keyboard selectable, selects the cell in the grid via QueryState), rank-of-year cards reusing KPI strip patterns.
 - Acceptance: selecting a period focuses the first cell; rule text matches `docs/method.md`.
 - Tests: unit on period grouping; integration on fixture.
 - Files: `web/src/components/flag-list.js`.
+- Status: in progress. Built: `core/periods.js` (`flaggedPeriods`, `flagRuleText`) with unit tests. Planned: `flag-list.js` and the rank-of-year cards.
 
-**M2-K3 Science gate V2** · S · depends: M2-K1
+✅ **M2-K3 Science gate V2** · S · depends: M2-K1
 - Deliverable: baseline + anomaly section of `docs/method.md` validated; caveat for small n and sparse areas.
 - Acceptance: written verdict; unvalidated items stay "preliminary".
 - Files: `docs/method.md`, `core/caveats.js`.
+- Status: passed with caveats on the re-check of 2026-11-15 (`docs/gates/V2.md`).
 
 ### Guilherme
 
@@ -388,8 +391,8 @@ Sync **S4**: anomaly stub replaced by real core; V2, D2, Q2; deploy.
 
 ### Kaue
 
-**M3-K1 NRT gridding** · M · depends: M1-K3
-- Deliverable: `pipeline/live.js`: reads FIRMS global NRT CSVs (keyless, NOAA-20 VIIRS 7-day and MODIS 7-day default), same grid and cell rules, no type filter possible (NRT has no `type`), daily tiles in `data/live/` with `day[]`, live manifest with fetch time and source files.
+✅ **M3-K1 NRT gridding** · M · depends: M1-K3
+- Deliverable: `pipeline/live.js`: reads FIRMS global NRT CSVs or the NRT Shapefile `.dbf` (keyless; MODIS, S-NPP and NOAA-20, 7-day default), same grid and cell rules, no type filter possible (NRT has no `type`), daily tiles in `data/live/` with `day[]`, live manifest with fetch time and source files.
 - Acceptance: fixture NRT CSV -> golden live tiles; missing `type` column handled; provenance in manifest.
 - Tests: unit + integration `test/integration/live.test.js` on fixtures (no network).
 - Files: `pipeline/live.js`, `fixtures/nrt-*.csv`.
@@ -405,6 +408,7 @@ Sync **S4**: anomaly stub replaced by real core; V2, D2, Q2; deploy.
 - Acceptance: V3 verdict written; wording on screen matches it.
 - Tests: unit on band computation.
 - Files: `core/live.js`, `core/caveats.js`, `docs/method.md`.
+- Status: in progress. `core/live.js` is built and the V3 verdict is written (`docs/gates/V3.md`: rejected until fixes L1-L6 land). The fixes are in the code (daily share table `core/data/daily-share.json`, partial days, NOAA-20 x K series, VIIRS-era band, type-0 share, live caveats); the V3 re-check is not recorded yet, so the live view stays preliminary.
 
 ### Guilherme
 
@@ -418,6 +422,7 @@ Sync **S4**: anomaly stub replaced by real core; V2, D2, Q2; deploy.
 - Deliverable: `api/live.js` Vercel function: `MAP_KEY` from env (set in the Vercel dashboard by the account owner, Guilherme), bbox validated and snapped to 0.5 deg, days 1-2, whitelisted sources, `Cache-Control: s-maxage=900, stale-while-revalidate`, `fetch` injected for tests, errors never echo the upstream URL (it contains the key); WAF rate-limit rule if Hobby allows it (unverified).
 - Acceptance: key never in response, logs or client bundle (grep of built site and a response capture); invalid bbox 400.
 - Tests: unit with stubbed fetch, including an upstream error containing the key.
+- Open (gate V3): `api/live.js` counts a fire-cell-day from the union of NOAA-20, NOAA-21 and MODIS NRT, which is not comparable to the single-sensor band and includes NOAA-21, which the archive excludes. Align it with `core/live.js` (NOAA-20 x K) before the live view uses the proxy.
 - Files: `api/live.js`, `vercel.json`.
 
 **M3-G3 Live release** · S · depends: M3-G1, M3-K2, V3

@@ -1,4 +1,4 @@
-import { seriesForAoi, seriesForLevels, harmonize, baseline, toCalendar, kpis, cellCount } from '../../core/index.js';
+import { seriesForAoi, seriesForLevels, harmonize, baseline, anomaly, partialMonthsFor, toCalendar, kpis, cellCount } from '../../core/index.js';
 import { caveatsFor } from '../../core/caveats.js';
 import { KNOWN_PARTIAL_MONTHS } from '../../core/baseline.js';
 import { typicalYear } from './stats.js';
@@ -80,9 +80,10 @@ export const buildResult = ({ bbox, from, to, manifest, tiles, domain = null }) 
   const sensors = { modis: aoi.modis, viirs: aoi.viirs, noaa20: aoi.noaa20 };
   const core = harmonize(seriesForLevels(bbox, tiles, manifest, opts), manifest);
   const harmonized = { ...core, fit: fitWindow(sensors, core.R, manifest) };
-  const partialMonths = partialMonthsOf(manifest);
+  const partialMonths = partialMonthsFor(harmonized, manifest); // partial for the sensor that supplies each month
   // The baseline runs on the whole record so a month's median does not depend on the range shown.
   const base = baseline(harmonized.series, { partialMonths });
+  const anomalySeries = anomaly(harmonized, manifest, { sensors });
   const sources = sourcesOf(harmonized, sensors, manifest);
   const allCells = toCalendar(harmonized, base, manifest).map((c, i) => ({ ...c, source: sources[i], medianYears: base.yearsUsed[i] }));
   // Density is per 0.1 degree cell holding data: inside the domain only, whatever level core summed.
@@ -93,9 +94,11 @@ export const buildResult = ({ bbox, from, to, manifest, tiles, domain = null }) 
     series: sliceSeries(harmonized.series, from, to),
     cells: sliceCells(allCells, from, to),
     allCells,
+    // Core's anomaly Series over the whole history (not sliced): withAnomaly matches it to cells by month.
+    anomaly: anomalySeries,
     typical: typicalYear(harmonized.series, { partialMonths }),
-    kpis: kpis(harmonized, base, manifest, { from, to }),
-    caveats: caveatsFor(harmonized),
+    kpis: kpis(harmonized, base, manifest, { from, to, sensors }),
+    caveats: caveatsFor({ ...harmonized, anomaly: anomalySeries }),
     aoiCells,
   };
 };

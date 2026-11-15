@@ -3,7 +3,7 @@ import { addMonths } from './months.js';
 const UNIT = 'fire-cell-days';
 export const BASELINE_METHOD = { id: 'baseline-median', version: 1 };
 /** Terra-only era and the partial 2002-07 (method.md section 3): months up to here never enter a baseline. */
-const LAST_EXCLUDED_ERA_MONTH = '2002-07';
+export const LAST_EXCLUDED_ERA_MONTH = '2002-07';
 /** Other known partial months of either sensor (method.md section 3): VIIRS S-NPP start and end. */
 export const KNOWN_PARTIAL_MONTHS = ['2012-01', '2026-11'];
 

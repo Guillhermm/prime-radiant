@@ -109,6 +109,63 @@ satellite did not acquire. A real acquisition day with no detection anywhere in 
 would read as an outage; at country scale and above this does not happen outside outages.
 A build from a small bbox file or a few-day extract marks nearly every month partial.
 
+## Live data (NRT, M3-K1)
+
+`node pipeline/live.js --in <dir|file> --out data/live [--domain pipeline/domain/brazil.geojson]
+[--fetched-at ISO] [--download 24h|48h|7d]` turns FIRMS near-real-time files into daily
+tiles and a live manifest. `--fetched-at` is the time the files were fetched (default: now);
+`--download` fetches the three global files into the first `--in` folder first.
+
+- **Source (verified 2026-11-15, keyless, HTTP 200):** `https://firms.modaps.eosdis.nasa.gov/data/active_fire/`
+  `modis-c6.1/csv/MODIS_C6_1_Global_{24h,48h,7d}.csv`, `suomi-npp-viirs-c2/csv/SUOMI_VIIRS_C2_Global_{...}.csv`,
+  `noaa-20-viirs-c2/csv/J1_VIIRS_C2_Global_{...}.csv` (NOAA-21: `noaa-21-viirs-c2/csv/J2_VIIRS_C2_Global_{...}.csv`, not used).
+  Header MODIS: `latitude,longitude,brightness,scan,track,acq_date,acq_time,satellite,confidence,version,bright_t31,frp,daynight`;
+  VIIRS: `latitude,longitude,bright_ti4,scan,track,acq_date,acq_time,satellite,confidence,version,bright_ti5,frp,daynight`.
+  No `type`, no `instrument`. Satellite codes: MODIS `T`, `A`; VIIRS `N` (S-NPP), `N20`, `N21`.
+  Not verified: the update schedule. On 2026-11-15 the S-NPP 24h and 7d files held a header and no rows
+  (S-NPP NRT ends 2026-11-02 in the Shapefile request), so `viirs` coverage can end before the others.
+- **Same rules as the archive:** 0.1 degree grid, one fire-cell-day per (family, cell, UTC day), Terra and Aqua merged,
+  S-NPP and NOAA-20 separate, NOAA-21 skipped and counted, domain clip. **No type filter is possible**: records enter with
+  `allowNoType` and are counted (`records_without_type`); a file with a `type` column is still filtered to `type = 0`
+  (`sources[].has_type`). NRT is never mixed into the archive series (method caveat 7).
+- **Output** (`data/live/`): `manifest.json`, `domain.json`, `tiles/0.1/x{tx}y{ty}.json` with
+  `{cell[], day[], modis[], viirs[], noaa20[]}`; `day` counts from manifest `day0`; `null` outside a sensor's day coverage,
+  `0` inside it with no detection. Only the 0.1 degree level is written (no 1 degree). Validators: `validateLiveManifest`,
+  `validateLiveTile` in `core/schema.js`. Manifest fields: `fetched_at`, `day0`, `last_day`, `coverage` (first and last day
+  per sensor, from every accepted record before the domain clip), `partial_days` (the first day of each coverage, because a
+  rolling window starts mid-day, and the last day when it is the fetch day or earlier than `last_day`, i.e. the sensor stopped
+  or lags, as S-NPP on 2026-11-02), `sources` (file, records, has_type),
+  `skipped`, `duplicates`, `clipped_by_domain`, `fire_cell_days`, `domain`, `citation` (NRT product DOIs), `caveats`.
+- **Partial days (gate V3, L2):** per sensor and day, in-domain records (after the domain clip, any type) are counted
+  separately for the daytime and night-time passes (`daynight` D/N; one pass `A` for a file without the field). A day is
+  partial when either pass has under 50% of the median of that pass over the 7 days centered on it, the day itself excluded
+  (fewer neighbors at the edges; a day with no records counts 0). The fetch day (day of `fetched_at`) is always partial; so
+  is a sensor's last day when it is earlier than the manifest `last_day` (a feed that ended mid-day). The first day is not
+  partial by default. Without `--domain` every record counts. Partial days are `null` in the tiles (never 0, never the
+  partial count) and listed in `partial_days`; `daily_records` holds `{sensor: {day: {D, N}}}`. Real run (2026-11-14 fetch,
+  Brazil): NOAA-20 2026-09-07, 10-27 and 11-05 are partial (daytime pass 0 or almost empty against 2,000-6,700), 10-12 is
+  not (day 5,768 against about 5,700-7,200 around it); early August is not flagged. NOAA-20 also lists 10-13 (no night
+  pass), 10-18, 10-19, 10-26, 11-03, 11-04, 11-09, 11-10 and the fetch day 11-14; S-NPP 08-03, 08-04, 09-17, 09-25,
+  09-26, 10-03, 10-12, 10-13, 10-18 to 10-20, 10-26 and 11-02 (the last day of the feed). MODIS lists 33 days: its passes
+  hold few records per day in Brazil and vary between Terra and Aqua, so the 50% test fires often; the live series uses
+  NOAA-20 (gate V3, L3).
+- **Limit:** coverage is the first to last day with a detection, so an outage day inside the range reads as 0, and
+  there is no acquisition-day check as in the archive.
+- **Real run (2026-11-15, NRT Shapefiles in `raw/firms-2026/`, Brazil domain):** 22,078,520 records in (every one without
+  `type`), 566,140 NOAA-21 skipped, 20,279,616 outside Brazil, 879,968 duplicates. Days 2026-08-01 to 2026-11-14
+  (MODIS from 2026-09-01, S-NPP to 2026-11-02, NOAA-20 to 2026-11-14). Fire-cell-days: MODIS 56,330; S-NPP 137,688;
+  NOAA-20 158,778. 17 tiles, 3.5 MB raw, 359 KB brotli. 67 s, 420 MB peak RSS, Node 24.
+
+## Daily share table (gate V3, L1)
+
+`core/data/daily-share.json` is a derived constant, committed: `share[m][d-1]` is the mean, over complete S-NPP months of
+calendar month m+1, of the cumulative fire-cell-days by the end of day d divided by the month's total (a day past the end
+of a month is 1). Source: FIRMS archive national S-NPP files `raw/country/viirs-snpp_{2012..2025}_Brazil.csv`, `type = 0`,
+Brazil domain clip, the archive dedupe; months in `partial_months.viirs` of `data/brazil/manifest.json` and empty months are
+left out. 14 years, 168 months. Command (2 minutes):
+`node pipeline/daily-share.js --in raw/country --years 2012-2025 --domain pipeline/domain/brazil.geojson --manifest data/brazil/manifest.json --out core/data/daily-share.json`.
+Day 14: July 0.350, September 0.471, November 0.501 (the mathematician's check: about 0.36, 0.48, 0.50).
+
 ## Overview for the place picker (overview.json)
 
 `pipeline/build.js` ends by writing `overview.json` (`pipeline/overview.js`; also runnable alone as

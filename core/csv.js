@@ -40,10 +40,13 @@ const row = (cells) => cells.map(cell).join(',');
 /**
  * Metadata line `# key: value`, never quoted, so every line starts with `#` and readers that
  * skip comment lines (pandas comment='#', R comment.char) drop it whole. CR and LF become
- * spaces, so a value cannot start a new record; the `#` start means no formula can trigger.
+ * spaces, so a value cannot start a new record. Commas become `;` and double quotes `'`, so
+ * a spreadsheet keeps the whole line in one cell that starts with `#`: a value such as
+ * `x, =cmd` can never open a new cell that starts a formula.
  */
 function metaLine(key, value) {
-  return `# ${key}: ${String(value ?? '').replace(/[\r\n]+/g, ' ')}`;
+  const v = String(value ?? '').replace(/[\r\n]+/g, ' ').replaceAll(',', ';').replaceAll('"', "'");
+  return `# ${key}: ${v}`;
 }
 
 /** Ratios in the header are rounded to RATIO_DECIMALS; data rows stay exact. */

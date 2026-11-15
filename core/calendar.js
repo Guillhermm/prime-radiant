@@ -1,42 +1,11 @@
 import { addMonths } from './months.js';
-import { KNOWN_PARTIAL_MONTHS } from './baseline.js';
+import { supplier, isPartial } from './partial.js';
+import { anomaly, yearRank } from './anomaly.js';
 
-/** Partial MODIS month at the start of the Aqua era (method.md section 3). */
-const MODIS_PARTIAL_MONTHS = ['2002-07'];
 const NOT_ENOUGH_HISTORY = 'not enough history';
 const ERA_MODIS = 'MODIS x R';
 const ERA_SNPP = 'S-NPP';
 const ERA_NOAA20 = 'NOAA-20 x K';
-
-const inCoverage = (cov, ym) => Array.isArray(cov) && ym >= cov[0] && ym <= cov[1];
-
-/**
- * True when `ym`, the last month of the manifest, is still filling: the archive was generated
- * before that month ended.
- */
-function lastMonthIncomplete(ym, manifest) {
-  if (!manifest?.last_month || ym !== manifest.last_month || !manifest.generated_at) return false;
-  const built = Date.parse(manifest.generated_at);
-  const end = Date.parse(`${addMonths(ym, 1)}-01T00:00:00Z`);
-  return Number.isFinite(built) && built < end;
-}
-
-/**
- * Which sensor supplied month `ym` of the harmonized series, from the manifest coverage
- * (mirrors harmonize.js): 'viirs' when observed, else 'noaa20' after S-NPP ended while NOAA-20
- * covers it, else 'modis'.
- */
-function supplier(ym, estimated, manifest) {
-  if (!estimated) return 'viirs';
-  const sEnd = manifest?.coverage?.viirs?.[1] ?? null;
-  return sEnd !== null && ym > sEnd && inCoverage(manifest?.coverage?.noaa20, ym) ? 'noaa20' : 'modis';
-}
-
-function isPartial(ym, sensor, manifest) {
-  const listed = manifest?.partial_months?.[sensor] ?? [];
-  const known = sensor === 'viirs' ? KNOWN_PARTIAL_MONTHS : sensor === 'modis' ? MODIS_PARTIAL_MONTHS : [];
-  return listed.includes(ym) || known.includes(ym) || lastMonthIncomplete(ym, manifest);
-}
 
 /**
  * Calendar view-model: one CalendarCell per month of the harmonized series.
@@ -89,12 +58,15 @@ const pickRatio = (r) => (r ? {
  * sources of the months with a value: 'MODIS x R', 'S-NPP', 'NOAA-20 x K'. `flags` counts the
  * months in range carrying each reason flag.
  *
+ * `anomaly` (anomaly.js): `flagged` months in range (rule and single-sensor confirmation, anomaly.js; pass `range.sensors` = {modis, viirs} raw Series, else none confirm), `crossEra` months in range that pass the rule but not the confirmation, `unconfirmed` the same without raw sensors, `viirsEraRecord` months passing the rule on VIIRS alone but not flagged, `yearRank` {year, rank, n} of the latest complete
+ * year (null without one; `rank` is null with `rankRange` [best, worst] and `reason` when observed and scaled totals disagree), `excludedYears` [{year, reason}] the years left out of the ranking, `latest` {month, rank, flagged} of the latest archived month in range.
+ *
  * @param {import('./index.js').Harmonized} harmonized result of harmonize()
  * @param {import('./index.js').Baseline|null} base
  * @param {object} manifest
- * @param {{from?: string, to?: string}} [range] defaults to the whole series
+ * @param {{from?: string, to?: string, sensors?: {modis?: object, viirs?: object}}} [range] defaults to the whole series
  */
-export function kpis(harmonized, base, manifest, { from, to } = {}) {
+export function kpis(harmonized, base, manifest, { from, to, sensors } = {}) {
   const { series } = harmonized;
   const cells = toCalendar(harmonized, base, manifest);
   const months = cells.map((_, i) => addMonths(series.start, i));
@@ -119,6 +91,9 @@ export function kpis(harmonized, base, manifest, { from, to } = {}) {
 
   const hasMedian = li >= 0 && base && base.series.values[li] !== null && base.series.values[li] !== undefined;
   const c = li >= 0 ? cells[li] : null;
+  const an = anomaly(harmonized, manifest, { sensors });
+  const yr = yearRank(harmonized, manifest);
+  const last = yr.years[yr.years.length - 1];
   return {
     range: { from: lo, to: hi },
     total,
@@ -130,6 +105,15 @@ export function kpis(harmonized, base, manifest, { from, to } = {}) {
     K: pickRatio(harmonized.K),
     era,
     flags,
+    anomaly: {
+      flagged: idx.filter((i) => an.flags[i]).length,
+      crossEra: idx.filter((i) => an.labels[i].includes('cross-era')).length,
+      unconfirmed: idx.filter((i) => an.labels[i].includes('unconfirmed')).length,
+      viirsEraRecord: idx.filter((i) => an.labels[i].includes('viirs-era-record')).length,
+      yearRank: last ? { year: last.year, rank: last.rank, ...(last.rankRange ? { rankRange: last.rankRange, reason: last.reason } : {}), n: yr.n } : null,
+      excludedYears: yr.excluded, // {year, reason}: why a year has no rank (gate V2 reviews the rule)
+      latest: li >= 0 ? { month: months[li], rank: an.values[li], flagged: an.flags[li] } : null,
+    },
     method: series.method,
   };
 }

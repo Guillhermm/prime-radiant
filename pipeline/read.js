@@ -2,7 +2,7 @@
 // FIRMS Shapefile) and yields normalized records. Standard library only.
 //
 // Record: { sensor: 'modis'|'viirs', satellite: 'Terra'|'Aqua'|'SNPP'|'NOAA20'|'NOAA21',
-//           lat, lon, utcDay: 'YYYY-MM-DD', hasType }
+//           lat, lon, utcDay: 'YYYY-MM-DD', hasType, daynight? ('D'|'N', only when the file has the column) }
 // Rows that fail validation are never yielded and never silent: they are counted by
 // reason in `stats.rejected`. type != 0 is rejected as 'type_excluded' when the file has a
 // type field; files without one (NRT) yield records with hasType = false.
@@ -11,11 +11,13 @@ import zlib from 'node:zlib';
 import readline from 'node:readline';
 
 // Satellite code -> [sensor, satellite]. MODIS codes verified in real CSV and DBF
-// (Terra, Aqua); S-NPP: CSV 'N', DBF 'SNPP'; NOAA-20 'N20' in CSV and DBF; NOAA-21 DBF 'N21'.
+// (Terra, Aqua; the NRT text files use T, A); S-NPP: CSV 'N', DBF 'SNPP'; NOAA-20 'N20' in CSV and DBF; NOAA-21 DBF 'N21'.
 // Any other code (e.g. Landsat 'L8') is rejected and counted under 'satellite'.
 const SATELLITES = new Map([
   ['Terra', ['modis', 'Terra']],
   ['Aqua', ['modis', 'Aqua']],
+  ['T', ['modis', 'Terra']], // NRT text files (verified 2026-11-15 in MODIS_C6_1_Global_24h.csv)
+  ['A', ['modis', 'Aqua']],
   ['N', ['viirs', 'SNPP']],
   ['SNPP', ['viirs', 'SNPP']],
   ['N20', ['viirs', 'NOAA20']],
@@ -73,7 +75,9 @@ export function normalize(f, stats) {
     if (Number(f.type) !== 0) return reject(stats, 'type_excluded');
   }
   stats.accepted++;
-  return { sensor: sat[0], satellite: sat[1], lat, lon, utcDay: f.date, hasType };
+  const rec = { sensor: sat[0], satellite: sat[1], lat, lon, utcDay: f.date, hasType };
+  if (f.daynight !== undefined) rec.daynight = f.daynight; // 'D' or 'N' when the file has the column
+  return rec;
 }
 
 function columnMap(names) {
@@ -99,6 +103,7 @@ async function* readCsv(path, stats) {
     const rec = normalize({
       lat: g('latitude'), lon: g('longitude'), date: g('acq_date'), time: g('acq_time'),
       satellite: g('satellite'), type: 'type' in idx ? g('type') : undefined,
+      daynight: 'daynight' in idx ? g('daynight') : undefined,
     }, stats);
     if (rec) yield rec;
   }
@@ -148,6 +153,7 @@ async function* readDbf(path, stats) {
         date: /^\d{8}$/.test(d) ? `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6)}` : d,
         time: g('acq_time'), satellite: g('satellite'),
         type: 'type' in fields ? g('type') : undefined,
+        daynight: 'daynight' in fields ? g('daynight') : undefined,
       }, stats);
       if (rec) yield rec;
     }
