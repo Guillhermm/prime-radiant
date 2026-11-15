@@ -69,7 +69,7 @@ test('no-data cell never reads as zero', () => {
 
 test('a no-data month says why: outside the domain, Terra only, or no R to scale MODIS', () => {
   const nd = (o) => ({ year: 2001, month: 3, value: null, status: 'no-data', estimated: false, flags: [], ...o });
-  assert.match(noDataNote(nd({ flags: ['outside-domain'] })), /outside the data domain \(Brazil\)/);
+  assert.match(noDataNote(nd({ flags: ['outside-domain'] })), /outside the data domain\. There is no data/);
   assert.match(noDataNote(nd({ flags: ['terra-only'] })), /Only MODIS Terra flew before July 2002/);
   assert.match(noDataNote(nd({ year: 2005 }), { manifest, ratios: { R: { value: null } } }), /R cannot scale it/);
   assert.match(noDataNote(nd({ year: 2005 }), { manifest, ratios: { R: { value: 2 } } }), /sensors were not operating/);
@@ -79,7 +79,7 @@ test('a no-data month says why: outside the domain, Terra only, or no R to scale
 test('caveats come from core: one item per flag on the cell, then the area caveats', () => {
   const area = caveatsFor({ series: { flags: [] }, R: { level: 'aoi' } });
   const ids = (c) => cellCaveats(c, area).map((x) => x.id);
-  assert.deepEqual(ids(obs), ['unit-fire-cell-days', 'no-confidence-filter', 'detection-limits', 'archive-lag', 'brazil-only']);
+  assert.deepEqual(ids(obs), ['unit-fire-cell-days', 'no-confidence-filter', 'detection-limits', 'archive-lag']);
   assert.deepEqual(ids({ ...obs, estimated: true, flags: ['low-confidence', 'partial-domain'] }).slice(0, 3), ['estimated', 'low-confidence', 'partial-domain']);
   assert.ok(detailModel(obs, { aoiCells: 1, caveats: area }).caveats.every((c) => c.short && c.long && c.preliminary === false));
 });

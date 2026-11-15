@@ -3,9 +3,20 @@
 Raw downloads go to `raw/`, which is gitignored. Only request ids and public URLs are
 recorded here; never credentials.
 
-## Sources (decided 2026-11-14)
+## Sources (decided 2026-11-14, global added 2026-11-15)
 
-The extent is two-tier:
+- **Global, full history (H3 changed 2026-11-15, the `publish-data` default):** the FIRMS
+  yearly all-countries zips, public, no login:
+  `https://firms.modaps.eosdis.nasa.gov/data/country/zips/{dir}_{year}_all_countries.zip`, same
+  `dir` and years as the Brazil table below (48 zips). Listed in FIRMS's own index
+  `https://firms.modaps.eosdis.nasa.gov/data/country/yearly_summary_files.txt` (read 2026-11-15:
+  238 countries and territories, 10,095 CSVs, 43.5 GB uncompressed; zips 9.75 GB, the largest
+  `viirs-jpss1_2024_all_countries.zip` at 401 MB, files dated 2025-06-23). Each zip holds one CSV per
+  country with the same columns as the Brazil files (checked on `modis_2000`, 165 CSVs). The build reads
+  the CSVs straight out of the zip (`pipeline/zip.js`) and clips nothing. Not verified: whether
+  detections outside every country (open ocean) are in any country file.
+
+Earlier extent, two-tier (still buildable with `--scope brazil`):
 
 - **Brazil, full history (calendar, R, baseline):** FIRMS yearly country CSV files,
   public, no login: `https://firms.modaps.eosdis.nasa.gov/data/country/{dir}/{year}/{dir}_{year}_Brazil.csv`.
@@ -69,6 +80,7 @@ month count (2000-11 to 2026-08), so global history would be about 660 MB raw an
 month vary by season and by the sensors operating, so this is an order of magnitude only.
 
 Decision (H3, recorded): Brazil full history plus global 2026, as decided by the humans.
+Changed on 2026-11-15 to global full history (see "Global build" below).
 Node is fast enough for the pipeline; the Python fallback is not needed. Hosting (H5)
 is the web owner's spike (M0-G3) and uses these numbers.
 
@@ -165,6 +177,27 @@ Brazil domain clip, the archive dedupe; months in `partial_months.viirs` of `dat
 left out. 14 years, 168 months. Command (2 minutes):
 `node pipeline/daily-share.js --in raw/country --years 2012-2025 --domain pipeline/domain/brazil.geojson --manifest data/brazil/manifest.json --out core/data/daily-share.json`.
 Day 14: July 0.350, September 0.471, November 0.501 (the mathematician's check: about 0.36, 0.48, 0.50).
+
+## Global build (M4-K1)
+
+`node tools/fetch-country.mjs --scope global --out raw/global`, then
+`node pipeline/build.js --in raw/global --out raw/build --admin1 <ne_10m_admin_1_states_provinces.geojson>`
+(the `publish-data` workflow does both, and checks the admin-1 file's sha256 from
+`pipeline/domain/README.md`). Memory stays bounded by one year: once a year's files are binned, its
+dedupe set is dropped and its counts move into typed arrays (`pipeline/compact.js`, 5 bytes a
+row), and tiles are written one at a time. A month that shows up again after its year was compacted
+stops the build with an error.
+
+Measured 2026-11-15 on this laptop (Apple silicon, Node 24) with the three 2023 zips (3.81 GB of
+CSV): 47,702,999 detections in, 31,984,614 duplicates, 326 tiles, 150 s, peak RSS 1,026 MB; fine
+tiles 24 MB, coarse 2.1 MB, `overview.json` 161 KB (13,322 cells), `places.json` 688 KB (every
+gazetteer entry, no domain). The full span is about 11 times that input, so roughly 30 minutes here;
+the full global build itself has not been run yet. The Brazil build through the same code gives tiles,
+`overview.json` and `places.json` byte-identical to production's `20261115`.
+
+The build also writes `global.json`, the whole-world fallback level (method 4.3) computed with
+`core/aggregate.js` from the 1 deg tiles, so the app loads only the coarse tiles of the ring around
+an area instead of all of them (`core/schema.js` `validateGlobalLevel`).
 
 ## Overview for the place picker (overview.json)
 

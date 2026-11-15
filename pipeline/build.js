@@ -18,12 +18,14 @@ import { polygonsOf, bboxOfPolygons, createClipper } from '../core/domain.js';
 import { readFirms, newStats } from './read.js';
 import { binRecords, createBinResult } from './bin.js';
 import { createCoverage, buildManifest, coverageIndexes } from './manifest.js';
-import { compareTileIds, writeTiles } from './write-tiles.js';
+import { compareTileIds, writeTileSet } from './write-tiles.js';
+import { compactInto, countsOf, createStore, tileIdsOf, totalsOf } from './compact.js';
 import { regionOf, writeOverview } from './overview.js';
 import { createPlaces } from './places.js';
 import { writePlaces } from './gazetteer.js';
+import { writeGlobalLevel } from './levels.js';
 
-const EXT = /\.(csv|csv\.gz|dbf)$/i;
+const EXT = /\.(csv|csv\.gz|zip|dbf)$/i;
 
 function listFiles(p) {
   const st = fs.statSync(p);
@@ -59,7 +61,7 @@ export async function build({ inputs, outDir, bbox, month0 = '2000-01', dataVers
     domainInfo = { id: gj.domain?.id ?? path.basename(domainFile, '.geojson'), version: String(gj.domain?.version ?? 'unknown'), file: 'domain.json', res: 0.1 };
   }
   const files = inputs.flatMap(listFiles);
-  if (!files.length) throw new Error('no .csv, .csv.gz or .dbf files found in the inputs');
+  if (!files.length) throw new Error('no .csv, .csv.gz, .zip or .dbf files found in the inputs');
   const groups = new Map();
   for (const f of files) {
     const y = yearOf(f);
@@ -68,6 +70,7 @@ export async function build({ inputs, outDir, bbox, month0 = '2000-01', dataVers
   const order = [...groups.keys()].sort((a, b) => (a === null) - (b === null) || String(a).localeCompare(String(b)));
 
   const into = createBinResult();
+  const store = createStore();
   const coverage = createCoverage();
   const reader = { read: 0, accepted: 0, rejected: {} };
   let clipped = 0;
@@ -89,24 +92,44 @@ export async function build({ inputs, outDir, bbox, month0 = '2000-01', dataVers
       reader.accepted += rs.accepted;
       for (const [k, v] of Object.entries(rs.rejected)) reader.rejected[k] = (reader.rejected[k] ?? 0) + v;
     }
-    if (y !== null) into.dedupe.dropYear(y);
+    if (y !== null) {
+      into.dedupe.dropYear(y);
+      compactInto(store, into.counts);
+    }
   }
 
-  const tileIds = [...new Set(Object.values(into.counts).flatMap((f) => Object.keys(f)))].sort(compareTileIds);
+  // Files with no year in their name stay in into.counts and are merged per tile.
+  const loose = into.counts;
+  const countsFor = (id) => {
+    const c = countsOf(store, id);
+    for (const [fam, tiles] of Object.entries(loose)) {
+      if (!tiles[id]) continue;
+      const cells = ((c[fam] ??= {})[id] ??= {});
+      for (const [cell, months] of Object.entries(tiles[id])) {
+        const to = (cells[cell] ??= new Map());
+        for (const [m, n] of months) to.set(m, (to.get(m) ?? 0) + n);
+      }
+    }
+    return c;
+  };
+  const tileIds = [...new Set([...tileIdsOf(store), ...Object.values(loose).flatMap((f) => Object.keys(f))])].sort(compareTileIds);
   const manifest = buildManifest({
     month0, days: coverage.days(), acquisition: coverage.acquisition(), tiles: tileIds, generatedAt, baseUrl, domain: domainInfo,
     dataVersion: dataVersion ?? generatedAt.slice(0, 10).replaceAll('-', ''),
   });
-  const written = writeTiles(into.counts, coverageIndexes(manifest), outDir);
+  const written = writeTileSet(tileIds, countsFor, coverageIndexes(manifest), outDir);
   fs.mkdirSync(outDir, { recursive: true });
   if (clipper) fs.writeFileSync(path.join(outDir, 'domain.json'), `${JSON.stringify(clipper.domain)}\n`);
   fs.writeFileSync(path.join(outDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   const places = admin1File ? createPlaces(JSON.parse(fs.readFileSync(admin1File, 'utf8'))) : null;
+  writeGlobalLevel(outDir);
   const overview = writeOverview(outDir, region, places);
   const placeNames = writePlaces(outDir, clipper?.domain ?? null);
 
-  const fcd = Object.fromEntries(Object.entries(into.counts).map(([fam, tiles]) =>
-    [fam, Object.values(tiles).reduce((a, cells) => a + Object.values(cells).reduce((b, ms) => b + [...ms.values()].reduce((c, n) => c + n, 0), 0), 0)]));
+  const fcd = totalsOf(store);
+  for (const [fam, tiles] of Object.entries(loose)) {
+    fcd[fam] = (fcd[fam] ?? 0) + Object.values(tiles).reduce((a, cells) => a + Object.values(cells).reduce((b, ms) => b + [...ms.values()].reduce((c, n) => c + n, 0), 0), 0);
+  }
   return {
     manifest,
     stats: {

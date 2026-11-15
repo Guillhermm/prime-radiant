@@ -16,6 +16,13 @@ test('the file list matches docs/data.md: MODIS from 2000, S-NPP from 2012, NOAA
   assert.ok(!files.some((f) => f.name === 'viirs-snpp_2011_Brazil.csv'));
 });
 
+test('global scope: the 48 yearly all-countries zips, same years per sensor', () => {
+  const files = countryFiles(2025, 'global');
+  assert.equal(files.length, 48);
+  assert.deepEqual(files[0], { url: 'https://firms.modaps.eosdis.nasa.gov/data/country/zips/modis_2000_all_countries.zip', name: 'modis_2000_all_countries.zip' });
+  assert.ok(files.some((f) => f.name === 'viirs-jpss1_2025_all_countries.zip'));
+});
+
 test('downloads what is missing, keeps what is there, and fails on an HTTP error', async () => {
   const out = await mkdtemp(join(tmpdir(), 'pr-country-'));
   dirs.push(out);

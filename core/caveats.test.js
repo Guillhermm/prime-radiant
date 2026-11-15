@@ -24,8 +24,8 @@ test('preliminary: with no gate passed every item is preliminary; map flips only
   assert.ok(catalog(NO_GATES).every((c) => c.preliminary));
   const g = { ...NO_GATES, 'unit-fire-cell-days': 'passed' };
   assert.equal(caveat('unit-fire-cell-days', g).preliminary, false);
-  assert.equal(caveat('brazil-only', g).preliminary, true);
-  assert.equal(caveat('brazil-only', {}).preliminary, true);
+  assert.equal(caveat('domain-only', g).preliminary, true);
+  assert.equal(caveat('domain-only', {}).preliminary, true);
   assert.throws(() => caveat('nope'), RangeError);
 });
 
@@ -33,10 +33,9 @@ const ids = (r, o) => caveatsFor(r, o).map((c) => c.id);
 
 test('caveatsFor: always-on set for a plain AOI result', () => {
   const r = { series: { flags: [] }, R: { level: 'aoi' }, K: null };
-  assert.deepEqual(ids(r), ['unit-fire-cell-days', 'no-confidence-filter', 'detection-limits', 'archive-lag',
-    'brazil-only']);
-  assert.deepEqual(ids(r, { gates: NO_GATES }), ['unit-fire-cell-days', 'no-confidence-filter',
-    'detection-limits', 'archive-lag', 'not-validated', 'brazil-only']);
+  assert.deepEqual(ids(r), ['unit-fire-cell-days', 'no-confidence-filter', 'detection-limits', 'archive-lag']);
+  assert.deepEqual(ids(r, { gates: NO_GATES, domain: { id: 'd', version: '1', file: 'domain.json', res: 0.1 } }), ['unit-fire-cell-days', 'no-confidence-filter',
+    'detection-limits', 'archive-lag', 'not-validated', 'domain-only'], 'domain-only only when the build has a domain');
 });
 
 test('caveatsFor: estimated, wide level, low confidence, flags, live', () => {

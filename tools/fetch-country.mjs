@@ -1,5 +1,6 @@
-// Downloads the public FIRMS yearly Brazil country files listed in docs/data.md into one folder.
-//   node tools/fetch-country.mjs [--out raw/country] [--to 2025]
+// Downloads the public FIRMS yearly country files listed in docs/data.md into one folder: the
+// Brazil CSVs, or with --scope global the yearly all-countries zips (48 files, about 9.8 GB).
+//   node tools/fetch-country.mjs [--out raw/country] [--to 2025] [--scope brazil|global]
 // A file already there and not empty is kept, so a local run only fetches what is missing.
 import { createWriteStream } from 'node:fs';
 import { mkdir, rename, stat } from 'node:fs/promises';
@@ -17,16 +18,20 @@ export const SOURCES = [
 ];
 
 /** Every {url, name} up to `to` inclusive (the last year FIRMS publishes as a country file). */
-export const countryFiles = (to) => SOURCES.flatMap(({ dir, from }) => Array.from({ length: Math.max(0, to - from + 1) }, (_, i) => {
+export const countryFiles = (to, scope = 'brazil') => SOURCES.flatMap(({ dir, from }) => Array.from({ length: Math.max(0, to - from + 1) }, (_, i) => {
+  if (scope === 'global') {
+    const name = `${dir}_${from + i}_all_countries.zip`;
+    return { url: `${BASE}/zips/${name}`, name };
+  }
   const name = `${dir}_${from + i}_Brazil.csv`;
   return { url: `${BASE}/${dir}/${from + i}/${name}`, name };
 }));
 
 const present = async (p) => (await stat(p).catch(() => null))?.size > 0;
 
-export const fetchAll = async ({ out, to, fetchFn = fetch, log = console.log }) => {
+export const fetchAll = async ({ out, to, scope = 'brazil', fetchFn = fetch, log = console.log }) => {
   await mkdir(out, { recursive: true });
-  for (const { url, name } of countryFiles(to)) {
+  for (const { url, name } of countryFiles(to, scope)) {
     const dest = join(out, name);
     if (await present(dest)) continue;
     const res = await fetchFn(url);
@@ -39,11 +44,15 @@ export const fetchAll = async ({ out, to, fetchFn = fetch, log = console.log }) 
 };
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const { values } = parseArgs({ options: { out: { type: 'string', default: 'raw/country' }, to: { type: 'string', default: '2025' } } });
+  const { values } = parseArgs({ options: { out: { type: 'string', default: 'raw/country' }, to: { type: 'string', default: '2025' }, scope: { type: 'string', default: 'brazil' } } });
   const to = Number(values.to);
+  if (!['brazil', 'global'].includes(values.scope)) {
+    console.error('fetch-country: --scope must be brazil or global');
+    process.exit(2);
+  }
   if (!Number.isInteger(to) || to < 2018) {
     console.error('fetch-country: --to must be a year from 2018 on');
     process.exit(2);
   }
-  fetchAll({ out: values.out, to }).catch((e) => { console.error(e.message); process.exit(1); });
+  fetchAll({ out: values.out, to, scope: values.scope }).catch((e) => { console.error(e.message); process.exit(1); });
 }

@@ -382,8 +382,8 @@ export const start = async (root = document.getElementById('app')) => {
   // One source aborts its previous load, so the example areas load one after another.
   const loadExample = (p) => {
     const next = exampleQueue.then(async () => {
-      const { manifest: m, tiles, domain } = await exampleSource.load(p.bbox);
-      return buildResult({ bbox: p.bbox, from: null, to: null, manifest: m, tiles, domain });
+      const { manifest: m, tiles, domain, global } = await exampleSource.load(p.bbox);
+      return buildResult({ bbox: p.bbox, from: null, to: null, manifest: m, tiles, domain, global });
     });
     exampleQueue = next.catch(() => null);
     return next;
@@ -466,9 +466,9 @@ export const start = async (root = document.getElementById('app')) => {
     if (!bbox) { source.cancel(); data.set({ status: 'idle', result: null, error: null }); return; }
     data.set({ status: 'loading', error: null });
     try {
-      const { manifest: m, tiles, domain } = await source.load(bbox);
+      const { manifest: m, tiles, domain, global } = await source.load(bbox);
       if (mine !== seq) return;
-      data.set({ status: 'ready', result: buildResult({ bbox, from, to, manifest: m, tiles, domain }), error: null });
+      data.set({ status: 'ready', result: buildResult({ bbox, from, to, manifest: m, tiles, domain, global }), error: null });
     } catch (err) {
       if (mine !== seq || err?.kind === 'aborted') return;
       data.set({ status: 'error', error: err });

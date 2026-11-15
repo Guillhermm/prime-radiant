@@ -26,27 +26,34 @@ export function compareTileIds(a, b) {
  * @returns {Map<string, {fine: object, coarse: object}>} tile id -> columnar tiles
  */
 export function buildTiles(counts, cov) {
-  const tileIds = new Set();
-  for (const fam of Object.values(counts)) for (const t of Object.keys(fam)) tileIds.add(t);
   const out = new Map();
-  for (const id of [...tileIds].sort(compareTileIds)) {
-    const rows = new Map(); // "cell:month" -> {cell, month, modis, viirs, noaa20}
-    for (const sensor of SENSORS) {
-      for (const fam of FAMILIES[sensor]) {
-        const cells = counts[fam]?.[id] ?? {};
-        for (const [cell, months] of Object.entries(cells)) {
-          for (const [m, n] of months) {
-            const key = `${cell}:${m}`;
-            const row = rows.get(key) ?? rows.set(key, { cell: +cell, month: +m }).get(key);
-            row[sensor] = (row[sensor] ?? 0) + n;
-          }
+  for (const id of tileIdsOfCounts(counts)) out.set(id, buildTile(counts, id, cov));
+  return out;
+}
+
+const tileIdsOfCounts = (counts) => {
+  const ids = new Set();
+  for (const fam of Object.values(counts)) for (const t of Object.keys(fam)) ids.add(t);
+  return [...ids].sort(compareTileIds);
+};
+
+/** One tile's fine and coarse columns from counts that hold it. */
+export function buildTile(counts, id, cov) {
+  const rows = new Map(); // "cell:month" -> {cell, month, modis, viirs, noaa20}
+  for (const sensor of SENSORS) {
+    for (const fam of FAMILIES[sensor]) {
+      const cells = counts[fam]?.[id] ?? {};
+      for (const [cell, months] of Object.entries(cells)) {
+        for (const [m, n] of months) {
+          const key = `${cell}:${m}`;
+          const row = rows.get(key) ?? rows.set(key, { cell: +cell, month: +m }).get(key);
+          row[sensor] = (row[sensor] ?? 0) + n;
         }
       }
     }
-    const fine = columns([...rows.values()], cov);
-    out.set(id, { fine, coarse: coarsen(fine, cov) });
   }
-  return out;
+  const fine = columns([...rows.values()], cov);
+  return { fine, coarse: coarsen(fine, cov) };
 }
 
 function columns(rows, cov) {
@@ -87,10 +94,19 @@ export function serializeTile(t) {
  * @returns {{tiles: string[], stats: Object<string, {tiles: number, bytes: number, brotli: number}>}}
  */
 export function writeTiles(counts, cov, outDir) {
-  const built = buildTiles(counts, cov);
+  return writeTileSet(tileIdsOfCounts(counts), () => counts, cov, outDir);
+}
+
+/**
+ * Like writeTiles, one tile at a time: `countsFor(id)` returns counts holding tile `id`, so a
+ * large build never holds every tile's columns at once.
+ */
+export function writeTileSet(ids, countsFor, cov, outDir) {
   const stats = { 0.1: { tiles: 0, bytes: 0, brotli: 0 }, 1: { tiles: 0, bytes: 0, brotli: 0 } };
   for (const res of ['0.1', '1']) fs.mkdirSync(path.join(outDir, 'tiles', res), { recursive: true });
-  for (const [id, { fine, coarse }] of built) {
+  const sorted = [...ids].sort(compareTileIds);
+  for (const id of sorted) {
+    const { fine, coarse } = buildTile(countsFor(id), id, cov);
     for (const [res, t] of [['0.1', fine], ['1', coarse]]) {
       const text = serializeTile(t);
       fs.writeFileSync(path.join(outDir, 'tiles', res, `${id}.json`), text);
@@ -100,5 +116,5 @@ export function writeTiles(counts, cov, outDir) {
       s.brotli += zlib.brotliCompressSync(text).length;
     }
   }
-  return { tiles: [...built.keys()], stats };
+  return { tiles: sorted, stats };
 }

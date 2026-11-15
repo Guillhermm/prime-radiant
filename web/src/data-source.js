@@ -1,5 +1,5 @@
-import { validateManifest, validateTile, validateDomain, validateOverview, validatePlaces } from '../../core/schema.js';
-import { tilesForBbox, cellCount, MAX_FINE_CELLS } from '../../core/index.js';
+import { validateManifest, validateTile, validateDomain, validateOverview, validatePlaces, validateGlobalLevel } from '../../core/schema.js';
+import { tilesForBbox, cellCount, fallbackLevels, MAX_FINE_CELLS } from '../../core/index.js';
 import { createDomain } from '../../core/domain.js';
 import { parseTileId } from '../../core/grid.js';
 
@@ -16,12 +16,13 @@ export class DataSourceError extends Error {
 
 // Paths are relative to the page, which sits one level under the site root in dev
 // (the repo root is served, page at /web/) and at the root on Vercel, where ../ stays at the root.
-// The fixtures have no overview.json or places.json, so fixture mode does not ask for them.
+// The fixtures have no overview.json, places.json or global.json, so fixture mode does not ask for them.
 export const dataSourceConfig = ({ fixtures = false } = {}) => ({
   manifestUrl: fixtures ? '../fixtures/manifest.json' : '../data/manifest.json',
   root: '../',
   withOverview: !fixtures,
   withPlaces: !fixtures,
+  withGlobal: !fixtures,
 });
 
 const baseOf = (manifest, root) => {
@@ -46,14 +47,18 @@ export const overviewUrl = (manifest, root = '') => `${baseOf(manifest, root)}ov
 /** URL of places.json, the name suggestions, next to overview.json. */
 export const placesUrl = (manifest, root = '') => `${baseOf(manifest, root)}places.json`;
 
+/** URL of global.json, the whole-world fallback level the build precomputes. */
+export const globalUrl = (manifest, root = '') => `${baseOf(manifest, root)}global.json`;
+
 /**
  * The tiles a query needs. harmonize falls back from the area to its 10 degree tiles, then the
  * ring around them, then everything (docs/method.md 4.3), so every query needs the whole record
  * at the coarse level; the fine level only for the area's own tiles, and not even those when
  * the area is large enough that core reads it at the coarse level. With a domain, tiles that
- * hold none of it are skipped: they have no records.
+ * hold none of it are skipped: they have no records. With `ringOnly` (the build's global.json
+ * stands in for the widest level) the coarse tiles are only those of the ring around the area.
  */
-export const tilesNeeded = (bbox, manifest, domain = null) => {
+export const tilesNeeded = (bbox, manifest, domain = null, { ringOnly = false } = {}) => {
   let ids;
   try {
     ids = tilesForBbox(bbox, manifest);
@@ -61,7 +66,9 @@ export const tilesNeeded = (bbox, manifest, domain = null) => {
     throw new DataSourceError('bbox', `invalid bbox: ${bbox}`, { cause });
   }
   const lookup = domain && createDomain(domain);
+  const ring = ringOnly ? new Set(tilesForBbox(fallbackLevels(bbox, manifest).find((l) => l.level === 'ring').bbox, manifest)) : null;
   const coarse = manifest.tiles.filter((id) => {
+    if (ring && !ring.has(id)) return false;
     if (!lookup) return true;
     const { tx, ty } = parseTileId(id);
     return lookup.count(tx * 10, tx * 10 + 9, ty * 10, ty * 10 + 9, 1) > 0;
@@ -79,7 +86,7 @@ export const tilesNeeded = (bbox, manifest, domain = null) => {
  * The manifest, the domain and validated tiles are cached for the session; a failed or aborted
  * fetch is not.
  */
-export const createDataSource = ({ manifestUrl, root = '', withOverview = true, withPlaces = true, fetchFn = (...a) => fetch(...a), concurrency = 6 }) => {
+export const createDataSource = ({ manifestUrl, root = '', withOverview = true, withPlaces = true, withGlobal = true, fetchFn = (...a) => fetch(...a), concurrency = 6 }) => {
   const tileCache = new Map();
   let manifestPromise = null;
   let domainPromise = null;
@@ -152,6 +159,21 @@ export const createDataSource = ({ manifestUrl, root = '', withOverview = true, 
     return placesPromise;
   };
 
+  // Optional too: without it (an older build) every coarse tile is loaded and core sums the world itself.
+  let globalPromise = null;
+  const globalLevel = (m) => {
+    globalPromise ??= (async () => {
+      if (!withGlobal) return null;
+      try {
+        const g = await getJson(globalUrl(m, root));
+        return validateGlobalLevel(g, { manifest: m }).length ? null : g;
+      } catch {
+        return null;
+      }
+    })();
+    return globalPromise;
+  };
+
   const fetchTile = async (m, res, id, signal) => {
     const key = `${res}/${id}`;
     if (tileCache.has(key)) return tileCache.get(key);
@@ -170,9 +192,9 @@ export const createDataSource = ({ manifestUrl, root = '', withOverview = true, 
     const { signal } = ctrl;
     try {
       const m = await manifest();
-      const d = await domain(m);
+      const [d, global] = await Promise.all([domain(m), globalLevel(m)]);
       if (signal.aborted) throw new DataSourceError('aborted', 'superseded by a newer query');
-      const need = tilesNeeded(bbox, m, d);
+      const need = tilesNeeded(bbox, m, d, { ringOnly: global !== null });
       const jobs = [...need.fine.map((id) => ['fine', 0.1, id]), ...need.coarse.map((id) => ['coarse', 1, id])];
       const tiles = { fine: {}, coarse: {} };
       let next = 0;
@@ -183,7 +205,7 @@ export const createDataSource = ({ manifestUrl, root = '', withOverview = true, 
         }
       };
       await Promise.all(Array.from({ length: Math.min(concurrency, jobs.length) }, worker));
-      return { manifest: m, domain: d, tiles, ids: need };
+      return { manifest: m, domain: d, global, tiles, ids: need };
     } catch (err) {
       ctrl.abort(); // stops the sibling workers
       throw err;

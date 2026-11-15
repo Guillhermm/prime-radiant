@@ -1,4 +1,4 @@
-// FIRMS archive reader: streams .csv, .csv.gz and .dbf (dBase III attribute table of a
+// FIRMS archive reader: streams .csv, .csv.gz, .zip of CSVs and .dbf (dBase III attribute table of a
 // FIRMS Shapefile) and yields normalized records. Standard library only.
 //
 // Record: { sensor: 'modis'|'viirs', satellite: 'Terra'|'Aqua'|'SNPP'|'NOAA20'|'NOAA21',
@@ -9,6 +9,7 @@
 import fs from 'node:fs';
 import zlib from 'node:zlib';
 import readline from 'node:readline';
+import { zipEntries, zipEntryStream } from './zip.js';
 
 // Satellite code -> [sensor, satellite]. MODIS codes verified in real CSV and DBF
 // (Terra, Aqua; the NRT text files use T, A); S-NPP: CSV 'N', DBF 'SNPP'; NOAA-20 'N20' in CSV and DBF; NOAA-21 DBF 'N21'.
@@ -91,6 +92,17 @@ function columnMap(names) {
 async function* readCsv(path, stats) {
   let input = fs.createReadStream(path);
   if (path.endsWith('.gz')) input = input.pipe(zlib.createGunzip());
+  yield* readCsvStream(input, stats);
+}
+
+// Every .csv entry of a zip, in archive order, each with its own header (FIRMS all-countries archives).
+async function* readZip(path, stats) {
+  for (const entry of zipEntries(path)) {
+    if (entry.name.toLowerCase().endsWith('.csv')) yield* readCsvStream(zipEntryStream(path, entry), stats);
+  }
+}
+
+async function* readCsvStream(input, stats) {
   const rl = readline.createInterface({ input, crlfDelay: Infinity });
   let idx = null;
   for await (const line of rl) {
@@ -167,5 +179,6 @@ export function readFirms(path, stats = newStats()) {
   const p = String(path).toLowerCase();
   if (p.endsWith('.dbf')) return readDbf(path, stats);
   if (p.endsWith('.csv') || p.endsWith('.csv.gz')) return readCsv(path, stats);
-  throw new Error(`Unsupported FIRMS file (want .csv, .csv.gz or .dbf): ${path}`);
+  if (p.endsWith('.zip')) return readZip(path, stats);
+  throw new Error(`Unsupported FIRMS file (want .csv, .csv.gz, .zip or .dbf): ${path}`);
 }

@@ -471,3 +471,25 @@ export function validatePlaces(p) {
   });
   return e;
 }
+
+/**
+ * global.json (pipeline/levels.js): the raw series of the whole world, the widest fallback level
+ * of method.md 4.3, precomputed by the build so a query loads only the tiles around its area.
+ * @param {unknown} g @param {{manifest?: object}} [opts]
+ */
+export function validateGlobalLevel(g, { manifest } = {}) {
+  if (!isObj(g)) return [err('NOT_OBJECT', '', 'global level must be an object')];
+  const e = [];
+  if (g.schema !== 1) e.push(err('BAD_SCHEMA', 'schema', 'schema must be 1'));
+  if (typeof g.dataVersion !== 'string' || !g.dataVersion) e.push(err('BAD_FIELD', 'dataVersion', 'dataVersion must be a non-empty string'));
+  else if (manifest && g.dataVersion !== manifest.dataVersion) e.push(err('VERSION_MISMATCH', 'dataVersion', 'dataVersion must match the manifest'));
+  const span = manifest ? monthNum(manifest.last_month) - monthNum(manifest.month0) + 1 : NaN;
+  for (const s of ['modis', 'viirs', 'noaa20']) {
+    const x = g[s];
+    const ok = isObj(x) && x.id === s && x.unit === 'fire-cell-days' && !Number.isNaN(monthNum(x.start)) && isObj(x.method)
+      && Array.isArray(x.values) && x.values.every((v) => v === null || isCount(v)) && (x.flags === undefined || Array.isArray(x.flags))
+      && (!manifest || (x.start === manifest.month0 && x.values.length === span));
+    if (!ok) e.push(err('BAD_SERIES', s, `${s} must be a raw series {id, unit, start, method, values} over the manifest span`));
+  }
+  return e;
+}

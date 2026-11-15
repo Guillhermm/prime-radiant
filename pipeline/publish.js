@@ -14,7 +14,7 @@ import path from 'node:path';
 import { createHash, createHmac } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
-import { validateManifest, validateTile, validateDomain, validateOverview, validatePlaces } from '../core/schema.js';
+import { validateManifest, validateTile, validateDomain, validateOverview, validatePlaces, validateGlobalLevel } from '../core/schema.js';
 
 export const IMMUTABLE = 'public, max-age=31536000, immutable';
 export const ROOT_CACHE = 'public, max-age=300';
@@ -145,6 +145,7 @@ export const loadBuild = (dir) => {
   }
   if (files.includes('overview.json')) check('overview.json', validateOverview(read('overview.json')));
   if (files.includes('places.json')) check('places.json', validatePlaces(read('places.json')));
+  if (files.includes('global.json')) check('global.json', validateGlobalLevel(read('global.json'), { manifest }));
   return { manifest, files };
 };
 
@@ -178,6 +179,9 @@ export const publish = async ({ dir, env, fetchFn = fetch, dryRun = false, log =
   if (dryRun) return { version, keys: [...uploads.map((f) => prefix + f), `${prefix}manifest.json`, 'manifest.json'], sent: false };
 
   const r2 = createR2({ ...r2Config(env), fetchFn });
+  // Versioned keys are served as immutable, so a complete version (its manifest is written after
+  // every tile) is never rewritten; leftovers of a failed upload, which no reader saw, are.
+  if ((await r2.get(`${prefix}manifest.json`)) !== null) throw new Error(`publish: ${prefix} is already published; build with a new --data-version`);
   const live = await r2.get('manifest.json');
   const previous = live ? (() => { try { return JSON.parse(live).dataVersion ?? null; } catch { return null; } })() : null;
 

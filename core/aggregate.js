@@ -109,7 +109,7 @@ export function seriesForAoi(bbox, tiles, manifest, { res, domain } = {}) {
 }
 
 const wrapLon = (x) => ((((x + 180) % 360) + 360) % 360) - 180;
-const WORLD = [-180, -90, 180, 90];
+export const WORLD = [-180, -90, 180, 90];
 
 // Whole 10 deg tiles [a, b] (columns on the unwrapped axis) that cover the AOI, plus rows [r0, r1].
 function tileSpan(bbox) {
@@ -155,11 +155,14 @@ export function fallbackLevels(bbox, manifest) { // eslint-disable-line no-unuse
  * @param {[number, number, number, number]} bbox the AOI
  * @param {Record<string, object> | {fine?: object, coarse?: object}} tiles as for seriesForAoi
  * @param {object} manifest validated manifest
- * @param {{res?: number, domain?: {rows: object}}} [opts] passed to seriesForAoi
+ * @param {{res?: number, domain?: {rows: object}, global?: {modis: object, viirs: object, noaa20: object}|null}} [opts] passed to
+ *   seriesForAoi; `global` is the whole-world level precomputed by the build (global.json), so `tiles` then only
+ *   needs the ring around the AOI
  * @returns {{level: import('./index.js').FallbackLevel, modis: import('./index.js').Series, viirs: import('./index.js').Series, noaa20: import('./index.js').Series}[]}
  */
-export function seriesForLevels(bbox, tiles, manifest, opts) {
+export function seriesForLevels(bbox, tiles, manifest, { global = null, ...opts } = {}) {
   return fallbackLevels(bbox, manifest).map(({ level, bbox: b }) => {
+    if (level === 'global' && global) return { level, modis: global.modis, viirs: global.viirs, noaa20: global.noaa20 };
     const { modis, viirs, noaa20 } = seriesForAoi(b, tiles, manifest, opts);
     return { level, modis, viirs, noaa20 };
   });

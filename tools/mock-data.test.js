@@ -17,6 +17,7 @@ test('manifest, fine and coarse tiles and the domain pass core/schema.js', () =>
   assert.deepEqual(validateAll(data), []);
   assert.ok(data.manifest.tiles.length > 5);
   assert.deepEqual(Object.keys(data.coarse).sort(), Object.keys(data.tiles).sort());
+  assert.equal(data.global.dataVersion, data.manifest.dataVersion, 'global.json ships with the synthetic build too');
 });
 
 test('overview: the newest full VIIRS year, and each hotspot is one of its cells with the same value', () => {

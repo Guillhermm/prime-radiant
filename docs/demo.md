@@ -1,6 +1,6 @@
 # Demo script (3 minutes)
 
-URL: https://primeradiant.zenus.systems. Production runs on real FIRMS data for Brazil, November 2000 to December 2025 (data version `20261115`, published to R2 on 2026-11-15, `docs/deploy.md`). The numbers below were read from production on 2026-11-15; if the data version changes, read them again before presenting.
+URL: https://primeradiant.zenus.systems. Production runs on real FIRMS data for Brazil, November 2000 to December 2025 (data version `20261115`, published to R2 on 2026-11-15, `docs/deploy.md`). The numbers below were read from production on 2026-11-15; if the data version changes, read them again before presenting. A global publish is planned: it changes the Pantanal numbers (the parts of the box in Bolivia and Paraguay start counting) and removes the "outside Brazil" pill, so after it this script needs a new pass.
 
 The place picker's map and ranked hotspots need `overview.json` next to the manifest in the published data version; on 2026-11-15 production did not serve it yet (404), so the place picker shows the manual path and the first screen has no example cards. The script below does not depend on it. Once it is published, read the top hotspot from production before mentioning it.
 

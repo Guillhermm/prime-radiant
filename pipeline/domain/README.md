@@ -28,7 +28,8 @@
   100 m; only a fine-cell center within that distance of a border can change its vote), plus a top-level
   `source: {id: "ne10m-admin1", version: "5.1.2"}`. 596 KB; sha256
   `6c34ed6daeffb35f5925fe043c7f11bcf502591fda4feb53801e29132b4b0523`.
-- A global build needs the whole admin-1 file instead (planned with the global extent, M4-K1).
+- A global build uses the whole admin-1 file instead, downloaded by the `publish-data` workflow from the
+  URL above and checked against the sha256 above (40.7 MB, 4,596 features; the 7 without a name are skipped).
 
 `ne-gazetteer.json` holds the place names the area field suggests (`pipeline/gazetteer.js` writes
 the in-domain part as `places.json`).

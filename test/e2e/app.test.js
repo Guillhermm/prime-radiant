@@ -45,7 +45,7 @@ before(async () => {
   const synth = generate({ last: '2019-12', now: new Date('2026-11-14T00:00:00Z') });
   synthOverview = synth.overview;
   synthPlaces = synth.places;
-  const files = new Map([['/data/manifest.json', synth.manifest], ['/data/domain.json', synth.domain], ['/data/overview.json', synth.overview], ['/data/places.json', synth.places],
+  const files = new Map([['/data/manifest.json', synth.manifest], ['/data/domain.json', synth.domain], ['/data/overview.json', synth.overview], ['/data/places.json', synth.places], ['/data/global.json', synth.global],
     ...Object.entries(synth.tiles).map(([id, t]) => [`/data/tiles/0.1/${id}.json`, t]),
     ...Object.entries(synth.coarse).map(([id, t]) => [`/data/tiles/1/${id}.json`, t])]);
   synthServer = createServer(async (req, res) => {

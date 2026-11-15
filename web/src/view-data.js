@@ -74,11 +74,11 @@ export const fitWindow = (sensors, R, manifest) => {
  * are core's CalendarCells plus two view fields: `source` (what supplied the value) and
  * `medianYears` (the years core.baseline used for its median).
  */
-export const buildResult = ({ bbox, from, to, manifest, tiles, domain = null }) => {
+export const buildResult = ({ bbox, from, to, manifest, tiles, domain = null, global = null }) => {
   const opts = domain ? { domain } : {};
   const aoi = seriesForAoi(bbox, tiles, manifest, opts);
   const sensors = { modis: aoi.modis, viirs: aoi.viirs, noaa20: aoi.noaa20 };
-  const core = harmonize(seriesForLevels(bbox, tiles, manifest, opts), manifest);
+  const core = harmonize(seriesForLevels(bbox, tiles, manifest, { ...opts, global }), manifest);
   const harmonized = { ...core, fit: fitWindow(sensors, core.R, manifest) };
   const partialMonths = partialMonthsFor(harmonized, manifest); // partial for the sensor that supplies each month
   // The baseline runs on the whole record so a month's median does not depend on the range shown.
@@ -98,7 +98,7 @@ export const buildResult = ({ bbox, from, to, manifest, tiles, domain = null }) 
     anomaly: anomalySeries,
     typical: typicalYear(harmonized.series, { partialMonths }),
     kpis: kpis(harmonized, base, manifest, { from, to, sensors }),
-    caveats: caveatsFor({ ...harmonized, anomaly: anomalySeries }),
+    caveats: caveatsFor({ ...harmonized, anomaly: anomalySeries }, { domain: manifest.domain ?? null }),
     aoiCells,
   };
 };

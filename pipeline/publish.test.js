@@ -89,7 +89,7 @@ test('publish uploads every file under v/{version}/, verifies, then writes the r
   assert.ok(logs.every((l) => !l.includes(ENV.R2_SECRET_ACCESS_KEY) && !l.includes(ENV.R2_ACCOUNT_ID) && !/https?:/.test(l)), 'logs carry no secret, account or URL');
 });
 
-test('pruning keeps the new version and the previous live one; re-publishing overwrites the same keys', async () => {
+test('pruning keeps the new version and the previous live one; a published version is never rewritten', async () => {
   const seed = { 'manifest.json': JSON.stringify({ dataVersion: '20261101' }) };
   for (const v of ['20261001', '20261015', '20261101']) seed[`v/${v}/manifest.json`] = '{}';
   const r2 = fakeR2(seed);
@@ -99,10 +99,16 @@ test('pruning keeps the new version and the previous live one; re-publishing ove
   assert.deepEqual([...r2.store.keys()].filter((k) => k.startsWith('v/')).map((k) => k.split('/')[1]).filter((v, i, a) => a.indexOf(v) === i).sort(), ['20261101', '20261115']);
 
   const before = r2.store.size;
-  const again = await publish({ dir: makeBuild(), env: ENV, fetchFn: r2.fetchFn, log: () => {} });
-  assert.equal(r2.store.size, before, 'same keys, no duplicates');
-  assert.deepEqual(again.kept.sort(), ['20261101', '20261115'], 'the previous version survives a re-publish');
+  await assert.rejects(publish({ dir: makeBuild(), env: ENV, fetchFn: r2.fetchFn, log: () => {} }), /v\/20261115\/ is already published/);
+  assert.equal(r2.store.size, before, 'nothing sent');
   assert.deepEqual(keepVersions('c', null, ['a', 'b', 'c']), new Set(['c', 'b']));
+});
+
+test('leftovers of a failed upload (no versioned manifest) are overwritten by the next try', async () => {
+  const r2 = fakeR2({ 'manifest.json': JSON.stringify({ dataVersion: '20261101' }), 'v/20261101/manifest.json': '{}', 'v/20261115/tiles/1/x17y13.json': 'partial' });
+  const out = await publish({ dir: makeBuild(), env: ENV, fetchFn: r2.fetchFn, log: () => {} });
+  assert.equal(out.version, '20261115');
+  assert.notEqual(r2.store.get('v/20261115/tiles/1/x17y13.json').body, 'partial');
 });
 
 test('a build that fails validation aborts before any request', async () => {

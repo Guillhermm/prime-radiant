@@ -29,3 +29,9 @@ test('real file: the 2025 top square (7S-6S, 45W-44W) is in Maranhão, Brazil', 
   assert.equal(gj.features.length, 27);
   assert.deepEqual(createPlaces(gj)(-45, -7), { country: 'Brazil', state: 'Maranhão' });
 });
+
+test('Natural Earth properties {name, admin} work as is; a feature with no name is left out', () => {
+  const ne = (name, admin, ring) => ({ type: 'Feature', properties: { name, admin }, geometry: { type: 'Polygon', coordinates: ring } });
+  const places = createPlaces(fc(ne(null, 'Land', square(0, 0, 1, 1)), ne('North', 'Land', square(0, 0.4, 1, 1))));
+  assert.deepEqual(places(0, 0), { country: 'Land', state: 'North' });
+});

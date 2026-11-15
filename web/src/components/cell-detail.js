@@ -21,7 +21,7 @@ export const provenanceText = (cell) => {
   return cell.status === 'partial' ? `${base}, partial month` : base;
 };
 
-export const LEVEL_TEXT = { aoi: 'this area', tiles: 'the 10° tiles around this area', ring: 'the tiles around this area and the ring beyond', global: 'all the data (Brazil)' };
+export const LEVEL_TEXT = { aoi: 'this area', tiles: 'the 10° tiles around this area', ring: 'the tiles around this area and the ring beyond', global: 'all the data' };
 
 /** "MODIS × R, R = 2.52 for September": the factor core applied, where it was fit, and its confidence. */
 export const estimationText = (cell, ratios = {}) => {
@@ -38,7 +38,7 @@ export const estimationText = (cell, ratios = {}) => {
 /** Why a month has no value: core's flag, else the sensors were off. */
 export const noDataNote = (cell, { manifest = null, ratios = {} } = {}) => {
   const flags = cell.flags ?? [];
-  if (flags.includes('outside-domain')) return 'This area lies outside the data domain (Brazil). There is no data here, not zero.';
+  if (flags.includes('outside-domain')) return 'This area lies outside the data domain. There is no data here, not zero.';
   if (flags.includes('terra-only')) return 'Only MODIS Terra flew before July 2002. Its counts are not scaled, so there is no value. This is not zero.';
   const ym = ymOf(cell.year, cell.month);
   const inside = (c) => Array.isArray(c) && ym >= c[0] && ym <= c[1];

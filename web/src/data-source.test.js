@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { createDataSource, tilesNeeded, tileUrl, domainUrl, overviewUrl, placesUrl, dataSourceConfig, DataSourceError } from './data-source.js';
+import { createDataSource, tilesNeeded, tileUrl, domainUrl, overviewUrl, placesUrl, globalUrl, dataSourceConfig, DataSourceError } from './data-source.js';
+import { buildGlobalLevel } from '../../pipeline/levels.js';
 
 const read = (p) => readFileSync(new URL(`../../${p}`, import.meta.url), 'utf8');
 const manifest = JSON.parse(read('fixtures/manifest.json'));
@@ -202,4 +203,30 @@ test('domain() hands out the validated domain file, null without one', async () 
     ? { ok: true, status: 200, json: async () => ({ ...manifest, domain: undefined }) }
     : { ok: false, status: 404, json: async () => ({}) });
   assert.equal(await src(noDomain).domain(), null);
+});
+
+test('tilesNeeded ringOnly: only the coarse tiles of the ring around the area', () => {
+  const m = { ...manifest, tiles: ['x0y15', 'x17y13', 'x35y15', 'x30y5'] };
+  assert.deepEqual(tilesNeeded(ANTI, m, null, { ringOnly: true }).coarse, ['x0y15', 'x35y15'], 'the ring wraps across the antimeridian');
+  assert.deepEqual(tilesNeeded(ANTI, m, null).coarse, m.tiles);
+});
+
+test('global.json next to the tiles: the load carries it and skips the coarse tiles outside the ring', async () => {
+  const g = buildGlobalLevel(manifest, { x17y13: JSON.parse(read('fixtures/tiles/1/x17y13.json')) }, domain);
+  const m = { ...manifest, tiles: ['x0y15', 'x17y13'] };
+  const f = fakeFetch();
+  const serve = async (url, init) => {
+    if (url.endsWith('manifest.json')) return { ok: true, json: async () => m };
+    if (url.endsWith('global.json')) return { ok: true, json: async () => g };
+    return f(url, init);
+  };
+  const r = await src(serve).load(BOX);
+  assert.deepEqual(r.global, g);
+  assert.deepEqual(Object.keys(r.tiles.coarse), ['x17y13']);
+  assert.equal(globalUrl(manifest, '../'), '../fixtures/global.json');
+  const without = await src(fakeFetch()).load(BOX);
+  assert.equal(without.global, null, 'missing or invalid: null, and every coarse tile');
+  const fx = fakeFetch();
+  await createDataSource({ ...dataSourceConfig({ fixtures: true }), fetchFn: fx }).load(BOX);
+  assert.equal(fx.calls.some((u) => u.endsWith('global.json')), false, 'fixture mode does not ask for it');
 });

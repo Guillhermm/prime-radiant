@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { buildResult, sliceCells, sliceSeries, csvMeta, isSyntheticManifest, partialMonthsOf, factorFor } from './view-data.js';
 import { validateCalendarCell, validateSeries } from '../../core/schema.js';
+import { buildGlobalLevel } from '../../pipeline/levels.js';
 
 const fx = (p) => JSON.parse(readFileSync(new URL(`../../fixtures/${p}`, import.meta.url), 'utf8'));
 const manifest = fx('manifest.json');
@@ -85,7 +86,7 @@ test('csv meta is core.toCsv\'s header: bbox, method, R and K, data version, dom
   assert.equal(m.generated, '2026-11-15');
   assert.equal(m.aoi, '');
   assert.equal(csvMeta(result(), { aoi: 'Pantanal' }).aoi, 'Pantanal', 'the area name goes in the header');
-  assert.ok(m.caveats.includes('brazil-only') && !m.caveats.includes('not-validated'));
+  assert.ok(m.caveats.includes('domain-only') && !m.caveats.includes('not-validated'));
   assert.ok(Array.isArray(m.flags));
 });
 
@@ -121,4 +122,12 @@ test('buildResult carries core\'s anomaly Series in the contract shape', () => {
   assert.ok(r.anomaly.flags.every((f) => f === false));
   assert.deepEqual(validateSeries(r.anomaly, { manifest }), []);
   assert.equal(r.kpis.anomaly.flagged, 0);
+});
+
+test('a precomputed global level gives the same result as summing every coarse tile', () => {
+  const global = buildGlobalLevel(manifest, tiles.coarse, domain);
+  const a = result();
+  const b = result({ global });
+  assert.deepEqual(b.harmonized, a.harmonized);
+  assert.deepEqual(b.allCells, a.allCells);
 });

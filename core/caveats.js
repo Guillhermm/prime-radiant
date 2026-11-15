@@ -23,8 +23,8 @@ const DEFS = [
     'Near-real-time data cannot be filtered by detection type (planned, M3).'],
   ['not-validated', 'caveat', 'Method not yet validated (preliminary).',
     'The harmonization method has not passed the science gate (V1). Numbers are preliminary.'],
-  ['brazil-only', 'caveat', 'Data cover Brazil only.',
-    'Data cover Brazil only (Natural Earth 10m outline, v5.1.2). Areas outside read as no data; border cells hold only detections inside the outline, so they undercount.'],
+  ['domain-only', 'caveat', 'Data cover the domain outline only.',
+    'Data cover only the domain the build was clipped to (a Natural Earth 10m outline, v5.1.2; the Method drawer names it). Areas outside read as no data; border cells hold only detections inside the outline, so they undercount.'],
   // anomaly caveats (gate V2 A6), added when anomaly results are present
   ['anomaly-rule', 'anomaly', 'Anomaly: rank against earlier years.',
     'The anomaly is the percentile rank of a month against the same calendar month in earlier years (50% = typical). A month is flagged when it ranks in the top tenth of earlier years (ties count against it) and the same holds on MODIS alone or VIIRS alone.'],
@@ -73,9 +73,9 @@ const DEFS = [
   ['low-confidence', 'flag', 'Low confidence ratio.',
     'The ratio applied to this series failed the usability rule (method.md 4.2) at every fallback level.'],
   ['partial-domain', 'flag', 'Partly inside the domain.',
-    'Part of the area lies outside the Brazil domain; the count covers only the part inside.'],
+    'Part of the area lies outside the data domain; the count covers only the part inside.'],
   ['outside-domain', 'flag', 'Outside the domain.',
-    'The area lies outside the Brazil domain; there is no data.'],
+    'The area lies outside the data domain; there is no data.'],
 ];
 
 /** Catalog ids in order. */
@@ -122,11 +122,11 @@ export function catalog(gates = DEFAULT_GATES) {
  * @param {{gates?: Record<string, string>, live?: boolean, flags?: string[]}} [opts]
  * @returns {Caveat[]}
  */
-export function caveatsFor(result, { gates = DEFAULT_GATES, live = false, flags = [] } = {}) {
+export function caveatsFor(result, { gates = DEFAULT_GATES, live = false, flags = [], domain = null } = {}) {
   const have = new Set([...(result?.series?.flags ?? []).map((f) => f.flag), ...flags]);
   const wide = [result?.R, result?.K].some((r) => r && r.level && r.level !== 'aoi');
-  const on = new Set(['unit-fire-cell-days', 'no-confidence-filter', 'detection-limits', 'archive-lag',
-    'brazil-only']);
+  const on = new Set(['unit-fire-cell-days', 'no-confidence-filter', 'detection-limits', 'archive-lag']);
+  if (domain) on.add('domain-only');
   if (gates['not-validated'] !== 'passed') on.add('not-validated');
   if (have.has('estimated')) on.add('estimated-before-viirs');
   if (wide) on.add('regional-ratio');

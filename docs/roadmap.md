@@ -476,6 +476,7 @@ Off the critical path thanks to the contract: the whole web track (runs on fixtu
 ## 10a. After M3: global extent
 
 **M4-K1 Chunked pipeline for a global build** · L · depends: M1-K4, H3 changed to global
+- Status (2026-11-15, Guilherme): built, the first global publish is pending. Source: the 48 FIRMS yearly all-countries zips, read without extraction; counts compacted per finished year, tiles written one at a time; `global.json` replaces loading every coarse tile. One global year measured (150 s, 1 GB peak); the Brazil build through the new code is byte-identical. Open: the full run's time and memory on the runner, and the Second Foundation check of the global extent below.
 - Why: the R2 side is not the limit (global tiles are estimated near 660 MB, two versions kept, against 10 GB free), the build is. Global raw CSVs are estimated near 40 GB, likely more than the free disk of a GitHub-hosted runner, and the Brazil build already peaks near 1 GB of memory.
 - Deliverable: the build processes the input in parts (by year, or by region and year), downloads one file, folds it into the running tile totals and deletes it before the next, so disk holds one raw file at a time and memory stays bounded; `tools/fetch-country.mjs` and the `publish-data` workflow follow the same loop; the global source (all country files or an archive request) chosen and recorded in `docs/data.md`.
 - Acceptance: a chunked build of the Brazil files gives tiles byte-identical to today's one-pass build; peak disk and memory recorded for one global year; the workflow fits in the runner's disk and time limits, or the build moves off Actions with the reason recorded.
@@ -516,7 +517,7 @@ Never cut: AOI by form and map, calendar with accessible ramp and no-data distin
 |---|---|---|
 | H1 | Who owns which track | Kaue data/science, Guilherme web; swap is free |
 | H2 | Granularity | Monthly; current partial month labeled partial |
-| H3 | Grid extent and demo region | Decided 2026-11-14: Brazil full history (FIRMS yearly country CSVs, 2000-2025) + global 2026 from archive Shapefiles (`docs/data.md`); the pipeline reads CSV and DBF. Global history only if added later |
+| H3 | Grid extent and demo region | Decided 2026-11-14: Brazil full history (FIRMS yearly country CSVs, 2000-2025) + global 2026 from archive Shapefiles (`docs/data.md`); the pipeline reads CSV and DBF. Changed 2026-11-15 by the humans: global full history from the FIRMS all-countries zips (M4-K1) |
 | H4 | Max AOI size | 0.1 deg for AOI up to 20,000 cells, coarse 1 deg above, hard cap at continent scale (exact number after spike) |
 | H5 | Where tiles live | Decided 2026-11-15: Cloudflare R2 bucket `prime-radiant-data` behind `data.primeradiantdata.com`, served same-origin through a Vercel rewrite of `/data/`; published by `pipeline/publish.js` from the `publish-data` workflow (`docs/deploy.md`, Data hosting) |
 | H6 | Repository owner | Decided 2026-11-14: Guilherme's personal GitHub (`Guillhermm/prime-radiant`), Vercel project on Guilherme's Hobby account, Kaue collaborator |

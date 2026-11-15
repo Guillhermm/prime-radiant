@@ -99,7 +99,9 @@ months, NOAA-20 for NOAA-20 x K months (`core/partial.js`).
 - **Assumption** (mathematician): when the AOI R is not usable, use in order (1) the
   union of the 10 x 10 degree tiles the AOI touches, (2) that union plus the
   surrounding ring of tiles, (3) global. Each level must pass 4.2; the result reports
-  the level used and the UI shows a low-confidence chip.
+  the level used and the UI shows a low-confidence chip. "Global" is everything the build
+  holds (Brazil for a Brazil build, the world for a global one); the build precomputes it as
+  `global.json` with the same function, so the app does not load every tile.
 
 ### 4.4 After S-NPP
 
@@ -205,8 +207,9 @@ months, NOAA-20 for NOAA-20 x K months (`core/partial.js`).
    archive's type-0 share is supplied, in which case live values are scaled by it. The live
    comparison is approximate; see section 6b.
 8. Method not yet validated (preliminary) until gate V1.
-9. Data cover Brazil only (Natural Earth 10m outline, v5.1.2). Areas outside read as
-   no data; border cells hold only detections inside the outline, so they undercount.
+9. With a domain (the Brazil build), data cover only that outline (Natural Earth 10m, v5.1.2).
+   Areas outside read as no data; border cells hold only detections inside the outline, so they
+   undercount. A global build has no domain and does not show this caveat.
 
 ## 6b. Live comparison (M3-K3, gate V3 fixes L1-L6 applied, re-check pending)
 

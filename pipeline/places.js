@@ -1,15 +1,16 @@
 /**
  * Place names for 1 deg squares, from an admin-1 GeoJSON (states and provinces, one feature each,
- * properties {name, country}). A square takes the state that holds most of its 100 fine-cell
- * centers; centers in no state (sea, a country the file does not cover) do not vote.
+ * properties {name, country}, or Natural Earth's own {name, admin} as in the global file). A square
+ * takes the state that holds most of its 100 fine-cell centers; centers in no state (sea, a country
+ * the file does not cover) do not vote. Features without a name are left out.
  */
 import { bboxOfPolygons, pointInPolygons, polygonsOf } from '../core/domain.js';
 
 /** @returns {(west: number, south: number) => {country: string, state: string}|null} */
 export const createPlaces = (geojson) => {
-  const states = (geojson?.features ?? []).map((f) => {
+  const states = (geojson?.features ?? []).filter((f) => f.properties?.name && (f.properties.country ?? f.properties.admin)).map((f) => {
     const polys = polygonsOf(f);
-    return { name: String(f.properties.name), country: String(f.properties.country), polys, box: bboxOfPolygons(polys) };
+    return { name: String(f.properties.name), country: String(f.properties.country ?? f.properties.admin), polys, box: bboxOfPolygons(polys) };
   });
   return (west, south) => {
     const votes = new Map();

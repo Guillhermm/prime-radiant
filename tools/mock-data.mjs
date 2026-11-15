@@ -2,12 +2,13 @@ import { mkdir, writeFile, rm } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { validateManifest, validateTile, validateDomain, validateOverview, validatePlaces } from '../core/schema.js';
+import { validateManifest, validateTile, validateDomain, validateOverview, validatePlaces, validateGlobalLevel } from '../core/schema.js';
 import { monthIndex, monthString } from '../core/months.js';
 import { createClipper, polygonsOf } from '../core/domain.js';
 import { buildTiles, compareTileIds } from '../pipeline/write-tiles.js';
 import { buildOverview, regionOf } from '../pipeline/overview.js';
 import { createPlaces } from '../pipeline/places.js';
+import { buildGlobalLevel } from '../pipeline/levels.js';
 import { GAZETTEER, buildPlaces } from '../pipeline/gazetteer.js';
 
 const RES = 0.1;
@@ -164,14 +165,15 @@ export const generate = ({ seed = 20261114, now = new Date(), last = latestCompl
     caveats: [],
   };
   return { manifest, tiles, coarse, domain, overview: buildOverview(manifest, coarse, region, createPlaces(JSON.parse(readFileSync(ADMIN1_FILE, 'utf8')))),
-    places: buildPlaces(JSON.parse(readFileSync(GAZETTEER, 'utf8')), domain) };
+    places: buildPlaces(JSON.parse(readFileSync(GAZETTEER, 'utf8')), domain), global: buildGlobalLevel(manifest, coarse, domain) };
 };
 
 /** Validates everything with core/schema.js; returns the list of error messages. */
-export const validateAll = ({ manifest, tiles, coarse, domain, overview, places }) => {
+export const validateAll = ({ manifest, tiles, coarse, domain, overview, places, global }) => {
   const errors = validateManifest(manifest).map((e) => `manifest ${e.path}: ${e.message}`);
   errors.push(...validateOverview(overview).map((e) => `overview ${e.path}: ${e.message}`));
   errors.push(...validatePlaces(places).map((e) => `places ${e.path}: ${e.message}`));
+  errors.push(...validateGlobalLevel(global, { manifest }).map((e) => `global ${e.path}: ${e.message}`));
   errors.push(...validateDomain(domain).map((e) => `domain ${e.path}: ${e.message}`));
   for (const [res, set] of [[0.1, tiles], [1, coarse]]) {
     for (const [id, t] of Object.entries(set)) errors.push(...validateTile(t, { manifest, res }).map((e) => `tile ${res}/${id} ${e.path}: ${e.message}`));
@@ -179,7 +181,7 @@ export const validateAll = ({ manifest, tiles, coarse, domain, overview, places 
   return errors;
 };
 
-export const write = async ({ manifest, tiles, coarse, domain, overview, places }, dir) => {
+export const write = async ({ manifest, tiles, coarse, domain, overview, places, global }, dir) => {
   await rm(dir, { recursive: true, force: true });
   for (const [res, set] of [['0.1', tiles], ['1', coarse]]) {
     await mkdir(join(dir, 'tiles', res), { recursive: true });
@@ -188,6 +190,7 @@ export const write = async ({ manifest, tiles, coarse, domain, overview, places 
   await writeFile(join(dir, 'domain.json'), JSON.stringify(domain));
   await writeFile(join(dir, 'overview.json'), JSON.stringify(overview));
   await writeFile(join(dir, 'places.json'), JSON.stringify(places));
+  await writeFile(join(dir, 'global.json'), JSON.stringify(global));
   await writeFile(join(dir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
 };
 
