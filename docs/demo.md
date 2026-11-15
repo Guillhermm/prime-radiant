@@ -11,7 +11,7 @@ Before recording: open the URL once and let it load; press Reload if the app off
 | 0:05 | Hover the hottest list, then the Radiant on the right. | We join both NASA FIRMS records on one scale: twenty-five years showing when a place burns. |
 | 0:10 | Click a hotspot, "Open the calendar", then a bright month; Export menu open. | Pick an area, see each month against its usual level, and export the numbers. |
 | 0:20 | Live tab on a Brazilian area with a full chart, then Anomalies. | Live data already compares this season with past years in Brazil. Next, the whole world, so responders spot unusual fire seasons as they happen. |
-| 0:28 | Logo with the URL written on screen: primeradiant.zenus.systems | Try it at primeradiant.zenus.systems, and see when your place burns. |
+| 0:28 | Logo with the URL written on screen: primeradiant.zenus.systems | Try it at primeradiant.zenus.systems. Thank you! |
 
 Notes:
 
