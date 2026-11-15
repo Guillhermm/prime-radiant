@@ -115,9 +115,10 @@ test('store treats equal bbox arrays as no change', () => {
   assert.equal(n, 1);
 });
 
-test('Sensors opens from a link; without ?preview=1 a link to Anomalies falls back to the calendar', () => {
+test('Sensors and Anomalies open from a link; without ?preview=1 a link to Live falls back to the calendar', () => {
   assert.equal(parseHash('#view=sensors').state.view, 'sensors');
-  assert.equal(parseHash('#view=anomalies').state.view, 'calendar');
+  assert.equal(parseHash('#view=anomalies').state.view, 'anomalies');
+  assert.equal(parseHash('#view=live').state.view, 'calendar');
 });
 
 test('cleanName trims, strips control characters and caps at 60 characters', () => {

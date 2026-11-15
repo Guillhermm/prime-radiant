@@ -2,8 +2,9 @@ export const VIEWS = [
   { id: 'calendar', label: 'Calendar', enabled: true },
   // Sensors plots core's R, K and harmonized series, validated at gate V1.
   { id: 'sensors', label: 'Sensors', enabled: true },
-  // Off with real data until their science gates pass; main.js viewsFor turns them on for synthetic data and ?preview=1.
-  { id: 'anomalies', label: 'Anomalies', enabled: false },
+  // Anomalies shows core's ranks and flags, validated at gate V2.
+  { id: 'anomalies', label: 'Anomalies', enabled: true },
+  // Off with real data until gate V3 passes; viewsFor turns it on for synthetic data and ?preview=1.
   { id: 'live', label: 'Live', enabled: false },
 ];
 
@@ -13,12 +14,12 @@ export const isEnabledView = (id, views = VIEWS) => enabledViews(views).some((v)
 
 export const DEFAULT_VIEW = 'calendar';
 
-export const PREVIEW_VIEWS = ['anomalies', 'live'];
+export const PREVIEW_VIEWS = ['live'];
 
 /**
- * Anomalies and Live run on placeholder numbers (preview-stubs.js) until core delivers them
- * and their science gates pass (gate V1 covered neither). They show with synthetic data, where no
- * number is real anyway, and with ?preview=1; with real data they stay hidden.
+ * Live runs on placeholder numbers (preview-stubs.js) until its science gate (V3) passes. It shows
+ * with synthetic data, where no number is real anyway, and with ?preview=1; with real data it
+ * stays hidden.
  */
 export const viewsFor = ({ synthetic, previewParam }) => {
   const preview = Boolean(synthetic || previewParam);

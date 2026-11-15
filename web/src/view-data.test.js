@@ -122,6 +122,7 @@ test('buildResult carries core\'s anomaly Series in the contract shape', () => {
   assert.ok(r.anomaly.flags.every((f) => f === false));
   assert.deepEqual(validateSeries(r.anomaly, { manifest }), []);
   assert.equal(r.kpis.anomaly.flagged, 0);
+  assert.deepEqual(r.yearRank, { n: 0, years: [], excluded: [{ year: 2023, reason: 'year not fully in the series' }] }, 'six fixture months make no complete year');
 });
 
 test('a precomputed global level gives the same result as summing every coarse tile', () => {

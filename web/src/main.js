@@ -20,6 +20,7 @@ import * as methodDrawer from './components/method-drawer.js';
 import * as areaDrawer from './components/area-drawer.js';
 import * as states from './components/states.js';
 import * as anomalyLayer from './components/anomaly-layer.js';
+import * as anomalySummary from './components/anomaly-summary.js';
 import * as radiant from './components/radiant.js';
 import * as dataTable from './components/data-table.js';
 import * as liveView from './components/live-view.js';
@@ -28,7 +29,7 @@ import { segmented } from './components/segmented.js';
 import * as offlineChip from './components/offline-chip.js';
 import * as syntheticBand from './components/synthetic-band.js';
 import { icon } from './components/icons.js';
-import { PREVIEW_NOTE, previewAnomaly, previewLive } from './preview-stubs.js';
+import { previewLive } from './preview-stubs.js';
 import { createDataSource, dataSourceConfig } from './data-source.js';
 import { buildResult, csvMeta, isSyntheticManifest, sliceSeries } from './view-data.js';
 import { closeIosHint, isIOS, registerSW, showIosHint } from './pwa.js';
@@ -84,12 +85,10 @@ const mountResults = (data, deps, component, el) => {
 
 const slicedSensors = (r) => Object.fromEntries(['modis', 'viirs', 'noaa20'].map((id) => [id, sliceSeries(r.sensors[id], r.from, r.to)]));
 
-const previewNote = (synthetic) => h('p', { class: 'hint anomaly-preview-note', text: synthetic ? `Synthetic data. ${PREVIEW_NOTE}` : PREVIEW_NOTE });
-
-// Placeholder ranks for a result, computed once per result.
+// Core's ranks merged into the result's cells, once per result.
 const ranked = new WeakMap();
 const anomalyCells = (r) => {
-  if (!ranked.has(r)) ranked.set(r, anomalyLayer.withAnomaly(r.cells, r.anomaly ?? previewAnomaly(r.cells)));
+  if (!ranked.has(r)) ranked.set(r, anomalyLayer.withAnomaly(r.cells, r.anomaly));
   return ranked.get(r);
 };
 
@@ -100,15 +99,15 @@ const anomalyDeps = (r, { onSelect, onClose }) => ({
 
 /** The calendar card: header (title, stepped legend bar, layer and display switches), grid(s), legend foot. */
 const mountCalendarCard = (el, ctx) => {
-  const { store, data, preview, synthetic, views, onSelect, onClose } = ctx;
+  const { store, data, views, onSelect, onClose } = ctx;
   const sub = h('p', { class: 'sub' });
   const rampHost = h('div', { class: 'ramp-host' });
   const tools = h('div', { class: 'cal-tools' });
   const head = h('div', { class: 'cal-head' }, h('div', { class: 'cal-head-text' }, h('h2', { text: 'Fire-cell-days by month' }), sub), rampHost, tools);
   const countsEl = h('div');
-  const anomalyEl = h('div', { hidden: true }, previewNote(synthetic), h('div'));
+  const anomalyEl = h('div', { hidden: true });
   const foot = h('div', { class: 'cal-foot' });
-  el.replaceChildren(h('section', { class: 'card cal-card', 'aria-label': 'Fire-cell-days by month' }, head, countsEl, preview ? anomalyEl : null, foot));
+  el.replaceChildren(h('section', { class: 'card cal-card', 'aria-label': 'Fire-cell-days by month' }, head, countsEl, anomalyEl, foot));
 
   const choices = queryBar.layerChoices(views);
   if (choices.length) {
@@ -123,13 +122,13 @@ const mountCalendarCard = (el, ctx) => {
 
   const countsDeps = (r) => ({ cells: r.cells, aoiCells: r.aoiCells, typical: r.typical, onSelect, onClose });
   ctx.grids.push(mountResults(data, countsDeps, calendarGrid, countsEl));
-  if (preview) ctx.grids.push(mountResults(data, (r) => anomalyDeps(r, { onSelect, onClose }), anomalyLayer, anomalyEl.lastChild));
+  ctx.grids.push(mountResults(data, (r) => anomalyDeps(r, { onSelect, onClose }), anomalyLayer, anomalyEl));
   data.subscribe(({ result }) => {
     if (!result) return;
     sub.textContent = `Newest year on top. Number in each cell: fire-cell-days.${calendarGrid.mostlyEstimated(result.cells) ? ' All values are estimated.' : ''}`;
   });
 
-  const layerOf = (s) => (preview && s.layer === 'anomaly' ? 'anomaly' : 'counts');
+  const layerOf = (s) => (choices.length && s.layer === 'anomaly' ? 'anomaly' : 'counts');
   const lg = legend.mount(foot, { layer: layerOf(store.get()) });
   const show = (s) => {
     const l = layerOf(s);
@@ -157,8 +156,7 @@ export const MOUNTS = {
       sensors: slicedSensors(r), harmonized: { ...r.harmonized, series: r.series }, manifest: r.manifest, synthetic,
     }), sensorsView, el);
   },
-  anomalies: (el, { data, preview, synthetic, onSelect, onClose }) => {
-    if (!preview) return;
+  anomalies: (el, { data, synthetic, onSelect, onClose }) => {
     const answer = h('section', { class: 'card answer-card anomaly-answer', 'aria-label': 'Latest month against its history' });
     const answerText = h('div');
     const radiantHost = h('div');
@@ -172,12 +170,14 @@ export const MOUNTS = {
     });
     const head = h('div', { class: 'cal-head' },
       h('div', { class: 'cal-head-text' },
-        h('h2', {}, 'How unusual was each month ', h('span', { class: 'tag', text: 'Preview' })),
-        h('p', { class: 'sub', text: 'Number: percentile among the same month in other years. Placeholder method, not reviewed by the science team.' })),
+        h('h2', { text: 'How unusual was each month' }),
+        h('p', { class: 'sub', text: 'Number: percentile among the same month in earlier years.' })),
       legend.ramp('anomaly'), h('div', { class: 'cal-tools' }, display.el));
-    el.replaceChildren(h('div', { class: 'anomaly-view' }, answer,
+    const summary = h('div', { class: 'anomaly-row' });
+    const caveats = h('section', { class: 'card anomaly-caveats', 'aria-label': 'About these ranks', hidden: true });
+    el.replaceChildren(h('div', { class: 'anomaly-view' }, answer, summary,
       h('section', { class: 'card cal-card anomaly-card', 'aria-label': 'How unusual was each month' },
-        head, synthetic ? h('span', { class: 'chart-stamp-html', 'aria-hidden': 'true', text: 'SYNTHETIC DATA' }) : null, grid, tableHost, key)));
+        head, synthetic ? h('span', { class: 'chart-stamp-html', 'aria-hidden': 'true', text: 'SYNTHETIC DATA' }) : null, grid, tableHost, key), caveats));
     mountResults(data, (r) => anomalyDeps(r, { onSelect, onClose }), anomalyLayer, grid);
     legend.mount(key, { layer: 'anomaly', marksOnly: true });
     let rad = null;
@@ -188,18 +188,26 @@ export const MOUNTS = {
       const cells = anomalyCells(r);
       dataTable.mount(tableHost, { model: anomalyLayer.anomalyTableModel(cells, { synthetic }) });
       const a = anomalyLayer.anomalyAnswer(cells);
-      const tags = [synthetic ? h('span', { class: 'tag tag-synth', text: 'Synthetic' }) : null, h('span', { class: 'tag', text: 'Preview' })];
+      const tags = synthetic ? h('span', { class: 'tag tag-synth', text: 'Synthetic' }) : null;
       if (!a) {
         answerText.replaceChildren(h('p', { class: 'eyebrow answer-eyebrow' }, h('span', { text: 'Latest month' }), tags),
           h('p', { class: 'answer-lead', text: 'No month in this range has enough earlier years to rank it.' }));
       } else {
-        const list = h('details', { class: 'flag-list' }, h('summary', { text: a.flaggedText }),
-          h('ul', {}, a.flagged.map((c) => h('li', {}, h('button', { type: 'button', text: `${c.year}-${String(c.month).padStart(2, '0')}`, onclick: () => onSelect(c, { layer: 'anomaly' }) })))));
         answerText.replaceChildren(h('p', { class: 'eyebrow answer-eyebrow' }, h('span', { text: 'Latest month' }), tags),
           h('p', { class: 'answer-big live-headline', text: a.headline }),
           h('p', { class: 'answer-lead', text: a.sentence }),
-          a.flagged.length ? list : h('p', { class: 'hint', text: a.flaggedText }));
+          h('p', { class: 'hint', text: a.flaggedText }));
       }
+      // A period opens its first month the way a grid cell does, with that month's rank and flag.
+      const pick = ({ year, month }) => {
+        const c = cells.find((x) => x.year === year && x.month === month);
+        if (c) onSelect(c, { layer: 'anomaly' });
+      };
+      summary.replaceChildren(anomalySummary.periodsCard(anomalySummary.periodsInRange(r.anomaly, r.from, r.to), { onSelect: pick }),
+        anomalySummary.yearRankCard(anomalySummary.yearRankModel(r.yearRank, { from: r.from, to: r.to })));
+      const notes = anomalySummary.anomalyCaveats(r.caveats);
+      caveats.hidden = !notes.length;
+      caveats.replaceChildren(...anomalySummary.caveatList(notes));
       const radDeps = { cells, aoiCells: r.aoiCells, labels: 'abbr', classOf: (c) => (typeof c.rank === 'number' ? `rb rd-${anomalyLayer.divClass(c.rank)}` : 'rb rd-norank'), onSelect: (c) => onSelect(c, { layer: 'anomaly' }) };
       if (rad) rad.update(radDeps);
       else rad = radiant.mount(radiantHost, radDeps);
@@ -361,10 +369,10 @@ export const start = async (root = document.getElementById('app')) => {
     context: () => {
       const r = data.get().result;
       // Ranks ride along so the anomaly panel can color its bar strip; the counts panel ignores them.
-      return r ? { cells: preview ? anomalyCells(r) : r.cells, manifest: r.manifest, caveats: r.caveats, ratios: { R: r.harmonized.R, K: r.harmonized.K } } : {};
+      return r ? { cells: anomalyCells(r), manifest: r.manifest, caveats: r.caveats, ratios: { R: r.harmonized.R, K: r.harmonized.K } } : {};
     },
     onClose: () => { allGrids().forEach((g) => g.select?.(null)); ctx.verdict?.()?.select(null); },
-    onStep: (key) => (store.get().layer === 'anomaly' && preview ? ctx.grids[1]?.() : grid())?.step?.(key),
+    onStep: (key) => (store.get().layer === 'anomaly' ? ctx.grids[1]?.() : grid())?.step?.(key),
     onShowTable: (cell) => { detail.close(); ctx.showTable?.(cell.year); },
   });
   ctx.onSelect = (cell, opts) => {

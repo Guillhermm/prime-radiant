@@ -21,9 +21,9 @@ test('applyPatch carries bbox and dates, or null', () => {
 });
 
 test('layer switch appears only when Anomalies is enabled', () => {
-  assert.deepEqual(layerChoices(VIEWS), []);
-  const on = VIEWS.map((v) => (v.id === 'anomalies' ? { ...v, enabled: true } : v));
-  assert.deepEqual(layerChoices(on).map((c) => c.id), ['counts', 'anomaly']);
+  assert.deepEqual(layerChoices(VIEWS).map((c) => c.id), ['counts', 'anomaly']);
+  const off = VIEWS.map((v) => (v.id === 'anomalies' ? { ...v, enabled: false } : v));
+  assert.deepEqual(layerChoices(off), []);
 });
 
 import { chipModel, presetPatch } from './query-bar.js';

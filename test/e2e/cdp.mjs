@@ -98,7 +98,8 @@ export const launch = async (chromePath) => {
     };
     const keys = { Escape: 27, Enter: 13, Tab: 9, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40 };
     const press = async (key) => {
-      for (const type of ['keyDown', 'keyUp']) await cmd('Input.dispatchKeyEvent', { type, key, code: key, windowsVirtualKeyCode: keys[key] });
+      // Enter needs its text on keyDown for Chrome to activate a focused button.
+      for (const type of ['keyDown', 'keyUp']) await cmd('Input.dispatchKeyEvent', { type, key, code: key, windowsVirtualKeyCode: keys[key], ...(key === 'Enter' && type === 'keyDown' ? { text: '\r' } : {}) });
     };
     return {
       problems, downloads, evaluate, until, click, press,

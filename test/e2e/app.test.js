@@ -12,6 +12,8 @@ import { buildResult, csvMeta } from '../../web/src/view-data.js';
 import { csvExport } from '../../web/src/components/export-menu.js';
 import { imageModel, pngSize } from '../../web/src/components/export-image.js';
 import { generate } from '../../tools/mock-data.mjs';
+import { flagRuleText } from '../../core/periods.js';
+import { periodModel, periodsInRange, yearRankModel } from '../../web/src/components/anomaly-summary.js';
 import { parseHash } from '../../web/src/state.js';
 import { spanFromManifest } from '../../web/src/components/date-range.js';
 
@@ -30,7 +32,9 @@ let synthOverview;
 let synthPlaces;
 // Switches for the synthetic origin: serve overview.json or answer 404 (as production can), and hold
 // tile responses back to see the first-run placeholder.
-const synthOpts = { overview: true, tileDelay: 0 };
+// `dataVersion` relabels the synthetic manifest so the app takes it for real data.
+const synthOpts = { overview: true, tileDelay: 0, dataVersion: null };
+let synthFiles;
 
 before(async () => {
   if (skip) return;
@@ -48,10 +52,12 @@ before(async () => {
   const files = new Map([['/data/manifest.json', synth.manifest], ['/data/domain.json', synth.domain], ['/data/overview.json', synth.overview], ['/data/places.json', synth.places], ['/data/global.json', synth.global],
     ...Object.entries(synth.tiles).map(([id, t]) => [`/data/tiles/0.1/${id}.json`, t]),
     ...Object.entries(synth.coarse).map(([id, t]) => [`/data/tiles/1/${id}.json`, t])]);
+  synthFiles = files;
   synthServer = createServer(async (req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
     if (path === '/data/overview.json' && !synthOpts.overview) { res.writeHead(404, site.headers); return res.end(); }
-    const body = files.get(path);
+    let body = files.get(path);
+    if (synthOpts.dataVersion && (path === '/data/manifest.json' || path === '/data/global.json')) body = { ...body, dataVersion: synthOpts.dataVersion };
     if (!body) return serveFile(req, res);
     if (path.includes('/tiles/') && synthOpts.tileDelay) await wait(synthOpts.tileDelay);
     res.writeHead(200, { ...site.headers, 'content-type': 'application/json' });
@@ -549,7 +555,7 @@ test('?preview=1: anomaly layer with rank in the panel, then the Live view and i
     await openExample(page);
     await page.click('input[name="layer"][value="anomaly"]');
     await page.until(`location.hash.includes('layer=anomaly') && document.querySelector('.view-calendar .anomaly-layer')?.offsetParent !== null`, 'anomaly layer shown');
-    assert.equal(await page.evaluate(`document.querySelector('.view-calendar .anomaly-preview-note').textContent`), 'Synthetic data. Preview: placeholder anomaly and live numbers, not validated.');
+    assert.equal(await page.evaluate(`document.querySelector('.view-calendar .anomaly-preview-note')`), null, 'core ranks, no placeholder note');
 
     await page.evaluate(`document.querySelector('.view-calendar .anomaly-layer .cal-cell[tabindex="0"]').focus()`);
     await page.press('Enter');
@@ -708,7 +714,7 @@ test('synthetic data turns on every tab; Sensors shows R, the steps, a keyboard 
     await page.goto(`${synthBase}/web/#aoi=bbox:-58.2,-20.1,-55,-15.3&view=calendar`);
     await page.until(CALENDAR_READY, 'calendar of a box that crosses the border');
     assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('[role=tab]')].map((t) => t.dataset.view)`), ['home', 'calendar', 'sensors', 'anomalies', 'live']);
-    assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('[role=tab] .tab-tag')].map((t) => t.closest('[role=tab]').dataset.view)`), ['anomalies', 'live'], 'Sensors lost its preview tag at gate V1');
+    assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('[role=tab] .tab-tag')].map((t) => t.closest('[role=tab]').dataset.view)`), ['live'], 'Sensors and Anomalies lost their preview tags at gates V1 and V2');
     assert.match(await page.evaluate(`document.querySelector('.domain-note').textContent`), new RegExp(`Part of this area lies outside ${synthOverview.region.name}, the data domain`), 'the box reaches past the border, named from overview.json');
     await page.click('#tab-sensors');
     await page.until(`!document.querySelector('.view-sensors').hidden && document.querySelector('.sensors-chart')`, 'Sensors view');
@@ -762,7 +768,8 @@ test('synthetic Anomalies and Live: answer cards, percentile words, the anomaly 
     await openExample(page);
     await page.click('#tab-anomalies');
     await page.until(`!document.querySelector('.view-anomalies').hidden && document.querySelector('.anomaly-answer .radiant')`, 'Anomalies view');
-    assert.match(await page.evaluate(`document.querySelector('.anomaly-answer').textContent`), /Synthetic.*Preview.*\d+(st|nd|rd|th) percentile/);
+    assert.match(await page.evaluate(`document.querySelector('.anomaly-answer').textContent`), /Synthetic.*\d+(st|nd|rd|th) percentile/);
+    assert.doesNotMatch(await page.evaluate(`document.querySelector('.view-anomalies').textContent`), /Preview/, 'gate V2 validated the ranks');
     assert.equal(await page.evaluate(`document.querySelectorAll('.anomaly-answer .radiant path.rb[class*="rd-"]').length > 0 && !document.querySelector('.anomaly-answer .radiant [class*="rb-"]')`), true, 'the Radiant uses the diverging ramp');
     assert.match(await page.evaluate(`document.querySelector('.view-anomalies .cal-cell[data-row] .long')?.textContent ?? 'none'`), /^(\d+(st|nd|rd|th)|Low|High)?$/);
     assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.view-anomalies .legend .legend-item')].map((li) => li.textContent)`), ['Flagged as unusual', 'No rank (baseline too short)', 'No data'], 'the foot keeps only the marks');
@@ -786,7 +793,7 @@ test('tab switch updates the hash, back restores the previous view, disabled vie
   const plain = await open(1280);
   try {
     await openExample(plain);
-    assert.deepEqual(await plain.evaluate(`[...document.querySelectorAll('[role=tab]')].map((t) => t.dataset.view)`), ['home', 'calendar', 'sensors'], 'only enabled views get a tab, after Home');
+    assert.deepEqual(await plain.evaluate(`[...document.querySelectorAll('[role=tab]')].map((t) => t.dataset.view)`), ['home', 'calendar', 'sensors', 'anomalies'], 'only enabled views get a tab, after Home');
     assert.equal(await plain.evaluate(`document.querySelector('[role=tablist]').hidden`), false, 'Home keeps the switcher');
   } finally { await plain.close(); }
   // Ranks need years of history, which the six fixture months lack.
@@ -1125,4 +1132,56 @@ test('home Radiant without overview.json: the whole data region, captioned as su
     // The only error is the 404 for overview.json itself.
     assert.deepEqual(page.problems.filter((p) => !p.includes('404')), []);
   } finally { synthOpts.overview = true; await page.close(); }
+});
+
+test('real data: Anomalies on core ranks with no Preview, the Counts | vs median switch, flagged periods by keyboard, the year rank', { skip }, async () => {
+  synthOpts.dataVersion = 'firms-20261115';
+  const { bbox } = synthOverview.hotspots[0];
+  const [from, to] = ['2000-11', '2019-12'];
+  // The same query through core in Node: the periods and the year rank the page must show.
+  const source = createDataSource({
+    manifestUrl: 'data/manifest.json',
+    fetchFn: async (url) => ({ ok: true, json: async () => synthFiles.get(`/${url.replace(/^\.?\//, '')}`) }),
+  });
+  const { manifest, tiles, domain, global } = await source.load(bbox);
+  const result = buildResult({ bbox, from, to, manifest, tiles, domain, global });
+  const raw = periodsInRange(result.anomaly, from, to);
+  const periods = raw.map(periodModel);
+  assert.ok(periods.length > 0, 'the mock history has a flagged period to show');
+  const page = await open(1280, `#${bboxHash(bbox)}&from=${from}&to=${to}&view=calendar`, synthBase);
+  try {
+    await page.until(CALENDAR_READY, 'calendar on real data');
+    assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('[role=tab]')].map((t) => t.dataset.view)`), ['home', 'calendar', 'sensors', 'anomalies'], 'Anomalies on, Live still preview only');
+    assert.equal(await page.evaluate(`document.querySelectorAll('.tab-tag').length`), 0, 'no preview tag on any tab');
+    assert.equal(await page.evaluate(`document.querySelector('.synth-about')`), null, 'no synthetic notice');
+
+    await settle(page);
+    await page.click('input[name="layer"][value="anomaly"]');
+    await page.until(`location.hash.includes('layer=anomaly') && document.querySelector('.view-calendar .anomaly-layer')?.offsetParent !== null`, 'vs median layer shown');
+    assert.ok(await page.evaluate(`document.querySelectorAll('.view-calendar .anomaly-layer .cal-cell[class*="div-"]:not(.div-norank)').length`) > 0, 'cells colored by core rank');
+    assert.equal(await page.evaluate(`document.querySelectorAll('.view-calendar .anomaly-layer .cal-cell.is-flagged').length`), raw.reduce((n, p) => n + p.months, 0), 'flagged cells match core');
+    await page.click('input[name="layer"][value="counts"]');
+    await page.until(`location.hash.includes('layer=counts') && document.querySelector('.view-calendar .anomaly-layer').closest('[hidden]')`, 'back to counts');
+
+    await page.click('#tab-anomalies');
+    await page.until(`!document.querySelector('.view-anomalies').hidden && document.querySelector('.flag-periods')`, 'Anomalies view');
+    assert.doesNotMatch(await page.evaluate(`document.querySelector('.view-anomalies').textContent`), /Preview|placeholder/i);
+    assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.flag-periods .period')].map((b) => b.getAttribute('aria-label'))`), periods.map((p) => p.name));
+    assert.equal(await page.evaluate(`document.querySelector('.flag-rule').textContent`), flagRuleText());
+    const rank = yearRankModel(result.yearRank, { from, to });
+    assert.equal(await page.evaluate(`document.querySelector('.year-rank .v').textContent`), rank.value);
+    assert.equal(await page.evaluate(`document.querySelector('.year-rank .k').textContent`), `Rank of ${rank.year}`);
+    assert.equal(await page.evaluate(`document.querySelector('.year-rank .s').textContent`), rank.of);
+    const caveats = await page.evaluate(`[...document.querySelectorAll('.anomaly-caveats [data-caveat]')].map((li) => li.dataset.caveat)`);
+    assert.ok(['anomaly-rule', 'anomaly-small-n', 'anomaly-scaled-years', 'anomaly-sparse', 'anomaly-archive'].every((id) => caveats.includes(id)), 'core\'s anomaly caveats');
+
+    // Keyboard: a period button opens its first month in the panel, with core's flag.
+    await page.evaluate(`document.querySelector('.flag-periods .period').focus()`);
+    await page.press('Enter');
+    await page.until(`document.querySelector('.panel-host.is-open')`, 'panel opens from a period');
+    const { first } = periods[0];
+    assert.equal(await page.evaluate(`document.getElementById('panel-title').textContent`), `${['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][first.month - 1]} ${first.year}`);
+    assert.equal(await page.evaluate(`[...document.querySelectorAll('.panel .detail-row')].find((r) => r.querySelector('dt').textContent === 'Flagged')?.querySelector('dd').textContent`), 'Yes, unusual for this month');
+    assert.deepEqual(page.problems, []);
+  } finally { synthOpts.dataVersion = null; await page.close(); }
 });
