@@ -215,7 +215,7 @@ export const MOUNTS = {
     });
   },
   live: (el, ctx) => {
-    const { data, preview, synthetic, source } = ctx;
+    const { data, preview, synthetic, source, store } = ctx;
     const dot = (input) => ctx.setTabDot?.('live', input.reason === undefined && states.liveStatus(input.fetched_at).available ? `updated in the last ${states.LIVE_STALE_HOURS} hours` : null);
     if (synthetic) {
       if (!preview) return;
@@ -237,7 +237,7 @@ export const MOUNTS = {
       const input = t ? liveInput({ result: r, live, share: t.share, type0: t.type0 }) : { reason: LIVE_REASONS.unavailable, fetched_at: null };
       dot(input);
       if (ctl) ctl.update({ input });
-      else ctl = liveView.mount(el, { input });
+      else ctl = liveView.mount(el, { input, hrefFor: (e) => serializeHash({ ...store.get(), bbox: e.bbox, name: e.name, view: 'live' }) });
     };
     data.subscribe(paint);
     paint(data.get());

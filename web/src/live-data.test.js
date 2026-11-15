@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { liveInput, loadLiveTables, LIVE_REASONS, runningTotalDisclaimer } from './live-data.js';
+import { LIVE_EXAMPLES, liveInput, loadLiveTables, LIVE_REASONS, runningTotalDisclaimer } from './live-data.js';
 
 const read = (p) => JSON.parse(fs.readFileSync(new URL(p, import.meta.url), 'utf8'));
 const share = read('../../core/data/daily-share.json').share;
@@ -93,6 +93,8 @@ test('a global live build: inside the share region, month to date; outside, the 
   assert.equal(away.live.step, 'day');
   assert.ok(Math.abs(away.live.values.at(-1) - 12 * 10 * 1.2) < 1e-9, 'NOAA-20 x K, S-NPP units');
   assert.equal(away.title, 'This month so far');
+  assert.equal(away.examples, LIVE_EXAMPLES, 'outside the share region: the examples callout');
+  assert.equal(inside.examples, undefined, 'inside: no callout');
   assert.match(away.sub, /no comparison with past years yet/);
   assert.equal(away.disclaimer, 'NOAA-20 near-real-time, scaled to S-NPP, approximate. Running total since 1 Nov only. Not a monthly total, no comparison to past years. Static heat sources are masked from the archive; newer flares or eruptions can leak in.');
   // Live from 11-08 (prod, 2026-11-16): days 1 to 7 not observed, still a running total, low confidence.
@@ -107,7 +109,9 @@ test('a global live build: inside the share region, month to date; outside, the 
   // Too few days counted for a month: the reason stays.
   const t3 = { cell: Array(3).fill(0), day: [...Array(3).keys()], modis: Array(3).fill(null), viirs: Array(3).fill(null), noaa20: Array(3).fill(10) };
   const early = { ...g, fetched_at: '2026-11-11T03:30:00Z', day0: '2026-11-08', last_day: '2026-11-10', coverage: { ...g.coverage, noaa20: ['2026-11-08', '2026-11-10'] } };
-  assert.equal(liveInput({ result: result(), live: { manifest: early, domain: null, shareDomain: far, tiles: { x17y13: t3 } }, share, type0, now: new Date('2026-11-11T06:00:00Z') }).reason, LIVE_REASONS.wholeMonths('2026-11-08'));
+  const msg = liveInput({ result: result(), live: { manifest: early, domain: null, shareDomain: far, tiles: { x17y13: t3 } }, share, type0, now: new Date('2026-11-11T06:00:00Z') });
+  assert.equal(msg.reason, LIVE_REASONS.wholeMonths('2026-11-08'));
+  assert.equal(msg.examples, LIVE_EXAMPLES, 'the first-comparison message carries the examples too');
   // Live from 2026-10-01 to 11-12: October is whole and compared, November is left out.
   const long = { ...g, day0: '2026-10-01', coverage: { ...g.coverage, noaa20: ['2026-10-01', '2026-11-12'] } };
   const t = { cell: Array(43).fill(0), day: [...Array(43).keys()], modis: Array(43).fill(null), viirs: Array(43).fill(null), noaa20: Array(43).fill(10) };
@@ -117,10 +121,20 @@ test('a global live build: inside the share region, month to date; outside, the 
   assert.equal(oct.live.values.length, 1);
   assert.ok(Math.abs(oct.live.values[0] - 31 * 10 * 1.2) < 1e-9);
   assert.equal(oct.band.median.length, 1);
+  assert.equal(oct.examples, undefined, 'a whole-months comparison needs no examples');
   assert.match(oct.notes.at(-1), /^This month so far: [\d,]+ fire-cell-days through 12 Nov, not compared with past years outside Brazil\.$/);
 });
 
 test('the running-total disclaimer names one unseen day without a range', () => {
   const m = { month: '2026-11', live: { values: [null, 5, 9] }, daysNotObserved: ['2026-11-01'] };
   assert.match(runningTotalDisclaimer(m), /Running total since 2 Nov only \(1 Nov not observed\)\./);
+});
+
+test('live examples are 1 degree squares inside Brazil, named by their center', () => {
+  assert.equal(LIVE_EXAMPLES.length, 3);
+  for (const { name, bbox: [w, s, e, n] } of LIVE_EXAMPLES) {
+    assert.deepEqual([e - w, n - s], [1, 1]);
+    assert.ok(w >= -74 && e <= -34 && s >= -34 && n <= 6, `${name} lies in Brazil's extent`);
+    assert.equal(name, `${Math.abs(s + 0.5)}°S ${Math.abs(w + 0.5)}°W`);
+  }
 });

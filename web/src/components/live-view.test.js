@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fetchedLabel, liveAnswer, liveModel, liveTableModel, nextPoint, periodLabel, shortPeriod, spreadLabels } from './live-view.js';
+import { EXAMPLES_LEAD, examplesModel, fetchedLabel, liveAnswer, liveModel, liveTableModel, nextPoint, periodLabel, shortPeriod, spreadLabels } from './live-view.js';
 
 const NOW = new Date('2026-11-14T12:00:00Z');
 const input = (over = {}) => ({
@@ -190,4 +190,12 @@ test('no band: the running total alone, with no band or median paths, labels, ke
   assert.deepEqual(t.columns, ['Running total']);
   assert.deepEqual(t.rows.map((r) => r.cells), [['No data'], ['No data'], ['12'], ['30']]);
   assert.match(t.caption, /^Running total of fire-cell-days, not compared with past years\.$/);
+});
+
+test('examples callout: the lead and one real href per area, none without examples', () => {
+  const m = examplesModel([{ name: '3.5°S 44.5°W', bbox: [-45, -4, -44, -3] }], (e) => `#aoi=bbox:${e.bbox.join(',')}&view=live`);
+  assert.equal(m.lead, EXAMPLES_LEAD);
+  assert.deepEqual(m.links, [{ text: '3.5°S 44.5°W, Brazil', href: '#aoi=bbox:-45,-4,-44,-3&view=live' }]);
+  assert.equal(examplesModel(undefined, () => ''), null);
+  assert.equal(examplesModel([], () => ''), null);
 });

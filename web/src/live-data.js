@@ -20,6 +20,17 @@ const wholeMonths = (season) => {
     daysCounted: cut(season.daysCounted), daysMissing: cut(season.daysMissing) };
 };
 
+/**
+ * Brazilian 1 degree squares with live fires and a full comparison, linked from the outside-Brazil
+ * callout. Picked on production data (2026-11-16: running totals of 175, 154 and 120 fire-cell-days
+ * since 8 Nov, each with its band); named by center, as the app names a map pick.
+ */
+export const LIVE_EXAMPLES = [
+  { name: '3.5°S 44.5°W', bbox: [-45, -4, -44, -3] },
+  { name: '4.5°S 45.5°W', bbox: [-46, -5, -45, -4] },
+  { name: '2.5°S 49.5°W', bbox: [-50, -3, -49, -2] },
+];
+
 /** Live view's sentence for a reason core or the loader gives for showing no comparison. */
 export const LIVE_REASONS = {
   unavailable: 'Live data unavailable.',
@@ -76,7 +87,7 @@ export const liveInput = ({ result, live, share, type0, now = new Date() }) => {
     total = cmp.month;
     cmp.month = null;
     cmp.season = wholeMonths(cmp.season);
-    if (!cmp.season && !total) return { reason: LIVE_REASONS.wholeMonths(lm.coverage?.noaa20?.[0] ?? lm.day0), fetched_at: fetchedAt };
+    if (!cmp.season && !total) return { reason: LIVE_REASONS.wholeMonths(lm.coverage?.noaa20?.[0] ?? lm.day0), fetched_at: fetchedAt, examples: LIVE_EXAMPLES };
   }
   if (total && !cmp.season) return runningTotal({ total, cmp, fetchedAt });
   const view = cmp.month ?? cmp.season;
@@ -105,7 +116,7 @@ const runningTotal = ({ total, cmp, fetchedAt }) => {
     fetched_at: fetchedAt, live: total.live, band: null, provisional: true, preview: false,
     title: 'This month so far',
     sub: 'Running total of NOAA-20 detections in S-NPP units. Outside Brazil there is no comparison with past years yet.',
-    disclaimer: runningTotalDisclaimer(total),
+    disclaimer: runningTotalDisclaimer(total), examples: LIVE_EXAMPLES,
     lowConfidence: cmp.lowConfidence === true, lowConfidenceReasons: cmp.lowConfidenceReasons, notes,
   };
 };

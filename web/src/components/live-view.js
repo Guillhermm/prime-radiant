@@ -4,6 +4,7 @@ import { h } from './h.js';
 import { icon } from './icons.js';
 import { segmented } from './segmented.js';
 import { liveStatus, mount as mountStates } from './states.js';
+import { serializeHash } from '../state.js';
 
 /**
  * Input contract (built by web/src/live-data.js from core/live.js; preview-stubs.js for synthetic data).
@@ -23,6 +24,7 @@ import { liveStatus, mount as mountStates } from './states.js';
  *     preview?: boolean,                // default true: tags the statistics Preview (false once gate V3 passed)
  *     band may be null: the live line alone, with no comparison (outside the share region).
  *     disclaimer?: string,              // shown in the chart card, above the chart
+ *     examples?: {name, bbox}[],        // areas with a full comparison, linked from a callout
  *     reason?: string,                  // instead of live and band: why there is no comparison
  *     title?, sub?: string, lowConfidence?: boolean, lowConfidenceReasons?: string[], notes?: string[],
  *   }
@@ -262,6 +264,19 @@ const s = (tag, attrs = {}, ...kids) => {
 };
 const text = (t, attrs, tag = 'text') => { const el = s(tag, attrs); el.textContent = t; return el; };
 
+export const EXAMPLES_LEAD = 'Live comparisons are complete in Brazil today. This is how it will look here once a whole month of live data is in.';
+
+/** The examples callout: each link is the app's own hash for that area on the Live view. */
+export const examplesModel = (examples, hrefFor) => (examples?.length
+  ? { lead: EXAMPLES_LEAD, links: examples.map((e) => ({ text: `${e.name}, Brazil`, href: hrefFor(e) })) }
+  : null);
+
+const defaultHref = (e) => serializeHash({ bbox: e.bbox, name: e.name, from: null, to: null, view: 'live', layer: 'counts' });
+
+const examplesEl = (m) => (m ? h('aside', { class: 'live-examples', 'aria-label': 'Live examples in Brazil' }, icon('info'),
+  h('div', {}, h('p', { text: m.lead }), h('p', { class: 'live-examples-sub', text: 'See a full live chart:' }),
+    h('ul', {}, m.links.map((l) => h('li', {}, h('a', { href: l.href, text: l.text })))))) : null);
+
 const tagEl = (t, cls = '') => h('span', { class: `tag ${cls}`.trim(), text: t });
 
 /**
@@ -277,10 +292,12 @@ export const mount = (container, deps = {}) => {
   const synthetic = deps.synthetic === true;
   const paint = ({ input, now }) => {
     const m = liveModel({ ...input, now, width });
+    const callout = examplesEl(examplesModel(input.examples, deps.hrefFor ?? defaultHref));
     if (!m.available) {
       const box = h('div', { class: 'live-view' });
       container.replaceChildren(box);
       mountStates(box, {}).show(m.state);
+      if (callout) box.append(callout);
       return;
     }
     const a = liveAnswer(input);
@@ -353,7 +370,7 @@ export const mount = (container, deps = {}) => {
       input.disclaimer ? h('p', { class: 'live-disclaimer' }, icon('info'), h('span', { text: input.disclaimer })) : null,
       chartBox,
       tableHost, (input.notes ?? []).map((t) => h('p', { class: 'hint', text: t })), h('p', { class: 'hint', text: m.note }));
-    container.replaceChildren(h('div', { class: 'live-view' }, answer, card));
+    container.replaceChildren(h('div', { class: 'live-view' }, callout, answer, card));
   };
   let current = { input: deps.input, now: deps.now ?? new Date() };
   paint(current);

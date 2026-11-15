@@ -1706,6 +1706,20 @@ test('real data, a global live build outside the share region: the running total
     assert.deepEqual(m.labels, ['Running total']);
     assert.equal(m.delta, null, 'no percent against past years');
     assert.equal(m.cols.at(-1), 'Running total');
+    // The callout links Brazilian areas with a full comparison, as real hrefs to the Live view.
+    const ex = await page.evaluate(`(() => { const c = document.querySelector('.view-live .live-examples'); return c && { lead: c.querySelector('p').textContent, links: [...c.querySelectorAll('a')].map((a) => [a.textContent, a.getAttribute('href')]) }; })()`);
+    assert.equal(ex.lead, 'Live comparisons are complete in Brazil today. This is how it will look here once a whole month of live data is in.');
+    assert.equal(ex.links.length, 3);
+    for (const [text, href] of ex.links) {
+      assert.match(text, /^\d+\.5°S \d+\.5°W, Brazil$/);
+      assert.match(href, /^#aoi=bbox:-?\d+,-?\d+,-?\d+,-?\d+&name=.+&from=2000-11&to=2019-12&view=live&layer=counts$/, 'keeps the period, stays on Live');
+    }
+    assert.ok(await page.evaluate(`document.querySelector('.view-live .live-examples a').getBoundingClientRect().height`) >= 44, 'target at least 2.75rem');
+    await page.evaluate(`document.querySelector('.view-live .live-examples a').focus()`);
+    await page.press('Enter');
+    await page.until(`location.hash.startsWith(${JSON.stringify(ex.links[0][1].split('&')[0])})`, 'the link moves the area');
+    assert.match(await page.evaluate(`location.hash`), /view=live/);
+    await page.until(`document.querySelector('.view-live') && !document.querySelector('.view-live').hidden`, 'still on Live');
     assert.deepEqual(page.problems, []);
   } finally {
     for (const [k] of added) synthFiles.delete(k);
