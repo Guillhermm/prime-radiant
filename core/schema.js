@@ -315,7 +315,10 @@ export function validateOverview(o) {
     o.hotspots.forEach((h, i) => {
       const b = h?.bbox;
       const ok = isObj(h) && Array.isArray(b) && b.length === 4 && isW(b[0]) && isS(b[1]) && b[2] === b[0] + 1 && b[3] === b[1] + 1 && isCount(h.value) && h.value > 0;
+      const p = h?.place;
+      const placeOk = p === undefined || (isObj(p) && typeof p.country === 'string' && p.country !== '' && (p.state === null || (typeof p.state === 'string' && p.state !== '')));
       if (!ok) e.push(err('BAD_HOTSPOT', `hotspots[${i}]`, 'a hotspot must be {bbox: one 1 deg cell, value > 0}'));
+      else if (!placeOk) e.push(err('BAD_PLACE', `hotspots[${i}].place`, 'place must be {country, state} with state a name or null'));
       else if (h.value > prev) e.push(err('HOTSPOTS_NOT_RANKED', `hotspots[${i}]`, 'hotspots must be sorted by value, highest first'));
       if (ok) prev = h.value;
     });

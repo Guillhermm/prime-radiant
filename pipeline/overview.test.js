@@ -58,6 +58,14 @@ test('region: the domain file names it, and the overview carries it for the pick
   assert.deepEqual(validateOverview({ ...o, region: { id: 'r1' } }).map((e) => e.code), ['BAD_FIELD']);
 });
 
+test('places: a hotspot carries the name the lookup gives, and none when it gives null', () => {
+  const o = buildOverview(manifest(), coarse, null, (w) => (w === -56 ? { country: 'Land', state: 'North' } : null));
+  assert.deepEqual(o.hotspots[0].place, { country: 'Land', state: 'North' });
+  assert.equal('place' in o.hotspots[1], false);
+  assert.deepEqual(validateOverview(o), []);
+  assert.deepEqual(validateOverview({ ...o, hotspots: [{ ...o.hotspots[0], place: { country: '' } }] }).map((e) => e.code), ['BAD_PLACE']);
+});
+
 test('buildOverview returns null when no VIIRS sensor covers a full year', () => {
   assert.equal(buildOverview(manifest({ last_month: '2024-11', coverage: { viirs: ['2024-01', '2024-11'], noaa20: null } }), coarse), null);
 });
