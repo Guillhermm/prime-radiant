@@ -37,6 +37,10 @@ const DEFS = [
   ['anomaly-archive', 'anomaly', 'Rank is relative to this archive.',
     'The rank is relative to this archive and its years, not a standard climatology; another baseline period would rank months differently. MODIS x R months after 2021 (orbit drift) are estimates.'],
   // flag explanations
+  ['viirs-era-record', 'anomaly', 'Record since 2012',
+    'Highest or near-highest for this month in the VIIRS era (2012 on); not a record against 2002-2011, which are scaled MODIS estimates.'],
+  ['unconfirmed', 'flag', 'Not checked against a single sensor',
+    'The month ranks high against the harmonized history, but the raw MODIS and VIIRS series were not supplied, so the flag could not be confirmed. Rank shown, no flag.'],
   ['cross-era', 'flag', 'Cross-era, not flagged.',
     'The month ranks high against the harmonized history, but neither the MODIS record nor the VIIRS record alone confirms it, so the rank may come from mixing the two eras. Rank shown, no flag.'],
   ['sparse-baseline', 'flag', 'Sparse baseline.',
@@ -68,7 +72,7 @@ export const NO_GATES = Object.freeze(Object.fromEntries(CAVEAT_IDS.map((id) => 
  * passed except near-real-time data (gate V3) and the anomaly items (gate V2 re-check).
  */
 const PRELIMINARY = new Set(['nrt-unfiltered', 'anomaly-rule', 'anomaly-small-n', 'anomaly-scaled-years',
-  'anomaly-sparse', 'anomaly-archive', 'cross-era', 'sparse-baseline', 'viirs-outage-filled']);
+  'anomaly-sparse', 'anomaly-archive', 'cross-era', 'unconfirmed', 'viirs-era-record', 'sparse-baseline', 'viirs-outage-filled']);
 export const DEFAULT_GATES = Object.freeze(Object.fromEntries(
   CAVEAT_IDS.map((id) => [id, PRELIMINARY.has(id) ? 'preliminary' : 'passed'])));
 
@@ -95,7 +99,7 @@ export function catalog(gates = DEFAULT_GATES) {
  * 2 when any month is estimated; 6 when R or K came from a wider level (low confidence at the
  * AOI itself is the `low-confidence` flag item);
  * 7 only when opts.live; the five anomaly caveats when `result.anomaly` (an anomaly Series) is
- * present, plus `cross-era` / `sparse-baseline` when its labels carry them. Flag items appear for each flag on the series, plus opts.flags.
+ * present, plus `cross-era` / `unconfirmed` / `viirs-era-record` / `sparse-baseline` when its labels carry them. Flag items appear for each flag on the series, plus opts.flags.
  * @param {{series: {flags?: {flag: string}[]}, anomaly?: {labels?: string[][]}, R?: {level?: string}|null, K?: {level?: string}|null}} result
  * @param {{gates?: Record<string, string>, live?: boolean, flags?: string[]}} [opts]
  * @returns {Caveat[]}

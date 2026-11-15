@@ -164,7 +164,12 @@ months, NOAA-20 for NOAA-20 x K months (`core/partial.js`).
   also holds on the raw MODIS series alone (2002-08 on, months partial for MODIS excluded)
   or on the raw VIIRS series alone (months partial for S-NPP excluded, n >= 9). Otherwise
   the month is labeled `cross-era`: rank kept, flag false. Without the raw series
-  (`opts.sensors`) nothing can be confirmed, so every candidate is labeled `cross-era`.
+  (`opts.sensors`) nothing can be confirmed, so every candidate is labeled `unconfirmed`.
+- **VIIRS-era record**: a month that is not flagged but passes the same p rule on the VIIRS
+  series alone (n >= 9; S-NPP partial months excluded, except outage months filled from
+  NOAA-20 x K, `viirs-outage-filled`, which count with their filled value) carries the non-flag label
+  `viirs-era-record` ("Record since 2012"): a record or near-record of the VIIRS era, not
+  against 2002-2011, which are scaled MODIS estimates.
 - **Sparse baseline (A5)**: a flag whose earlier pool has median 0 carries the label
   `sparse-baseline` (one fire-cell-day after nine zero years flags).
 - All-zero history: 0 gives rank 0.5 (not flagged); any value above 0 gives rank 1.
@@ -175,9 +180,11 @@ months, NOAA-20 for NOAA-20 x K months (`core/partial.js`).
   (1 = most; ties share the better rank), else it shows `rankRange` [best, worst] with its
   reason. A year is excluded only for a null month, a Terra-only month, or a partial month
   with no acquisition days.
+- `confirmedBy: ('modis'|'viirs'|null)[]` names the single sensor that confirmed each flag
+  (MODIS checked first). The same filled months count in the VIIRS pool of the A3 check.
 - Labels travel in `labels: string[][]` parallel to `values` on the anomaly Series;
   `values` and `flags` keep the contract of the web layer. Caveats: `anomaly-*` items and
-  the flags `cross-era`, `sparse-baseline` in `core/caveats.js`.
+  the labels `cross-era`, `unconfirmed`, `viirs-era-record`, `sparse-baseline` in `core/caveats.js`.
 - Implementation: `core/anomaly.js` (`anomaly`, `yearRank`, `flagRule`); KPIs in
   `kpis().anomaly` (`flagged`, `crossEra`, `yearRank` with `rankRange`, `reason`).
 

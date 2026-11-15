@@ -58,7 +58,7 @@ const pickRatio = (r) => (r ? {
  * sources of the months with a value: 'MODIS x R', 'S-NPP', 'NOAA-20 x K'. `flags` counts the
  * months in range carrying each reason flag.
  *
- * `anomaly` (anomaly.js): `flagged` months in range (rule and single-sensor confirmation, anomaly.js; pass `range.sensors` = {modis, viirs} raw Series, else none confirm), `crossEra` months in range that pass the rule but not the confirmation, `yearRank` {year, rank, n} of the latest complete
+ * `anomaly` (anomaly.js): `flagged` months in range (rule and single-sensor confirmation, anomaly.js; pass `range.sensors` = {modis, viirs} raw Series, else none confirm), `crossEra` months in range that pass the rule but not the confirmation, `unconfirmed` the same without raw sensors, `viirsEraRecord` months passing the rule on VIIRS alone but not flagged, `yearRank` {year, rank, n} of the latest complete
  * year (null without one; `rank` is null with `rankRange` [best, worst] and `reason` when observed and scaled totals disagree), `excludedYears` [{year, reason}] the years left out of the ranking, `latest` {month, rank, flagged} of the latest archived month in range.
  *
  * @param {import('./index.js').Harmonized} harmonized result of harmonize()
@@ -108,6 +108,8 @@ export function kpis(harmonized, base, manifest, { from, to, sensors } = {}) {
     anomaly: {
       flagged: idx.filter((i) => an.flags[i]).length,
       crossEra: idx.filter((i) => an.labels[i].includes('cross-era')).length,
+      unconfirmed: idx.filter((i) => an.labels[i].includes('unconfirmed')).length,
+      viirsEraRecord: idx.filter((i) => an.labels[i].includes('viirs-era-record')).length,
       yearRank: last ? { year: last.year, rank: last.rank, ...(last.rankRange ? { rankRange: last.rankRange, reason: last.reason } : {}), n: yr.n } : null,
       excludedYears: yr.excluded, // {year, reason}: why a year has no rank (gate V2 reviews the rule)
       latest: li >= 0 ? { month: months[li], rank: an.values[li], flagged: an.flags[li] } : null,

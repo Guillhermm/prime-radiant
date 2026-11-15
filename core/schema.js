@@ -171,6 +171,11 @@ export function validateSeries(s, { manifest } = {}) {
     && (s.flags.length !== s.values.length || s.flags.some((f) => typeof f !== 'boolean'))) {
     e.push(err('BAD_FLAGS', 'flags', 'anomaly flags must be booleans, one per value'));
   }
+  if (s.id === 'anomaly' && s.confirmedBy !== undefined && Array.isArray(s.values)
+    && (!Array.isArray(s.confirmedBy) || s.confirmedBy.length !== s.values.length
+      || s.confirmedBy.some((c) => c !== null && c !== 'modis' && c !== 'viirs'))) {
+    e.push(err('BAD_CONFIRMED_BY', 'confirmedBy', "anomaly confirmedBy must be 'modis', 'viirs' or null per value"));
+  }
   if (s.id === 'anomaly' && s.labels !== undefined && Array.isArray(s.values)
     && (!Array.isArray(s.labels) || s.labels.length !== s.values.length
       || s.labels.some((l) => !Array.isArray(l) || l.some((t) => typeof t !== 'string')))) {

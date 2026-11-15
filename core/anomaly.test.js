@@ -79,13 +79,16 @@ test('cross-era: passes the rule on the harmonized series only -> rank kept, fla
   // no raw sensors given: nothing can be confirmed, the old call labels instead of flagging
   const old = anomaly(h, man());
   assert.equal(old.flags[at(10)], false);
-  assert.deepEqual(old.labels[at(10)], ['cross-era']);
+  assert.deepEqual(old.labels[at(10)], ['unconfirmed']);
   // either sensor alone is enough: VIIRS flat but MODIS also sees the record
   const modisHigh = anomaly(h, man(), { sensors: { modis: { ...h.series, id: 'modis' }, viirs: { ...flat, id: 'viirs' } } });
   assert.equal(modisHigh.flags[at(10)], true);
+  assert.equal(modisHigh.confirmedBy[at(10)], 'modis');
   assert.deepEqual(modisHigh.labels[at(10)], []);
   const viirsHigh = anomaly(h, man(), { sensors: { modis: { ...flat, id: 'modis' }, viirs: { ...h.series, id: 'viirs' } } });
   assert.equal(viirsHigh.flags[at(10)], true);
+  assert.equal(viirsHigh.confirmedBy[at(10)], 'viirs');
+  assert.equal(none.confirmedBy.every((c) => c === null), true);
 });
 
 test('a sensor month partial or null for that sensor is not usable: pool under 9, no confirmation', () => {
@@ -96,6 +99,27 @@ test('a sensor month partial or null for that sensor is not usable: pool under 9
   const a = anomaly(h, man({ modis: ['2015-01'] }), { sensors: { modis: s.modis, viirs: viirsNull } });
   assert.equal(a.flags[at(9)], false); // MODIS pool 8 (partial 2015-01), VIIRS pool 8 (null 2016-01)
   assert.deepEqual(a.labels[at(9)], ['cross-era']);
+});
+
+test('viirs-era-record: not flagged on the harmonized series but VIIRS alone passes the rule', () => {
+  // harmonized (MODIS x R before 2012-like) history holds a big value; VIIRS history is 1..9, then 10
+  const h = jan(2013, [50, 2, 3, 4, 5, 6, 7, 8, 9, 10]); // 2022 = 10: pool has 50, so p = 2/10, no flag
+  const v = jan(2013, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]).series;
+  const a = anomaly(h, man(), { sensors: { modis: { ...h.series, id: 'modis', values: h.series.values.map(() => 0) }, viirs: { ...v, id: 'viirs' } } });
+  assert.equal(a.flags[at(9)], false);
+  assert.deepEqual(a.labels[at(9)], ['viirs-era-record']);
+  assert.equal(a.confirmedBy[at(9)], null);
+  // a flagged month never carries it
+  const f = jan(2013, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  assert.deepEqual(anomaly(f, man(), { sensors: same(f) }).labels[at(9)], []);
+  // VIIRS-partial months drop out of the pool (n = 8, no record) unless they were filled by NOAA-20 x K
+  const m = man({ viirs: ['2016-01'] });
+  const hp = jan(2013, [50, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  const raw = { modis: { ...hp.series, id: 'modis', values: hp.series.values.map(() => 0) }, viirs: { ...v, id: 'viirs', values: v.values.map((x, i) => (i === at(3) ? 0 : x)) } };
+  assert.deepEqual(anomaly(hp, m, { sensors: raw }).labels[at(9)], []);
+  hp.series.flags = [{ month: '2016-01', flag: 'viirs-outage-filled' }, { month: '2016-01', flag: 'estimated' }];
+  hp.series.values[at(3)] = 4;
+  assert.deepEqual(anomaly(hp, m, { sensors: raw }).labels[at(9)], ['viirs-era-record']);
 });
 
 test('sparse-baseline: a flag over a median-0 pool carries the label', () => {
@@ -231,7 +255,8 @@ test('kpis carries flagged count, cross-era count, year rank and latest rank', (
   assert.equal(r.anomaly.flagged, 0);
   const noSensors = kpis(h, null, { last_month: '2023-12' });
   assert.equal(noSensors.anomaly.flagged, 0);
-  assert.equal(noSensors.anomaly.crossEra, 24);
+  assert.equal(noSensors.anomaly.crossEra, 0);
+  assert.equal(noSensors.anomaly.unconfirmed, 24);
   assert.equal(noSensors.anomaly.latest.flagged, false);
 });
 

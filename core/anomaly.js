@@ -5,6 +5,8 @@ import { partialMonthsFor, isPartial, supplier } from './partial.js';
 export const ANOMALY_METHOD = { id: 'percentile-rank', version: 2 };
 const UNIT = 'fire-cell-days';
 export const CROSS_ERA = 'cross-era';
+export const UNCONFIRMED = 'unconfirmed';
+export const VIIRS_ERA_RECORD = 'viirs-era-record';
 export const SPARSE_BASELINE = 'sparse-baseline';
 const EPS = 1e-9;
 
@@ -34,12 +36,15 @@ export function flagRule(value, pool, { minYears = 9, maxP = 0.1 } = {}) {
  * Does the flag rule hold on one raw sensor series alone (gate V2 A3)? The month and its
  * earlier-year pool must be usable for that sensor: a value, not partial for it (isPartial), and
  * after the Terra-only era. MODIS therefore counts from 2002-08, S-NPP from 2012-02.
+ * `filled` maps S-NPP outage months filled from NOAA-20 x K (flag viirs-outage-filled) to their
+ * harmonized value: for the VIIRS pool they count instead of being dropped as partial.
  */
-function holdsOnSensor(series, sensor, ym, manifest, rule) {
+function holdsOnSensor(series, sensor, ym, manifest, rule, filled = new Map()) {
   if (!series) return false;
   const year = Number(ym.slice(0, 4));
   const first = series.start;
   const usable = (m) => {
+    if (sensor === 'viirs' && filled.has(m)) return filled.get(m);
     if (m < first || m <= LAST_EXCLUDED_ERA_MONTH || isPartial(m, sensor, manifest)) return null;
     const v = series.values[monthDiff(first, m)];
     return v === undefined || v === null ? null : v;
@@ -68,11 +73,16 @@ const monthDiff = (a, b) => (Number(b.slice(0, 4)) - Number(a.slice(0, 4))) * 12
  * p <= maxP, default 0.1, n >= minYears) AND on the raw MODIS series alone or the raw VIIRS series
  * alone (`opts.sensors = {modis, viirs}`, the Series from seriesForAoi). A month that passes the
  * rule but not the confirmation is labeled `cross-era` (rank kept, flag false). Without
- * `opts.sensors` no confirmation is possible and every rule-passing month is labeled `cross-era`:
- * the honest default is to claim no flag we could not check.
+ * `opts.sensors` no confirmation is possible and every rule-passing month is labeled `unconfirmed`:
+ * the honest default is to claim no flag we could not check. A month that is not flagged but passes
+ * the rule on VIIRS alone (VIIRS's own partial months excluded) is labeled `viirs-era-record`: a
+ * record or near-record of the VIIRS era only, not against the scaled MODIS years before 2012.
  *
- * `labels[i]` is a string[] parallel to `values`: `cross-era`, or `sparse-baseline` on a flag whose
+ * `labels[i]` is a string[] parallel to `values`: `cross-era`, `unconfirmed`, `viirs-era-record`, or `sparse-baseline` on a flag whose
  * earlier pool has median 0 (A5). Empty array when none.
+ *
+ * `confirmedBy[i]` is 'modis' or 'viirs' (MODIS checked first) for a flagged month, else null.
+ * The VIIRS-alone pool counts S-NPP outage months filled from NOAA-20 x K (viirs-outage-filled).
  *
  * @param {import('./index.js').Harmonized} harmonized result of harmonize()
  * @param {object} manifest validated manifest (partial_months)
@@ -85,7 +95,9 @@ export function anomaly(harmonized, manifest, { minYears = 9, maxP = 0.1, sensor
   const base = baseline(series, { minYears, partialMonths: [...excluded] });
   const byYm = new Map(series.values.map((v, i) => [addMonths(series.start, i), v]));
   const rule = { minYears, maxP };
-  const values = [], flags = [], labels = [];
+  const filledMonths = new Set((series.flags ?? []).filter((f) => f.flag === 'viirs-outage-filled').map((f) => f.month));
+  const filled = new Map([...filledMonths].map((m) => [m, byYm.get(m)]).filter(([, v]) => v !== null && v !== undefined));
+  const values = [], flags = [], labels = [], confirmedBy = [];
   series.values.forEach((value, i) => {
     const ym = addMonths(series.start, i);
     const used = base.yearsUsed[i];
@@ -93,6 +105,7 @@ export function anomaly(harmonized, manifest, { minYears = 9, maxP = 0.1, sensor
       values.push(null);
       flags.push(false);
       labels.push([]);
+      confirmedBy.push(null);
       return;
     }
     const pool = used.map((y) => byYm.get(`${y}-${ym.slice(5)}`));
@@ -101,16 +114,20 @@ export function anomaly(harmonized, manifest, { minYears = 9, maxP = 0.1, sensor
     values.push((below + equal / 2) / pool.length);
     const tags = [];
     let flag = false;
+    let by = null;
+    const viirsHolds = holdsOnSensor(sensors?.viirs, 'viirs', ym, manifest, rule, filled);
     if (flagRule(value, pool, rule)) {
-      flag = holdsOnSensor(sensors?.modis, 'modis', ym, manifest, rule)
-        || holdsOnSensor(sensors?.viirs, 'viirs', ym, manifest, rule);
-      if (!flag) tags.push(CROSS_ERA);
-      else if (median(pool) === 0) tags.push(SPARSE_BASELINE);
+      by = holdsOnSensor(sensors?.modis, 'modis', ym, manifest, rule) ? 'modis' : viirsHolds ? 'viirs' : null;
+      flag = by !== null;
+      if (flag) { if (median(pool) === 0) tags.push(SPARSE_BASELINE); }
+      else tags.push(sensors ? CROSS_ERA : UNCONFIRMED);
     }
+    if (!flag && viirsHolds) tags.push(VIIRS_ERA_RECORD);
     flags.push(flag);
     labels.push(tags);
+    confirmedBy.push(by);
   });
-  return { id: 'anomaly', unit: UNIT, start: series.start, values, flags, labels, method: ANOMALY_METHOD, comparable: true };
+  return { id: 'anomaly', unit: UNIT, start: series.start, values, flags, labels, confirmedBy, method: ANOMALY_METHOD, comparable: true };
 }
 
 const daysIn = (ym) => new Date(Date.UTC(Number(ym.slice(0, 4)), Number(ym.slice(5)), 0)).getUTCDate();

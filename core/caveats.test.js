@@ -6,9 +6,9 @@ test('catalog: nine caveats plus anomaly caveats and flags, short and long text,
   const all = catalog();
   assert.equal(all.filter((c) => c.kind === 'caveat').length, 9);
   assert.deepEqual(all.filter((c) => c.kind === 'flag').map((c) => c.id),
-    ['cross-era', 'sparse-baseline', 'estimated', 'viirs-outage-filled', 'viirs-not-archived', 'terra-only',
+    ['unconfirmed', 'cross-era', 'sparse-baseline', 'estimated', 'viirs-outage-filled', 'viirs-not-archived', 'terra-only',
       'low-confidence', 'partial-domain', 'outside-domain']);
-  assert.equal(all.filter((c) => c.kind === 'anomaly').length, 5);
+  assert.equal(all.filter((c) => c.kind === 'anomaly').length, 6);
   assert.equal(new Set(CAVEAT_IDS).size, CAVEAT_IDS.length);
   for (const c of all) assert.ok(c.short && c.long && c.long.length >= c.short.length, c.id);
 });
@@ -16,7 +16,7 @@ test('catalog: nine caveats plus anomaly caveats and flags, short and long text,
 test('preliminary: after V1 only nrt-unfiltered and the V2 anomaly items stay preliminary', () => {
   assert.deepEqual(catalog().filter((c) => c.preliminary).map((c) => c.id),
     ['nrt-unfiltered', 'anomaly-rule', 'anomaly-small-n', 'anomaly-scaled-years', 'anomaly-sparse', 'anomaly-archive',
-      'cross-era', 'sparse-baseline', 'viirs-outage-filled']);
+      'viirs-era-record', 'unconfirmed', 'cross-era', 'sparse-baseline', 'viirs-outage-filled']);
   assert.equal(DEFAULT_GATES['not-validated'], 'passed');
 });
 
