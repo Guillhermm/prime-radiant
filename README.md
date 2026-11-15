@@ -25,7 +25,7 @@ Requires Node.js 22 or later. Locally the app reads the gitignored `data/`. Fill
 npm run mock && npm run serve
 ```
 
-Then open `/web/` on the address `serve` prints. `/web/?fixtures=1` loads the tiny test fixtures instead.
+Then open the address `serve` prints (the app is served at `/`, as in production). `/?fixtures=1` loads the tiny test fixtures instead.
 
 ## Run the tests
 

@@ -9,11 +9,14 @@ const csp = () => Object.fromEntries(
   header('Content-Security-Policy').split(';').map((d) => d.trim().split(/\s+/)).map(([k, ...v]) => [k, v]),
 );
 
-test('serves the repo root as static output with no build, / redirects to /web/, /data/ proxies the R2 bucket', () => {
+test('serves the repo root as static output with no build, / is served from web/, /web/ URLs redirect to /, /data/ proxies the R2 bucket', () => {
   assert.equal(config.outputDirectory, '.');
-  assert.deepEqual(config.redirects, [{ source: '/', destination: '/web/', permanent: false }]);
+  assert.ok(config.redirects.every((r) => r.source.startsWith('/web') && !r.permanent), 'only temporary redirects from the old /web/ URLs');
+  assert.ok(!config.redirects.some((r) => r.source.includes('sw')), '/web/sw.js must never redirect: it unregisters the old worker');
   assert.equal(config.buildCommand, null, 'no synthetic build: production data comes from R2');
-  assert.deepEqual(config.rewrites, [{ source: '/data/:path*', destination: 'https://data.primeradiantdata.com/:path*' }]);
+  assert.deepEqual(config.rewrites.at(-1), { source: '/data/:path*', destination: 'https://data.primeradiantdata.com/:path*' });
+  assert.deepEqual(config.rewrites.find((r) => r.source === '/'), { source: '/', destination: '/web/index.html' });
+  assert.deepEqual(config.rewrites.find((r) => r.source === '/sw.js'), { source: '/sw.js', destination: '/web/worker.js' });
   assert.equal(config.framework, null);
 });
 
@@ -78,9 +81,10 @@ test('Permissions-Policy also disables motion sensors and FLoC', () => {
   for (const f of ['payment', 'usb', 'accelerometer', 'gyroscope', 'magnetometer', 'interest-cohort']) assert.match(header('Permissions-Policy'), new RegExp(`${f}=\\(\\)`));
 });
 
-test('the service worker needs no Service-Worker-Allowed: it lives at /web/sw.js, the scope it controls', () => {
+test('the service worker is served at /sw.js, scope /, so it needs no Service-Worker-Allowed; the legacy /web/sw.js file unregisters old installs', () => {
   assert.equal(header('Service-Worker-Allowed'), undefined);
-  assert.ok(readFileSync(new URL('../../web/sw.js', import.meta.url), 'utf8').length > 0);
+  assert.match(readFileSync(new URL('../../web/worker.js', import.meta.url), 'utf8'), /routeFor/);
+  assert.match(readFileSync(new URL('../../web/sw.js', import.meta.url), 'utf8'), /unregister\(\)/);
 });
 
 test('.vercelignore deploys only web/, core/ and api/: a data/ folder would shadow the /data/ rewrite', () => {

@@ -13,6 +13,8 @@ import { csvExport } from '../../web/src/components/export-menu.js';
 import { imageModel, pngSize } from '../../web/src/components/export-image.js';
 import { generate } from '../../tools/mock-data.mjs';
 import { flagRuleText } from '../../core/periods.js';
+import { cellCenter } from '../../core/grid.js';
+import { tilesForBbox } from '../../core/tiles.js';
 import { periodModel, periodsInRange, yearRankModel } from '../../web/src/components/anomaly-summary.js';
 import { parseHash } from '../../web/src/state.js';
 import { spanFromManifest } from '../../web/src/components/date-range.js';
@@ -79,7 +81,7 @@ after(async () => {
 
 const open = async (width, query = '?fixtures=1', origin = base) => {
   const page = await browser.newPage({ width, height: width < 600 ? 860 : 900, downloadDir });
-  await page.goto(`${origin}/web/${query}`);
+  await page.goto(`${origin}/${query}`);
   return page;
 };
 
@@ -123,10 +125,11 @@ const applyFromMarch = async (page) => {
   await page.until(`document.querySelectorAll('.view-calendar .calendar:not(.anomaly-layer) .cal-cell[data-row]').length === 4`, 'calendar starts at March 2023');
 };
 
-test('the site root redirects to the app and the default load shows the first-run screen', { skip }, async () => {
+test('the site root serves the app, old /web/ URLs land on /, and the default load shows the first-run screen', { skip }, async () => {
   const res = await fetch(`${base}/`, { redirect: 'manual' });
-  assert.equal(res.status, 307);
-  assert.equal(res.headers.get('location'), '/web/');
+  assert.equal(res.status, 200);
+  const old = await fetch(`${base}/web/?fixtures=1`, { redirect: 'manual' });
+  assert.equal(old.headers.get('location'), '/?fixtures=1');
   const page = await open(1280);
   try {
     await page.until(`document.querySelector('${EXAMPLE}')`, 'example cards');
@@ -310,7 +313,7 @@ test('synthetic banner: closes with an animation, a persistent tag stays and ope
     await page.until(`document.querySelector('#synth-about').matches(':popover-open')`, 'About from the tag');
     assert.match(await page.evaluate(`document.querySelector('#synth-about').textContent`), /not real fire detections/);
     await page.press('Escape');
-    await page.goto(`${synthBase}/web/`);
+    await page.goto(`${synthBase}/`);
     await page.until(visible('.synth-tag'), 'tag after reload');
     assert.equal(await page.evaluate(visible('.synth-band')), false, 'banner stays closed in this session');
     assert.deepEqual(page.problems, []);
@@ -381,7 +384,7 @@ test('share menu on the area chip: arrows move, Escape returns focus, copy repor
 test('without the Popover API, About and the share menu still close on Escape and return focus', { skip }, async () => {
   const page = await browser.newPage({ width: 1280, height: 900, downloadDir });
   await page.addInitScript('for (const k of ["showPopover", "hidePopover", "togglePopover"]) delete HTMLElement.prototype[k];');
-  await page.goto(`${synthBase}/web/`);
+  await page.goto(`${synthBase}/`);
   const shown = (sel) => `(() => { const e = document.querySelector('${sel}'); return Boolean(e && !e.hidden && e.getClientRects().length); })()`;
   try {
     await page.until(`document.querySelector('.synth-about')`, 'band');
@@ -409,7 +412,7 @@ test('without the Popover API, About and the share menu still close on Escape an
 test('iOS install hint: a permanent footer line, and a card once after the first area loads, never on first run', { skip }, async () => {
   const page = await browser.newPage({ width: 400, height: 860, downloadDir });
   await page.emulateDevice({ userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1', platform: 'iPhone', maxTouchPoints: 5 });
-  await page.goto(`${base}/web/?fixtures=1`);
+  await page.goto(`${base}/?fixtures=1`);
   try {
     await page.until(`document.querySelector('.site-footer .ios-hint')`, 'footer line');
     assert.match(await page.evaluate(`document.querySelector('.site-footer .ios-hint').textContent`), /Share, then Add to Home Screen/);
@@ -424,7 +427,7 @@ test('iOS install hint: a permanent footer line, and a card once after the first
     await page.click('.ios-card .ios-hint-close');
     await page.until(`!document.querySelector('.ios-card')`, 'closed');
     await page.evaluate(`window.__stale = true`);
-    await page.goto(`${base}/web/?fixtures=1`);
+    await page.goto(`${base}/?fixtures=1`);
     await page.until(`!window.__stale && document.readyState === 'complete'`, 'reloaded');
     await openExample(page);
     await page.evaluate(`new Promise((r) => setTimeout(r, 300))`);
@@ -783,7 +786,7 @@ test('synthetic data turns on every tab; Sensors shows R, the steps, a keyboard 
   const dir = await mkdtemp(join(tmpdir(), 'pr-sensors-'));
   const page = await browser.newPage({ width: 1280, height: 900, downloadDir: dir });
   try {
-    await page.goto(`${synthBase}/web/#aoi=bbox:-58.2,-20.1,-55,-15.3&view=calendar`);
+    await page.goto(`${synthBase}/#aoi=bbox:-58.2,-20.1,-55,-15.3&view=calendar`);
     await page.until(CALENDAR_READY, 'calendar of a box that crosses the border');
     assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('[role=tab]')].map((t) => t.dataset.view)`), ['home', 'calendar', 'sensors', 'anomalies', 'live']);
     assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('[role=tab] .tab-tag')].map((t) => t.closest('[role=tab]').dataset.view)`), ['live'], 'Sensors and Anomalies lost their preview tags at gates V1 and V2');
@@ -919,7 +922,7 @@ test('theme: choosing light sets data-theme, persists across reload, system remo
     await page.until(`document.documentElement.getAttribute('data-theme') === 'light'`, 'light applied');
     // Page.navigate can return while the old document still answers, so mark it and wait for a fresh one.
     await page.evaluate(`window.__stale = true`);
-    await page.goto(`${base}/web/?fixtures=1`);
+    await page.goto(`${base}/?fixtures=1`);
     await page.until(`!window.__stale && document.readyState === 'complete' && document.querySelector('.site-footer .theme-opt')`, 'reloaded');
     assert.equal(await page.evaluate(`document.documentElement.getAttribute('data-theme')`), 'light', 'restored by the early script');
     assert.equal(await page.evaluate(`document.querySelector('.site-footer .theme-opt[data-theme-id="light"]').getAttribute('aria-checked')`), 'true');
@@ -932,14 +935,15 @@ test('theme: choosing light sets data-theme, persists across reload, system remo
 test('PWA: the manifest is valid and the service worker registers and activates', { skip }, async () => {
   const page = await open(1280);
   try {
-    const m = await (await fetch(`${base}/web/manifest.webmanifest`)).json();
+    const m = await (await fetch(`${base}/manifest.webmanifest`)).json();
     assert.equal(m.id, '/prime-radiant');
+    assert.equal(m.start_url, './');
     await page.until(`document.querySelector('link[rel=manifest]')`, 'page loaded');
-    assert.equal(await page.evaluate(`document.querySelector('link[rel=manifest]').href`), `${base}/web/manifest.webmanifest`);
+    assert.equal(await page.evaluate(`document.querySelector('link[rel=manifest]').href`), `${base}/manifest.webmanifest`);
     await page.until(`navigator.serviceWorker.getRegistration().then((r) => r?.active?.state === 'activated')`, 'service worker activated');
-    assert.equal(await page.evaluate(`navigator.serviceWorker.getRegistration().then((r) => r.scope)`), `${base}/web/`);
+    assert.equal(await page.evaluate(`navigator.serviceWorker.getRegistration().then((r) => r.scope)`), `${base}/`);
     assert.equal(await page.evaluate(`caches.keys().then((k) => k.some((n) => n.startsWith('pr-shell-')))`), true);
-    assert.equal(await fetch(`${base}/web/manifest.webmanifest`).then((r) => r.headers.get('content-type')), 'application/manifest+json');
+    assert.equal(await fetch(`${base}/manifest.webmanifest`).then((r) => r.headers.get('content-type')), 'application/manifest+json');
   } finally { await page.close(); }
 });
 
@@ -1348,7 +1352,7 @@ const countriesOverview = () => {
 const openAs = async (width, lang) => {
   const page = await browser.newPage({ width, height: width < 600 ? 860 : 900, downloadDir });
   await page.addInitScript(`Object.defineProperty(navigator, 'language', { value: ${JSON.stringify(lang)} })`);
-  await page.goto(`${synthBase}/web/`);
+  await page.goto(`${synthBase}/`);
   return page;
 };
 
@@ -1499,7 +1503,7 @@ test('home Radiant: a placeholder at once, aria-busy, then the data on the same 
     // Shifts of the figure or anything in it. The web fonts swapping in move the hero copy sideways,
     // which is not the Radiant's doing.
     await page.addInitScript(`window.__shift = 0; new PerformanceObserver((l) => { for (const e of l.getEntries()) if (e.sources.some((x) => x.node?.closest?.('.hero-art'))) window.__shift += e.value; }).observe({ type: 'layout-shift', buffered: true });`);
-    await page.goto(`${synthBase}/web/`);
+    await page.goto(`${synthBase}/`);
     await page.until(`document.querySelector('.hero-art .radiant[aria-busy="true"] path.rb-ph')`, 'placeholder Radiant');
     const ph = await page.evaluate(`(() => { const s = document.querySelector('.hero-art .radiant'); return { n: s.querySelectorAll('path.rb').length, label: s.getAttribute('aria-label') }; })()`);
     const m = await page.evaluate(`fetch('../data/manifest.json').then((r) => r.json()).then((x) => [x.month0, x.last_month])`);
@@ -1654,6 +1658,54 @@ test('real data: Live reads data/live, says when it is missing and when the area
   try {
     await page.until(`/covers Brazil only/.test(${liveText})`, 'outside the live domain');
     assert.equal(await page.evaluate(`document.querySelector('.view-live .live-chart')`), null, 'no chart without a comparison');
+    assert.deepEqual(page.problems, []);
+  } finally {
+    for (const [k] of added) synthFiles.delete(k);
+    synthOpts.dataVersion = null;
+    await page.close();
+  }
+});
+
+test('real data, a global live build outside the share region: the running total alone, with its disclaimer, chart and table', { skip }, async () => {
+  synthOpts.dataVersion = 'firms-20261115';
+  const { bbox } = synthOverview.hotspots[0];
+  const hash = `#${bboxHash(bbox)}&from=2000-11&to=2019-12&view=live`;
+  const golden = (f) => readFile(join(root, 'fixtures/golden/live', f), 'utf8').then(JSON.parse);
+  // Eight complete days ending yesterday (UTC), so a month to date exists whatever the date.
+  const iso = (ms) => new Date(ms).toISOString().slice(0, 10);
+  const lastDay = iso(Date.now() - 864e5);
+  const day0 = iso(Date.now() - 8 * 864e5);
+  const base = await golden('manifest.json');
+  const every = [...Array(36).keys()].flatMap((x) => [...Array(18).keys()].map((y) => `x${x}y${y}`));
+  const id = tilesForBbox(bbox, { tiles: every })[0];
+  const inside = [...Array(10000).keys()].find((c) => { const { lon, lat } = cellCenter(id, c, 0.1); return lon > bbox[0] && lon < bbox[2] && lat > bbox[1] && lat < bbox[3]; });
+  const { domain, ...rest } = base;
+  const manifest = {
+    ...rest, fetched_at: new Date(Date.now() - 3.6e6).toISOString(), day0, last_day: lastDay, tiles: [id],
+    coverage: { modis: null, viirs: null, noaa20: [day0, lastDay] }, partial_days: { modis: [], viirs: [], noaa20: [] },
+    // The share region is the golden box off Portugal, so this Brazil area lies outside it.
+    share_domain: { ...domain, file: 'share-domain.json' }, static_mask: { data_version: 'v1', cells: 10 },
+  };
+  const tile = { cell: Array(8).fill(inside), day: [...Array(8).keys()], modis: Array(8).fill(null), viirs: Array(8).fill(null), noaa20: Array(8).fill(10) };
+  const added = [['/data/live/manifest.json', manifest], ['/data/live/share-domain.json', await golden('domain.json')], [`/data/live/tiles/0.1/${id}.json`, tile]];
+  for (const [k, v] of added) synthFiles.set(k, v);
+  const page = await open(1280, hash, synthBase);
+  try {
+    await page.until(`document.querySelector('.view-live .live-chart')`, 'the running total chart');
+    const m = await page.evaluate(`(() => { const v = document.querySelector('.view-live'); return {
+      title: v.querySelector('#live-title').textContent.trim(),
+      disclaimer: v.querySelector('.live-disclaimer')?.textContent ?? '',
+      band: v.querySelectorAll('.live-band, .live-median, .live-band-label').length,
+      labels: [...v.querySelectorAll('.live-label')].map((l) => l.textContent),
+      delta: v.querySelector('.live-answer .answer-lead')?.textContent ?? null,
+      cols: [...v.querySelectorAll('.live-table thead th')].map((t) => t.textContent),
+    }; })()`);
+    assert.equal(m.title, 'This month so far');
+    assert.match(m.disclaimer, /^NOAA-20 near-real-time, scaled to S-NPP, approximate\. Running total since \d{1,2} [A-Z][a-z]{2} only( \(.+ not observed\))?\. Not a monthly total, no comparison to past years\. Static heat sources are masked from the archive; newer flares or eruptions can leak in\.$/);
+    assert.equal(m.band, 0, 'no band, median or band label');
+    assert.deepEqual(m.labels, ['Running total']);
+    assert.equal(m.delta, null, 'no percent against past years');
+    assert.equal(m.cols.at(-1), 'Running total');
     assert.deepEqual(page.problems, []);
   } finally {
     for (const [k] of added) synthFiles.delete(k);

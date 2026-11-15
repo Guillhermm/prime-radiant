@@ -4,8 +4,21 @@
   "buildCommand": null,
   "installCommand": null,
   "outputDirectory": ".",
-  "redirects": [{ "source": "/", "destination": "/web/", "permanent": false }],
-  "rewrites": [{ "source": "/data/:path*", "destination": "https://data.primeradiantdata.com/:path*" }],
+  "redirects": [
+    { "source": "/web", "destination": "/", "permanent": false },
+    { "source": "/web/", "destination": "/", "permanent": false },
+    { "source": "/web/index.html", "destination": "/", "permanent": false },
+    { "source": "/web/:file(manifest\\.webmanifest|theme-init\\.js)", "destination": "/:file", "permanent": false },
+    { "source": "/web/:dir(src|styles|fonts|icons|vendor)/:path*", "destination": "/:dir/:path*", "permanent": false }
+  ],
+  "rewrites": [
+    { "source": "/", "destination": "/web/index.html" },
+    { "source": "/index.html", "destination": "/web/index.html" },
+    { "source": "/sw.js", "destination": "/web/worker.js" },
+    { "source": "/:file(manifest\\.webmanifest|theme-init\\.js)", "destination": "/web/:file" },
+    { "source": "/:dir(src|styles|fonts|icons|vendor)/:path*", "destination": "/web/:dir/:path*" },
+    { "source": "/data/:path*", "destination": "https://data.primeradiantdata.com/:path*" }
+  ],
   "headers": [
     {
       "source": "/(.*)",
