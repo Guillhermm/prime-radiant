@@ -1,5 +1,6 @@
 # Allowlist: only web/, core/, api/ and the generated data/ are deployed.
-# tools/mock-data.mjs is uploaded so the build can generate the synthetic data/.
+# The build generates the synthetic data/ with tools/mock-data.mjs, which reuses the pipeline's
+# tile writer and the Brazil outline, so those two files are uploaded too.
 /*
 !/web
 !/core
@@ -9,4 +10,10 @@
 !/tools
 /tools/*
 !/tools/mock-data.mjs
+!/pipeline
+/pipeline/*
+!/pipeline/write-tiles.js
+!/pipeline/domain
+/pipeline/domain/*
+!/pipeline/domain/brazil.geojson
 *.test.js

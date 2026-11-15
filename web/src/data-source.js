@@ -1,4 +1,7 @@
-import { validateManifest, validateTile, locate } from '../../core/index.js';
+import { validateManifest, validateTile, validateDomain } from '../../core/schema.js';
+import { tilesForBbox, cellCount, MAX_FINE_CELLS } from '../../core/index.js';
+import { createDomain } from '../../core/domain.js';
+import { parseTileId } from '../../core/grid.js';
 
 // kind: 'network' | 'http' | 'parse' | 'invalid' | 'aborted' | 'bbox'
 export class DataSourceError extends Error {
@@ -18,53 +21,56 @@ export const dataSourceConfig = ({ fixtures = false } = {}) => ({
   root: '../',
 });
 
-const monthIdx = (m) => Number(m.slice(0, 4)) * 12 + Number(m.slice(5, 7)) - 1;
-
-// core has no tile lookup for a bbox, so the ids come from the grid math in core/grid.js.
-// Only ids the manifest lists are returned: a tile the pipeline did not publish holds no detections.
-export const tileIdsForBbox = (bbox, manifest) => {
-  const [w, s, e, n] = bbox;
-  if (!Array.isArray(bbox) || !bbox.every(Number.isFinite) || !(w < e) || !(s < n)) {
-    throw new DataSourceError('bbox', `invalid bbox: ${bbox}`);
-  }
-  const { res } = manifest.grid;
-  const eps = 1e-9; // the east and north edges are exclusive
-  const sw = locate(w, s, res);
-  const ne = locate(e - eps, n - eps, res);
-  const listed = new Set(manifest.tiles);
-  const ids = [];
-  for (let tx = sw.tx; tx <= ne.tx; tx++) {
-    for (let ty = sw.ty; ty <= ne.ty; ty++) {
-      const id = `${res}/x${tx}y${ty}`;
-      if (listed.has(id)) ids.push(id);
-    }
-  }
-  return ids;
+const baseOf = (manifest, root) => {
+  const b = /^(https?:)?\/\//.test(manifest.base_url) || manifest.base_url.startsWith('/') ? manifest.base_url : root + manifest.base_url;
+  return b.endsWith('/') ? b : `${b}/`;
 };
 
-export const tileUrl = (manifest, id, root = '') => {
-  const base = /^(https?:)?\/\//.test(manifest.base_url) || manifest.base_url.startsWith('/') ? manifest.base_url : root + manifest.base_url;
-  return `${base.endsWith('/') ? base : `${base}/`}tiles/${id}.json`;
+/** URL of a tile at `res` (0.1 or 1) under the manifest's base_url. */
+export const tileUrl = (manifest, id, res = 0.1, root = '') => `${baseOf(manifest, root)}tiles/${res}/${id}.json`;
+
+/** URL of the manifest's domain file, next to the tiles. Null without a domain. */
+export const domainUrl = (manifest, root = '') => {
+  const file = manifest.domain?.file;
+  if (!file) return null;
+  if (!/^[\w-][\w.-]*$/.test(file)) throw new DataSourceError('invalid', `manifest: domain file "${file}" is not a plain file name`);
+  return `${baseOf(manifest, root)}${file}`;
 };
 
-const tileRules = (manifest) => {
-  const idx = (c) => [monthIdx(c[0]) - monthIdx(manifest.month0), monthIdx(c[1]) - monthIdx(manifest.month0)];
-  return {
-    monthCount: monthIdx(manifest.last_month) - monthIdx(manifest.month0) + 1,
-    cellsPerSide: Math.round(manifest.grid.tile_deg / manifest.grid.res),
-    coverage: { modis: idx(manifest.coverage.modis), viirs: idx(manifest.coverage.viirs) },
-  };
+/**
+ * The tiles a query needs. harmonize falls back from the area to its 10 degree tiles, then the
+ * ring around them, then everything (docs/method.md 4.3), so every query needs the whole record
+ * at the coarse level; the fine level only for the area's own tiles, and not even those when
+ * the area is large enough that core reads it at the coarse level. With a domain, tiles that
+ * hold none of it are skipped: they have no records.
+ */
+export const tilesNeeded = (bbox, manifest, domain = null) => {
+  let ids;
+  try {
+    ids = tilesForBbox(bbox, manifest);
+  } catch (cause) {
+    throw new DataSourceError('bbox', `invalid bbox: ${bbox}`, { cause });
+  }
+  const lookup = domain && createDomain(domain);
+  const coarse = manifest.tiles.filter((id) => {
+    if (!lookup) return true;
+    const { tx, ty } = parseTileId(id);
+    return lookup.count(tx * 10, tx * 10 + 9, ty * 10, ty * 10 + 9, 1) > 0;
+  });
+  return { fine: cellCount(bbox, 0.1) > MAX_FINE_CELLS ? [] : ids, coarse };
 };
 
 /**
  * @param {{manifestUrl: string, root?: string, fetchFn?: typeof fetch, concurrency?: number}} cfg
  * `load(bbox)` aborts the previous load, fetches the needed tiles (at most `concurrency` at a
- * time), validates each with core's schema and returns `{manifest, tiles, ids}`. Validated tiles
- * are cached for the session; a failed or aborted fetch is not.
+ * time), validates each with core's schema and returns `{manifest, domain, tiles: {fine, coarse}, ids}`.
+ * The manifest, the domain and validated tiles are cached for the session; a failed or aborted
+ * fetch is not.
  */
 export const createDataSource = ({ manifestUrl, root = '', fetchFn = (...a) => fetch(...a), concurrency = 6 }) => {
   const tileCache = new Map();
   let manifestPromise = null;
+  let domainPromise = null;
   let current = null;
 
   const getJson = async (url, signal) => {
@@ -93,13 +99,27 @@ export const createDataSource = ({ manifestUrl, root = '', fetchFn = (...a) => f
     return manifestPromise;
   };
 
-  const fetchTile = async (m, id, signal) => {
-    if (tileCache.has(id)) return tileCache.get(id);
-    const url = tileUrl(m, id, root);
+  // No domain in the manifest means no clipping (roadmap section 2): null, not an empty domain.
+  const domain = (m) => {
+    domainPromise ??= (async () => {
+      const url = domainUrl(m, root);
+      if (!url) return null;
+      const d = await getJson(url);
+      const errors = validateDomain(d);
+      if (errors.length) throw new DataSourceError('invalid', `domain: ${errors[0].message}`, { url, errors });
+      return d;
+    })().catch((err) => { domainPromise = null; throw err; });
+    return domainPromise;
+  };
+
+  const fetchTile = async (m, res, id, signal) => {
+    const key = `${res}/${id}`;
+    if (tileCache.has(key)) return tileCache.get(key);
+    const url = tileUrl(m, id, res, root);
     const tile = await getJson(url, signal);
-    const errors = validateTile(tile, tileRules(m));
-    if (errors.length) throw new DataSourceError('invalid', `tile ${id}: ${errors[0].message}`, { url, errors });
-    tileCache.set(id, tile);
+    const errors = validateTile(tile, { manifest: m, res });
+    if (errors.length) throw new DataSourceError('invalid', `tile ${key}: ${errors[0].message}`, { url, errors });
+    tileCache.set(key, tile);
     return tile;
   };
 
@@ -110,18 +130,20 @@ export const createDataSource = ({ manifestUrl, root = '', fetchFn = (...a) => f
     const { signal } = ctrl;
     try {
       const m = await manifest();
+      const d = await domain(m);
       if (signal.aborted) throw new DataSourceError('aborted', 'superseded by a newer query');
-      const ids = tileIdsForBbox(bbox, m);
-      const tiles = {};
+      const need = tilesNeeded(bbox, m, d);
+      const jobs = [...need.fine.map((id) => ['fine', 0.1, id]), ...need.coarse.map((id) => ['coarse', 1, id])];
+      const tiles = { fine: {}, coarse: {} };
       let next = 0;
       const worker = async () => {
-        while (next < ids.length) {
-          const id = ids[next++];
-          tiles[id] = await fetchTile(m, id, signal);
+        while (next < jobs.length) {
+          const [level, res, id] = jobs[next++];
+          tiles[level][id] = await fetchTile(m, res, id, signal);
         }
       };
-      await Promise.all(Array.from({ length: Math.min(concurrency, ids.length) }, worker));
-      return { manifest: m, tiles, ids };
+      await Promise.all(Array.from({ length: Math.min(concurrency, jobs.length) }, worker));
+      return { manifest: m, domain: d, tiles, ids: need };
     } catch (err) {
       ctrl.abort(); // stops the sibling workers
       throw err;

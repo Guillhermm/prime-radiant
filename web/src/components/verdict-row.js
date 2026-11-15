@@ -1,5 +1,5 @@
 import { MONTH_NAMES, formatCount, monthLabel } from '../format.js';
-import { compareToMedian, medianYears, peakMonth, rankSentence, sameMonth, yearTotals } from '../stats.js';
+import { compareToMedian, peakMonth, rankSentence, sameMonth, yearTotals, yearsSpan } from '../stats.js';
 import { h } from './h.js';
 import * as radiant from './radiant.js';
 
@@ -8,10 +8,11 @@ export const ZERO_NOTE = 'No hotspots detected; the sensors were operating.';
 
 /**
  * The answer first: the latest month against its median (core.baseline), then plain sums. Every
- * comparison and the peak month carry the Preview tag until the science gate passes.
+ * comparison and the peak month carry the Preview tag: gate V1 validated the median, not the
+ * comparison with it, nor the typical year behind the peak month.
  * @param {{cells: object[], allCells?: object[], kpis: {total: number}, typical?: object[]}} r
  */
-export const verdictModel = ({ cells, allCells = cells, kpis, typical = [] }) => {
+export const verdictModel = ({ cells, kpis, typical = [] }) => {
   const last = cells[cells.length - 1] ?? null;
   const withData = cells.filter((c) => c.value !== null);
   const allZero = withData.length > 0 && withData.every((c) => c.value === 0);
@@ -30,9 +31,9 @@ export const verdictModel = ({ cells, allCells = cells, kpis, typical = [] }) =>
     if (cmp) {
       latest.compare = cmp;
       latest.versus = `vs ${name} median ${formatCount(last.median)}`;
-      const w = medianYears(allCells, last);
+      const w = yearsSpan(last.medianYears);
       const rank = rankSentence(sameMonth(cells, last), last.month);
-      latest.sentence = [rank, w && `median over ${w.from === w.to ? w.from : `${w.from}–${w.to}`}`].filter(Boolean).join(' · ') || null;
+      latest.sentence = [rank, w && `median of earlier years, ${w.from === w.to ? w.from : `${w.from}–${w.to}`}`].filter(Boolean).join(' · ') || null;
     } else if (last.value !== null) {
       latest.sentence = NO_MEDIAN;
     }
@@ -44,7 +45,7 @@ export const verdictModel = ({ cells, allCells = cells, kpis, typical = [] }) =>
     {
       id: 'peak', k: 'Peak month', preview: true,
       v: peak ? MONTH_NAMES[peak.month - 1] : 'Not enough history',
-      s: peak ? `median ${formatCount(Math.round(peak.median))}, ${peak.from}–${peak.to}` : '',
+      s: peak ? `median ${formatCount(Math.round(peak.median))}, all years ${peak.from}–${peak.to}` : '',
     },
     { id: 'busiest', k: 'Busiest year', v: busiest ? String(busiest.year) : 'None', s: busiest ? `${formatCount(busiest.total)}${busiest.partial ? ', part of the year' : ''}` : '' },
     {

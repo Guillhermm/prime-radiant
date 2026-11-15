@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BINS, NODATA, aoiCellCount, binClass, density } from './bins.js';
+import { BINS, NODATA, binClass, density } from './bins.js';
 
 const CELLS = 1000; // density = count
 
@@ -35,13 +35,3 @@ test('a positive count with no cells throws; density is null', () => {
   assert.equal(density(null, 10), null);
 });
 
-test('aoiCellCount follows the center rule of core/aggregate', () => {
-  assert.equal(aoiCellCount([-60, -20, -50, -10], 0.1), 10000);
-  assert.equal(aoiCellCount([-60, -20, -50, -10], 1), 100);
-  // centers at -59.95 ... : west edge on a cell edge keeps that cell, east edge excludes its neighbor
-  assert.equal(aoiCellCount([0, 0, 0.1, 0.1], 0.1), 1);
-  // a box thinner than a cell that holds no center
-  assert.equal(aoiCellCount([0.01, 0.01, 0.04, 0.04], 0.1), 0);
-  // misaligned edges: centers 0.05 and 0.15 lie inside [0.02, 0.18)
-  assert.equal(aoiCellCount([0.02, 0, 0.18, 0.1], 0.1), 2);
-});

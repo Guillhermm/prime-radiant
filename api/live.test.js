@@ -40,7 +40,7 @@ test('bins distinct cell-days across sources into a live Series', async () => {
     id: 'live', comparable: false, step: 'day', unit: 'fire-cell-days', start: '2026-11-13',
     values: [1, 2], method: { id: 'firms-nrt-proxy', version: '1' },
   });
-  assert.deepEqual(validateSeries(body.series).filter((e) => e.code !== 'series.start'), []);
+  assert.deepEqual(validateSeries(body.series).filter((e) => e.path !== 'start'), []);
   assert.equal(res.headers.get('Cache-Control'), 's-maxage=900, stale-while-revalidate=3600');
   assert.equal(urls.length, 3);
   assert.ok(urls.every((u) => u.endsWith('/-55.5,-10.5,-54,-9.5/2/2026-11-13')));

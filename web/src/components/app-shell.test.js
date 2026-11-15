@@ -5,7 +5,7 @@ import { ICON_NAMES } from './icons.js';
 import { VIEWS } from '../views.js';
 
 test('disabled views are absent from the tabs', () => {
-  assert.deepEqual(tabsModel(VIEWS, 'calendar').map((t) => [t.id, t.selected]), [['calendar', true]], 'Sensors waits for ?preview=1');
+  assert.deepEqual(tabsModel(VIEWS, 'calendar').map((t) => [t.id, t.selected]), [['calendar', true], ['sensors', false]], 'Anomalies and Live wait for ?preview=1');
   const preview = VIEWS.map((v) => ({ ...v, enabled: true }));
   assert.deepEqual(tabsModel(preview, 'sensors').map((t) => [t.id, t.selected]), [['calendar', false], ['sensors', true], ['anomalies', false], ['live', false]]);
 });

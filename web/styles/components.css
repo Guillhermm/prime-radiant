@@ -28,6 +28,19 @@
 .cal-row { display: grid; grid-template-columns: 3rem repeat(12, minmax(0, 1fr)) 8.5rem; gap: 3px; align-items: center; margin-block-end: 3px; }
 .cal-year, .cal-colhead { color: var(--color-text-muted); font-size: 0.75rem; }
 .cal-year { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+/* Bracket along the year labels of the rows holding estimated months, with its words written up the gutter. */
+.cal-grid.has-est-bracket { padding-inline-start: 1.125rem; }
+.cal-year.est-run { position: relative; padding-inline-start: 0.375rem; }
+.cal-year.est-run::before {
+  content: ""; position: absolute; inset-block: -1.5px; inset-inline-start: 0; border-inline-start: 2px solid var(--color-text-muted);
+}
+.cal-year.est-first::before { inset-block-start: 15%; border-block-start: 2px solid var(--color-text-muted); inline-size: 0.25rem; }
+.cal-year.est-last::before { inset-block-end: 15%; border-block-end: 2px solid var(--color-text-muted); inline-size: 0.25rem; }
+.est-bracket-label {
+  /* Physical sides: with writing-mode set, logical insets would turn with the text. */
+  position: absolute; top: 15%; right: calc(100% + 0.125rem); writing-mode: vertical-rl; transform: rotate(180deg);
+  transform-origin: center; white-space: nowrap; color: var(--color-text-muted); font: 600 0.6875rem / 1 var(--font-sans); letter-spacing: 0.02em;
+}
 .cal-colhead { position: relative; padding-block-end: 0.375rem; text-align: center; font-weight: 500; }
 .cal-colhead .short, .cal-median-label .short { display: none; }
 .cal-colhead.is-current, .cal-year.is-current { color: var(--current); font-weight: 700; }
@@ -94,6 +107,10 @@
 .bin-5 { background: var(--bin-5); color: var(--bin-5-text); }
 .bin-6 { background: var(--bin-6); color: var(--bin-6-text); }
 .bin-nodata, .nodata { background: var(--nodata-hatch); background-color: var(--nodata-bg); color: var(--nodata-text); }
+/* Terra-only: MODIS counted, core did not scale it. Flat, outlined and lettered, so it never reads as the No data hatch. */
+.terra-only, .swatch.mark-terra-only { background: var(--color-surface-2); outline: 1px dashed var(--color-border-strong); outline-offset: -1px; color: var(--color-text-muted); }
+.cal-cell.terra-only::before, .swatch.mark-terra-only::before { content: "T"; font: 600 0.625rem / 1 var(--font-mono); }
+.swatch.mark-terra-only { display: inline-grid; place-items: center; }
 
 .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1.5rem; color: var(--color-text-muted); font-size: 0.75rem; }
 .legend-list { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; margin: 0; padding: 0; list-style: none; }
@@ -266,15 +283,17 @@
 .answer-num { font-size: 3.75rem; line-height: 0.95; font-weight: 600; letter-spacing: -0.035em; font-variant-numeric: tabular-nums lining-nums; }
 .answer-unit { color: var(--color-text-muted); font-weight: 500; }
 .answer-lead { margin: 0 0 0.5rem; }
-.answer-widen { margin-block-start: 0.75rem; }
+.answer-ratio { margin: 0.5rem 0 0; font-size: 0.8125rem; }
 .dot { display: inline-block; inline-size: 0.6rem; block-size: 0.6rem; margin-inline-end: 0.375rem; border-radius: 50%; vertical-align: 0.05rem; }
 .dot-modis { background: var(--sensor-modis); }
 .dot-viirs { background: var(--sensor-viirs); }
+/* NOAA-20 carries the same VIIRS instrument: VIIRS color, told apart by its dotted stroke. */
+.dot-noaa20 { background: transparent; box-shadow: inset 0 0 0 2px var(--sensor-viirs); }
 .dot-harmonized { background: var(--sensor-harm); }
 .sensors-view { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
 .sensors-top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); gap: 1rem; }
 .sensors-steps h2 { margin: 0; }
-.build-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; margin: 0.75rem 0 0; padding: 0; list-style: none; }
+.build-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 0.75rem; margin: 0.75rem 0 0; padding: 0; list-style: none; }
 .build-step { display: flex; flex-direction: column; align-items: flex-start; gap: 0.2rem; padding: 0.75rem 0.9rem; border-radius: var(--radius-ctl); background: var(--color-surface-2); font-size: 0.8125rem; }
 .build-step strong { font-size: 0.9375rem; }
 .step-val { font-size: 1.375rem; font-weight: 500; font-variant-numeric: tabular-nums; }
@@ -297,16 +316,23 @@
 .sensors-line { fill: none; stroke-linejoin: round; stroke-linecap: round; }
 .line-modis { stroke: var(--sensor-modis); stroke-width: 2; }
 .line-viirs { stroke: var(--sensor-viirs); stroke-width: 2.5; stroke-dasharray: 7 4; }
+.line-noaa20 { stroke: var(--sensor-viirs); stroke-width: 2; stroke-dasharray: 1 3; }
 .line-harmonized { stroke: var(--sensor-harm); stroke-width: 9; opacity: 0.35; }
 .line-estimated { stroke: var(--sensor-harm); stroke-width: 2; stroke-dasharray: 1 4; }
+.sensors-hollow { fill: var(--color-surface); stroke-width: 2; }
+.sensors-span { fill: var(--color-text-muted); font-family: var(--font-mono); font-size: 0.6875rem; }
+.hollow-modis { stroke: var(--sensor-modis); }
+.hollow-viirs, .hollow-noaa20 { stroke: var(--sensor-viirs); }
+.hollow-harmonized { stroke: var(--sensor-harm); }
 .sensors-label { font-size: 0.8125rem; font-weight: 600; }
 .label-modis { fill: var(--sensor-modis); }
-.label-viirs { fill: var(--sensor-viirs); }
+.label-viirs, .label-noaa20 { fill: var(--sensor-viirs); }
 .label-harmonized { fill: var(--sensor-harm); }
 .sensors-stamp { fill: var(--sensor-viirs); font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.08em; }
 .sensors-sat-bar { stroke-width: 6; stroke-linecap: round; }
 .bar-modis { stroke: var(--sensor-modis); }
 .bar-viirs { stroke: var(--sensor-viirs); }
+.bar-noaa20 { stroke: var(--sensor-viirs); stroke-dasharray: 0.1 8; }
 .sensors-guide { stroke: var(--color-text-muted); stroke-width: 1; stroke-dasharray: 2 3; }
 .sensors-tip {
   position: absolute; inset-block-start: 2rem; inset-inline-start: var(--tip-x, 0); display: grid; gap: 0.125rem; padding: 0.5rem 0.75rem;

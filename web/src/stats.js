@@ -2,8 +2,8 @@ import { baseline } from '../../core/index.js';
 import { MONTH_ABBR, MONTH_NAMES } from './format.js';
 
 // Plain view arithmetic over CalendarCell lists: sums, orderings and labels. The only median here
-// comes from core.baseline; nothing in this file is a new statistic. Comparisons and ranks are
-// shown with the "Preview" tag until the Second Foundation validates them (docs/ux.md 5.6).
+// comes from core.baseline; nothing in this file is a new statistic. Comparisons with the median
+// and ranks are shown with the "Preview" tag: gate V1 validated the baseline, not these (docs/ux.md 5.6).
 
 const ORD = ['th', 'st', 'nd', 'rd'];
 export const ordinal = (n) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : ORD[n % 10] ?? 'th'}`;
@@ -12,8 +12,10 @@ export const ordinal = (n) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : ORD
 export const yearTotals = (cells) => {
   const by = new Map();
   for (const c of cells) {
-    if (!by.has(c.year)) by.set(c.year, { year: c.year, total: 0, months: [], withData: 0 });
+    if (!by.has(c.year)) by.set(c.year, { year: c.year, total: 0, months: [], withData: 0, terra: 0 });
     const y = by.get(c.year);
+    // A Terra-only month (core flag) is not part of the harmonized year: the year is partial.
+    if (c.value === null && c.flags?.includes('terra-only')) { y.terra += 1; continue; }
     y.months.push(c.month);
     if (c.value !== null) { y.total += c.value; y.withData += 1; }
   }
@@ -25,13 +27,15 @@ export const yearTotals = (cells) => {
     share: max > 0 ? y.total / max : 0,
     busiest: max > 0 && y.total === max,
     partial: y.months.length < 12,
-    first: Math.min(...y.months),
-    last: Math.max(...y.months),
+    terraOnly: y.terra > 0,
+    first: y.months.length ? Math.min(...y.months) : null,
+    last: y.months.length ? Math.max(...y.months) : null,
   }));
 };
 
 /** Footnote for a year the range cuts: "2026 through October", "2000 from November". */
 export const partialNote = (y) => {
+  if (y.terraOnly) return `${y.year} from ${MONTH_NAMES[y.first - 1]}, Terra only before`;
   if (y.first === 1) return `${y.year} through ${MONTH_NAMES[y.last - 1]}`;
   if (y.last === 12) return `${y.year} from ${MONTH_NAMES[y.first - 1]}`;
   return `${y.year}, ${MONTH_NAMES[y.first - 1]} to ${MONTH_NAMES[y.last - 1]}`;
@@ -74,40 +78,31 @@ export const compareToMedian = (value, median) => {
   return { kind: 'pct', text: `${p > 0 ? '+' : MINUS}${Math.abs(p)}%`, dir };
 };
 
-/**
- * Years behind core.baseline's median for (year, month): the earlier years of the full series
- * with a value for that month. Mirrors the rule of the core/baseline.js stub until core returns
- * the years used itself (roadmap M1-K7).
- */
-export const medianYears = (allCells, { year, month }) => {
-  const ys = allCells.filter((c) => c.month === month && c.year < year && c.value !== null).map((c) => c.year);
-  return ys.length ? { count: ys.length, from: Math.min(...ys), to: Math.max(...ys) } : null;
-};
+/** {count, from, to} of the years core.baseline used for a median; null when it used none. */
+export const yearsSpan = (years) => (years?.length ? { count: years.length, from: Math.min(...years), to: Math.max(...years) } : null);
 
 const pad = (n) => String(n).padStart(2, '0');
 
 /**
  * Typical year: for each calendar month, core.baseline's median over every complete calendar
  * year of `series` (the series cut at its last December, then one empty year appended so the
- * baseline of that year covers all earlier ones). Returns 12 entries {month, median, from, to},
- * median null where no year has a value.
+ * baseline of that year covers all earlier ones). Core's rules apply: partial months and the
+ * Terra-only era are left out, and a month needs 5 years. Returns 12 entries
+ * {month, median, from, to}, median null where core gives none.
  */
-export const typicalYear = (series) => {
-  const [y0, m0] = series.start.split('-').map(Number);
+export const typicalYear = (series, { partialMonths = [] } = {}) => {
+  const [, m0] = series.start.split('-').map(Number);
   const lastIdx = series.values.length - 1;
   const lastMonth = ((m0 - 1 + lastIdx) % 12) + 1;
   const cut = lastIdx - (lastMonth % 12);
   if (cut < 0) return Array.from({ length: 12 }, (_, i) => ({ month: i + 1, median: null, from: null, to: null }));
   const values = [...series.values.slice(0, cut + 1), ...Array(12).fill(null)];
-  const base = baseline({ ...series, values });
-  const lastYear = y0 + Math.floor((m0 - 1 + cut) / 12);
-  const firstYear = (month) => {
-    for (let i = 0; i <= cut; i++) {
-      if (((m0 - 1 + i) % 12) + 1 === month && values[i] !== null) return y0 + Math.floor((m0 - 1 + i) / 12);
-    }
-    return null;
-  };
-  return base.values.slice(-12).map((median, i) => ({ month: i + 1, median, from: median === null ? null : firstYear(i + 1), to: median === null ? null : lastYear }));
+  const base = baseline({ ...series, values }, { partialMonths });
+  const years = base.yearsUsed.slice(-12);
+  return base.series.values.slice(-12).map((median, i) => {
+    const span = median === null ? null : yearsSpan(years[i]);
+    return { month: i + 1, median, from: span?.from ?? null, to: span?.to ?? null };
+  });
 };
 
 /** Month of the typical year with the largest median, or null. */

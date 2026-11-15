@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { PRESETS, FIXTURE_PRESET, presetsFor, findPreset } from './presets.js';
 
 const inside = ([w, s, e, n], [lat, lon]) => lon >= w && lon <= e && lat >= s && lat <= n;
-// Fixture cells A, B, C, D (fixtures/README.md).
-const CELLS = [[-15.05, -55.05], [-15.15, -55.05], [-12.35, -52.45], [-18.25, -58.35]];
+// Centers of the fixture cells 0, 1, 1020, 5049 and 9999 of tile x17y13 (fixtures/README.md).
+const CELLS = [[40.05, -9.95], [40.05, -9.85], [41.05, -7.95], [45.05, -5.05], [49.95, -0.05]];
 
 test('the fixture preset covers every fixture cell and Pantanal covers none', () => {
   for (const c of CELLS) {

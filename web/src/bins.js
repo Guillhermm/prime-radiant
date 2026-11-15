@@ -14,23 +14,6 @@ const EDGES = [4, 16, 64, 256, 1024];
 
 export const NODATA = 'nodata';
 
-const snap = (x) => Number(x.toFixed(6));
-// Index of the first cell center at or east/north of `v` (centers sit at (k + 0.5) * res).
-const firstCenterAtOrAfter = (v, res) => Math.ceil(snap(v / res - 0.5));
-
-/**
- * Number of grid cells in the AOI. Uses the rule of core/aggregate.js (cell center inside
- * [west, east) x [south, north)), so the denominator matches the numerator.
- * @param {[number, number, number, number]} bbox [west, south, east, north]
- * @param {number} res cell size in degrees (manifest grid.res, or grid.coarse_res)
- */
-export const aoiCellCount = (bbox, res) => {
-  const [w, s, e, n] = bbox;
-  const cols = firstCenterAtOrAfter(e, res) - firstCenterAtOrAfter(w, res);
-  const rows = firstCenterAtOrAfter(n, res) - firstCenterAtOrAfter(s, res);
-  return Math.max(0, cols) * Math.max(0, rows);
-};
-
 /** Fire-cell-days per 1,000 grid cells; null when there is no count or no cell. */
 export const density = (count, cells) => (count === null || !(cells > 0) ? null : (count / cells) * 1000);
 

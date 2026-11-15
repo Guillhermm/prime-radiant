@@ -115,6 +115,7 @@ test('store treats equal bbox arrays as no change', () => {
   assert.equal(n, 1);
 });
 
-test('without ?preview=1 a link to the Sensors view falls back to the calendar', () => {
-  assert.equal(parseHash('#view=sensors').state.view, 'calendar');
+test('Sensors opens from a link; without ?preview=1 a link to Anomalies falls back to the calendar', () => {
+  assert.equal(parseHash('#view=sensors').state.view, 'sensors');
+  assert.equal(parseHash('#view=anomalies').state.view, 'calendar');
 });

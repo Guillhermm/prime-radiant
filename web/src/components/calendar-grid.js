@@ -4,11 +4,17 @@ import { partialNote, yearTotals } from '../stats.js';
 import { h } from './h.js';
 import { mount as mountTable, tableModel } from './data-table.js';
 
-const STATUS_TEXT = { observed: 'observed', harmonized: 'harmonized', partial: 'partial month' };
+const STATUS_TEXT = { observed: 'observed', harmonized: 'estimated', partial: 'partial month, sensor outage' };
+// Gate V1 fix F4: an estimated value is named for what it is, not "harmonized".
+export const SOURCE_TEXT = { modis: 'scaled to VIIRS-equivalent (MODIS × R)', noaa20: 'scaled to VIIRS-equivalent (NOAA-20 × K)' };
+
+// Core flags a Terra-era month with a MODIS count `terra-only` and leaves it unscaled (null).
+export const TERRA_ONLY_TEXT = 'Not harmonized: Terra only, before Aqua (Jul 2002)';
+export const isTerraOnly = (cell) => cell.value === null && Boolean(cell.flags?.includes('terra-only'));
 
 /** At most three characters for a phone cell: 999, 3k, 12k, 1M. */
 export const shortCount = (n) => {
-  if (n < 1000) return String(n);
+  if (n < 999.5) return String(Math.round(n));
   if (n < 999500) return `${Math.round(n / 1000)}k`;
   return `${Math.round(n / 1e6)}M`;
 };
@@ -16,12 +22,14 @@ export const shortCount = (n) => {
 /** Screen reader and hover text for one cell, with the full (unabbreviated) value. */
 export const cellLabel = (cell, aoiCells) => {
   const when = monthLabel(cell.year, cell.month);
+  if (isTerraOnly(cell)) return `${when}, ${TERRA_ONLY_TEXT.replace('Not', 'not')}`;
   if (cell.value === null) return `${when}, no data`;
   const parts = [when, `${formatCount(cell.value)} fire-cell-days`];
   const d = density(cell.value, aoiCells);
   if (d !== null) parts.push(`density ${formatDensity(d)} per 1,000 cells`);
   parts.push(STATUS_TEXT[cell.status] ?? cell.status);
-  if (cell.estimated) parts.push('estimated');
+  if (cell.estimated) parts.push(SOURCE_TEXT[cell.source?.id] ?? 'estimated');
+  if (cell.flags?.includes('low-confidence')) parts.push('low confidence');
   return parts.join(', ');
 };
 
@@ -35,6 +43,7 @@ export const cellModel = (cell, aoiCells) => ({
   short: cell.value === null ? '' : shortCount(cell.value),
   estimated: cell.estimated === true,
   partial: cell.status === 'partial',
+  terraOnly: isTerraOnly(cell),
 });
 
 /**
@@ -50,6 +59,22 @@ export const gridModel = (cells, { aoiCells }) => {
   }
   const rows = [...byYear.keys()].sort((a, b) => b - a).map((year) => ({ year, cells: byYear.get(year) }));
   return { rows, columns: MONTH_NAMES };
+};
+
+export const BRACKET_TEXT = 'Estimated (MODIS × R)';
+// A run this short has no room for the words along it; the legend names the mark.
+const BRACKET_MIN_ROWS = 6;
+
+/** Runs of adjacent rows holding an estimated month, as row indexes [{from, to}], for the bracket by the year labels. */
+export const estimatedRuns = (model) => {
+  const runs = [];
+  model.rows.forEach((row, r) => {
+    if (!row.cells.some((m) => m?.estimated)) return;
+    const last = runs.at(-1);
+    if (last && last.to === r - 1) last.to = r;
+    else runs.push({ from: r, to: r });
+  });
+  return runs.map((x) => ({ ...x, label: x.to - x.from + 1 >= BRACKET_MIN_ROWS ? BRACKET_TEXT : 'Est.' }));
 };
 
 const firstIn = (list) => list.findIndex((c) => c !== null);
@@ -107,6 +132,7 @@ export const nextPosition = (model, pos, key, { ctrl = false } = {}) => {
 
 const tableCell = (c) => {
   if (c === null) return '';
+  if (isTerraOnly(c)) return 'Terra only';
   if (c.value === null) return 'No data';
   return `${formatCount(c.value)}${c.estimated ? '*' : ''}${c.status === 'partial' ? '†' : ''}`;
 };
@@ -116,8 +142,9 @@ export const calendarTableModel = (cells) => {
   // The table shows no density, so any positive denominator will do.
   const { rows } = gridModel(cells, { aoiCells: 1 });
   const notes = [];
-  if (cells.some((c) => c.estimated)) notes.push('* Estimated value.');
-  if (cells.some((c) => c.status === 'partial')) notes.push('† Partial month.');
+  if (cells.some((c) => c.estimated)) notes.push('* Estimated: scaled to VIIRS-equivalent.');
+  if (cells.some((c) => c.status === 'partial')) notes.push('† Partial month: a satellite missed days, so the count is low.');
+  if (cells.some(isTerraOnly)) notes.push('Terra only: not harmonized, Terra flew alone before Aqua (Jul 2002).');
   return tableModel({
     caption: 'Fire-cell-days per month, by year',
     corner: 'Year',
@@ -148,7 +175,7 @@ export const mostlyEstimated = (cells, threshold = 0.6) => {
 
 /**
  * The median row under the grid: core.baseline's typical year (view-data), classed by density.
- * Shown with the Preview tag until the median is validated.
+ * Shown with the Preview tag: gate V1 validated core.baseline per month, not this typical year.
  */
 export const medianRowModel = (typical, aoiCells) => (typical ?? []).map((t) => (t.median === null
   ? { month: t.month, bin: NODATA, text: '', short: '', label: `${MONTH_NAMES[t.month - 1]} median: not enough history` }
@@ -160,7 +187,16 @@ export const medianRowModel = (typical, aoiCells) => (typical ?? []).map((t) => 
     label: `${MONTH_NAMES[t.month - 1]} median ${formatCount(t.median)} fire-cell-days over ${t.from}–${t.to}, preview`,
   }));
 
-const cellClass = (m) => ['cal-cell', `bin-${m.bin}`, m.bin === NODATA && 'nodata', m.estimated && 'is-estimated', m.partial && 'is-partial'].filter(Boolean).join(' ');
+const cellClass = (m) => ['cal-cell', `bin-${m.bin}`, m.terraOnly ? 'terra-only' : m.bin === NODATA && 'nodata', m.estimated && 'is-estimated', m.partial && 'is-partial'].filter(Boolean).join(' ');
+
+const totalText = (t) => {
+  if (t?.total === null) return t.terraOnly ? 'Terra only' : 'No data';
+  return `${formatCount(t.total)}${t.partial ? '*' : ''}`;
+};
+const totalLabel = (year, t) => {
+  if (t?.total === null) return `${year} total: ${t.terraOnly ? 'not harmonized, Terra only' : 'no data'}`;
+  return `${year} total ${formatCount(t.total)} fire-cell-days${t.partial ? `, ${partialNote(t)}` : ''}${t.busiest ? ', busiest year' : ''}`;
+};
 
 const numSpans = (text, short) => [h('span', { class: 'cal-num num-l', 'aria-hidden': 'true', text }), h('span', { class: 'cal-num num-s', 'aria-hidden': 'true', text: short })];
 
@@ -227,12 +263,20 @@ export const mount = (container, deps) => {
       model.columns.map((name, i) => h('div', { role: 'columnheader', class: 'cal-colhead', 'aria-label': name, 'data-colhead': i },
         h('span', { class: 'long', text: MONTH_ABBR[i] }), h('span', { class: 'short', text: name[0] }))),
       h('div', { role: 'columnheader', class: 'cal-total cal-total-head', text: 'Year total' }));
+    const runs = estimatedRuns(model);
+    const runAt = (r) => runs.find((x) => r >= x.from && r <= x.to);
+    const yearHead = (row, r) => {
+      const run = runAt(r);
+      const cls = ['cal-year', run && 'est-run', run?.from === r && 'est-first', run?.to === r && 'est-last'].filter(Boolean).join(' ');
+      return h('div', { role: 'rowheader', class: cls, 'data-year': row.year }, String(row.year),
+        run?.from === r ? h('span', { class: 'est-bracket-label', 'aria-hidden': 'true', text: run.label }) : null);
+    };
     const rows = model.rows.map((row, r) => {
       const t = totals.get(row.year);
       const bar = h('span', { class: 'cal-total-bar' });
       bar.style.setProperty('--w', String(t?.share ?? 0));
       return h('div', { role: 'row', class: 'cal-row cal-year-row' },
-        h('div', { role: 'rowheader', class: 'cal-year', 'data-year': row.year, text: String(row.year) }),
+        yearHead(row, r),
         row.cells.map((m, c) => {
           if (m === null) return h('div', { role: 'gridcell', class: 'cal-cell is-empty', 'aria-disabled': 'true', 'aria-label': `${MONTH_NAMES[c]} ${row.year}, outside the selected range` });
           const node = h('div', {
@@ -243,8 +287,8 @@ export const mount = (container, deps) => {
           nodes.set(key(r, c), node);
           return node;
         }),
-        h('div', { role: 'gridcell', class: `cal-total${t?.busiest ? ' is-busiest' : ''}`, 'aria-label': t?.total === null ? `${row.year} total: no data` : `${row.year} total ${formatCount(t.total)} fire-cell-days${t.partial ? `, ${partialNote(t)}` : ''}${t.busiest ? ', busiest year' : ''}` },
-          bar, h('span', { class: 'cal-total-n', 'aria-hidden': 'true', text: t?.total === null ? 'No data' : `${formatCount(t.total)}${t.partial ? '*' : ''}` })));
+        h('div', { role: 'gridcell', class: `cal-total${t?.busiest ? ' is-busiest' : ''}`, 'aria-label': totalLabel(row.year, t) },
+          bar, h('span', { class: 'cal-total-n', 'aria-hidden': 'true', text: totalText(t) })));
     });
     const median = medianRowModel(typical, aoiCells);
     const medianRow = median.length ? h('div', { role: 'row', class: 'cal-row cal-median' },
@@ -258,6 +302,7 @@ export const mount = (container, deps) => {
     gridHost.replaceChildren(grid);
     const all = mostlyEstimated(cells);
     grid.classList.toggle('all-estimated', all);
+    grid.classList.toggle('has-est-bracket', runs.length > 0);
     container.closest('.view-calendar')?.classList.toggle('all-estimated', all);
     grid.addEventListener('keydown', onKeydown);
     grid.addEventListener('click', onClick);
@@ -266,7 +311,7 @@ export const mount = (container, deps) => {
     grid.addEventListener('mouseleave', clearReadout);
     clearTimeout(revealTimer);
     if (reveal) revealTimer = setTimeout(() => grid.classList.remove('is-revealing'), 1600);
-    const partial = [...totals.values()].filter((y) => y.partial).map(partialNote);
+    const partial = [...totals.values()].filter((y) => y.partial && y.total !== null).map(partialNote);
     notes.textContent = partial.length ? `* ${partial.join('; ')}.` : '';
     paintSelection();
     paintLink();

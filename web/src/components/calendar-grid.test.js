@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { NODATA } from '../bins.js';
-import { calendarTableModel, cellLabel, cellModel, gridModel, initialPosition, keyIntent, medianRowModel, nextPosition, shortCount } from './calendar-grid.js';
+import { calendarTableModel, cellLabel, cellModel, estimatedRuns, gridModel, initialPosition, keyIntent, medianRowModel, nextPosition, shortCount } from './calendar-grid.js';
 
 const c = (year, month, value, o = {}) => ({ year, month, value, status: value === null ? 'no-data' : 'observed', estimated: false, ...o });
 
@@ -9,8 +9,12 @@ test('cellLabel carries month, full value, density, status', () => {
   assert.equal(cellLabel(c(2020, 9, 12450), 327000), 'September 2020, 12,450 fire-cell-days, density 38 per 1,000 cells, observed');
 });
 
-test('cellLabel marks estimated and partial, and no data is not a number', () => {
-  assert.equal(cellLabel(c(2012, 10, 10, { status: 'partial', estimated: true }), 10000), 'October 2012, 10 fire-cell-days, density 1 per 1,000 cells, partial month, estimated');
+test('cellLabel names estimated values for their source (V1 fix F4), partial months and low confidence; no data is not a number', () => {
+  assert.equal(cellLabel(c(2012, 10, 10, { status: 'partial', estimated: true }), 10000), 'October 2012, 10 fire-cell-days, density 1 per 1,000 cells, partial month, sensor outage, estimated');
+  assert.equal(cellLabel(c(2005, 9, 25.4, { status: 'harmonized', estimated: true, source: { id: 'modis' }, flags: ['low-confidence'] }), 10000),
+    'September 2005, 25 fire-cell-days, density 2.5 per 1,000 cells, estimated, scaled to VIIRS-equivalent (MODIS × R), low confidence');
+  assert.match(cellLabel(c(2027, 1, 9, { status: 'harmonized', estimated: true, source: { id: 'noaa20' } }), 10000), /scaled to VIIRS-equivalent \(NOAA-20 × K\)$/);
+  assert.equal(cellModel(c(2005, 9, 25.4), 10000).text, '25', 'estimated fractions show as whole counts');
   assert.equal(cellLabel(c(1999, 1, null), 10000), 'January 1999, no data');
   assert.match(cellLabel(c(2012, 1, 0), 10000), /0 fire-cell-days, density 0 per 1,000 cells/);
 });
@@ -117,4 +121,23 @@ test('median row: one cell per month from the typical year, null median is not z
   assert.match(row[1].label, /not enough history/);
   assert.match(row[8].label, /September median 900 fire-cell-days over 2001–2025, preview/);
   assert.deepEqual(medianRowModel(null, 1000), []);
+});
+
+test('a Terra-only month (core flag) gets its own state, label and table text; a real gap stays No data', () => {
+  const terra = c(2001, 5, null, { flags: ['terra-only'] });
+  assert.equal(cellLabel(terra, 100), 'May 2001, not harmonized: Terra only, before Aqua (Jul 2002)');
+  assert.equal(cellModel(terra, 100).terraOnly, true);
+  assert.equal(cellModel(c(2001, 6, null), 100).terraOnly, false, 'no flag: a sensor gap, not Terra only');
+  assert.equal(cellLabel(c(2001, 6, null), 100), 'June 2001, no data');
+  const t = calendarTableModel([terra, c(2001, 6, null), c(2002, 7, 5)]);
+  assert.deepEqual(t.rows.at(-1).cells.slice(4, 6), ['Terra only', 'No data']);
+  assert.ok(t.notes.some((n) => /^Terra only: not harmonized/.test(n)));
+});
+
+test('the estimated bracket covers each run of adjacent rows with an estimated month, newest row first', () => {
+  const est = (year) => c(year, 9, 5, { estimated: true, status: 'harmonized' });
+  const cells = [...[2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010].map(est), c(2011, 9, 5), est(2013)];
+  const runs = estimatedRuns(gridModel(cells, { aoiCells: 100 }));
+  assert.deepEqual(runs, [{ from: 0, to: 0, label: 'Est.' }, { from: 2, to: 9, label: 'Estimated (MODIS × R)' }]);
+  assert.deepEqual(estimatedRuns(gridModel([c(2020, 1, 3)], { aoiCells: 100 })), []);
 });

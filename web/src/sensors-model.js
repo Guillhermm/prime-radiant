@@ -1,7 +1,8 @@
-// Sensors view numbers. The harmonized series is core's output, the same one the Calendar shows.
-// R is display math for the explanatory card only: docs/method.md section 4 (ratio of sums over
-// the months both sensors report) without its threshold, fallback or interval, never applied to
-// a plotted value, and shown as a Preview until the science team reviews it.
+import { MONTH_ABBR } from './format.js';
+import { sourcesOf } from './view-data.js';
+
+// Sensors view numbers: every value and ratio is core's (seriesForAoi, harmonize). This file
+// only lines them up by month or year and picks the example months the steps card explains.
 
 const pad = (n) => String(n).padStart(2, '0');
 const idxOf = (ym) => Number(ym.slice(0, 4)) * 12 + Number(ym.slice(5, 7)) - 1;
@@ -11,119 +12,93 @@ export const monthAt = (start, i) => {
 };
 const num = (v) => typeof v === 'number';
 
-/**
- * R = sum VIIRS / sum MODIS over the months where both report a value.
- * @returns {{r: number|null, months: number, withFire: number, from: string|null, to: string|null, modisSum: number, viirsSum: number}}
- */
-export const overlapRatio = ({ modis, viirs }) => {
-  let m = 0;
-  let v = 0;
-  let months = 0;
-  let withFire = 0;
-  let first = null;
-  let last = null;
-  modis.values.forEach((mv, i) => {
-    const vv = viirs.values[i];
-    if (!num(mv) || !num(vv)) return;
-    months += 1;
-    if (mv + vv > 0) withFire += 1;
-    m += mv;
-    v += vv;
-    first ??= i;
-    last = i;
-  });
-  return {
-    r: m > 0 ? v / m : null, months, withFire, modisSum: m, viirsSum: v,
-    from: first === null ? null : monthAt(modis.start, first), to: last === null ? null : monthAt(modis.start, last),
-  };
-};
-
-const sourceOf = (h, mv, vv) => {
-  if (!num(h)) return null;
-  if (h === mv) return 'MODIS';
-  if (h === vv) return 'VIIRS';
-  return 'Adjusted by core';
-};
+export const SOURCE_LABEL = { viirs: 'S-NPP', modis: 'MODIS × R', noaa20: 'NOAA-20 × K' };
 
 /**
- * Per-month view of core's harmonized Series, aligned with the sensors. `source` names the
- * sensor whose count it carries; `estimated` comes from core when it marks months (the stub does not).
+ * Per-month view of core's harmonized series, aligned with the sensors: the value, whether core
+ * marked it estimated, and which sensor supplied it.
+ * @param {{modis: object, viirs: object, noaa20?: object}} sensors raw Series of one range
+ * @param {{series: object, R: object, K: object|null}} h core harmonize result, series cut to the same range
  */
-export const fromCore = ({ modis, viirs }, harmonized) => {
-  if (harmonized.start !== modis.start || harmonized.values.length !== modis.values.length) {
-    throw new Error(`fromCore: harmonized ${harmonized.start}+${harmonized.values.length} does not align with sensors ${modis.start}+${modis.values.length}`);
+export const fromCore = (sensors, h, manifest) => {
+  const { modis } = sensors;
+  if (h.series.start !== modis.start || h.series.values.length !== modis.values.length) {
+    throw new Error(`fromCore: harmonized ${h.series.start}+${h.series.values.length} does not align with sensors ${modis.start}+${modis.values.length}`);
   }
-  return harmonized.values.map((v, i) => ({
-    value: num(v) ? v : null, estimated: Boolean(harmonized.estimated?.[i]), source: sourceOf(v, modis.values[i], viirs.values[i]),
+  return sourcesOf(h, sensors, manifest).map((src, i) => ({
+    value: num(h.series.values[i]) ? h.series.values[i] : null,
+    estimated: src !== null && src.id !== 'viirs',
+    source: src && SOURCE_LABEL[src.id],
+    factor: src?.factor ?? null,
   }));
 };
 
-/** The busiest month MODIS saw alone, for the "how it is built" steps; null when there is none. */
-export const exampleMonth = ({ modis, viirs }, r) => {
+// The busiest month of `key` whose harmonized value core took from `source`.
+const busiest = (sensors, months, key, source) => {
   let best = null;
-  modis.values.forEach((mv, i) => {
-    if (!num(mv) || num(viirs.values[i])) return;
-    if (!best || mv > best.modis) best = { month: monthAt(modis.start, i), modis: mv };
+  months.forEach((m, i) => {
+    const v = sensors[key]?.values[i];
+    if (m.source !== source || !num(v)) return;
+    if (!best || v > best.count) best = { month: monthAt(sensors.modis.start, i), count: v, core: m.value, factor: m.factor };
   });
-  return best && { ...best, scaled: r === null ? null : best.modis * r };
+  return best;
 };
 
 /**
- * Points for the chart and the table, by year or by month. A year sums its months; it is
- * estimated when any of its harmonized months is, and partial when a sensor has fewer than 12.
+ * Points for the chart and the table, by year or by month. A year sums its months and is
+ * estimated when any of its harmonized months is. `partial` lists the series whose year sum
+ * misses months: every series when the range cuts the year (2000 starts in November), and the
+ * harmonized one alone when a month a sensor counted has no harmonized value (Terra only).
  */
-export const sensorPoints = ({ modis, viirs }, harmonized, step = 'year') => {
-  const months = modis.values.map((mv, i) => ({
-    key: monthAt(modis.start, i), modis: mv, viirs: viirs.values[i], harmonized: harmonized[i].value, estimated: harmonized[i].estimated, sources: harmonized[i].source ? [harmonized[i].source] : [],
+export const sensorPoints = (sensors, months, step = 'year') => {
+  const at = (id, i) => sensors[id]?.values[i] ?? null;
+  const list = sensors.modis.values.map((_, i) => ({
+    key: monthAt(sensors.modis.start, i), modis: at('modis', i), viirs: at('viirs', i), noaa20: at('noaa20', i),
+    harmonized: months[i].value, estimated: months[i].estimated, sources: months[i].source ? [months[i].source] : [],
   }));
-  if (step === 'month') return months.filter((p) => num(p.modis) || num(p.viirs));
+  const any = (p) => num(p.modis) || num(p.viirs) || num(p.noaa20);
+  if (step === 'month') return list.filter(any).map((p) => ({ ...p, partial: [] }));
   const years = new Map();
-  for (const p of months) {
+  for (const p of list) {
     const key = p.key.slice(0, 4);
-    const y = years.get(key) ?? { key, modis: null, viirs: null, harmonized: null, estimated: false, sources: [], modisMonths: 0, viirsMonths: 0 };
+    const y = years.get(key) ?? { key, modis: null, viirs: null, noaa20: null, harmonized: null, estimated: false, sources: [], months: 0, unharmonized: 0, inRange: [], withHarm: [] };
+    const mo = Number(p.key.slice(5, 7));
+    y.inRange.push(mo);
+    if (num(p.harmonized)) y.withHarm.push(mo);
     for (const src of p.sources) if (!y.sources.includes(src)) y.sources.push(src);
-    if (num(p.modis)) { y.modis = (y.modis ?? 0) + p.modis; y.modisMonths += 1; }
-    if (num(p.viirs)) { y.viirs = (y.viirs ?? 0) + p.viirs; y.viirsMonths += 1; }
-    if (num(p.harmonized)) y.harmonized = (y.harmonized ?? 0) + p.harmonized;
+    for (const id of ['modis', 'viirs', 'noaa20', 'harmonized']) if (num(p[id])) y[id] = (y[id] ?? 0) + p[id];
     y.estimated ||= p.estimated;
+    y.months += 1;
+    if (any(p) && !num(p.harmonized)) y.unharmonized += 1;
     years.set(key, y);
   }
-  return [...years.values()].filter((p) => num(p.modis) || num(p.viirs));
-};
-
-/** Everything the Sensors view shows, from the two sensor Series and core's harmonized Series of one range. */
-export const sensorsSummary = (sensors, harmonizedSeries) => {
-  const ratio = overlapRatio(sensors);
-  const harmonized = fromCore(sensors, harmonizedSeries);
-  let state = 'ok';
-  if (ratio.months === 0) state = 'no-overlap';
-  else if (ratio.r === null) state = 'no-fire';
-  const ex = exampleMonth(sensors, ratio.r);
-  // What the Calendar shows for the example month: core's harmonized value, whatever core did to it.
-  const example = ex && { ...ex, core: harmonized[idxOf(ex.month) - idxOf(sensors.modis.start)].value };
-  return { ratio, harmonized, state, example };
-};
-
-const cell = (v) => (num(v) ? String(Math.round(v * 100) / 100) : '');
-const oneLine = (v) => String(v).replace(/[\r\n]+/g, ' ');
-
-/** CSV text of the three monthly series with a Source column; `meta` adds "# key: value" lines. */
-export const sensorsCsv = ({ modis, viirs }, harmonizedSeries, meta = {}) => {
-  const { ratio, harmonized } = sensorsSummary({ modis, viirs }, harmonizedSeries);
-  const method = harmonizedSeries.method ?? {};
-  const head = {
-    series: 'modis, viirs, harmonized',
-    unit: 'fire-cell-days',
-    harmonized: `core method ${[method.id ?? 'unknown', method.version].filter(Boolean).join(' ')}, the series the Calendar shows`,
-    R: `${ratio.r === null ? 'not computed' : String(Math.round(ratio.r * 10000) / 10000)} (Preview, explanatory only, not applied to the harmonized column)`,
-    ...meta,
-  };
-  const lines = Object.entries(head).map(([k, v]) => `# ${oneLine(k)}: ${oneLine(v)}`);
-  lines.push('month,modis,viirs,harmonized,source');
-  modis.values.forEach((mv, i) => {
-    const hv = harmonized[i];
-    const source = (hv.source ?? '') + (hv.estimated ? ', estimated' : '');
-    lines.push(`${monthAt(modis.start, i)},${cell(mv)},${cell(viirs.values[i])},${cell(hv.value)},${source}`);
+  // `span` names the months a partial year's sum covers ("Jul–Dec"), for the label by its hollow point.
+  const spanOf = (ms) => `${MONTH_ABBR[Math.min(...ms) - 1]}–${MONTH_ABBR[Math.max(...ms) - 1]}`;
+  return [...years.values()].filter(any).map(({ months: n, unharmonized, inRange, withHarm, ...y }) => {
+    if (n < 12) return { ...y, partial: ['modis', 'viirs', 'noaa20', 'harmonized'], span: spanOf(inRange) };
+    if (unharmonized && num(y.harmonized)) return { ...y, partial: ['harmonized'], span: spanOf(withHarm) };
+    return { ...y, partial: [] };
   });
-  return `${lines.join('\n')}\n`;
+};
+
+/**
+ * Everything the Sensors view shows for one range: core's R and K, the months, the examples
+ * for the steps card (the busiest month scaled from MODIS and from NOAA-20) and the first and
+ * last month where MODIS and S-NPP both have a value (the shaded overlap).
+ */
+export const sensorsSummary = (sensors, h, manifest) => {
+  const months = fromCore(sensors, h, manifest);
+  let from = null;
+  let to = null;
+  sensors.modis.values.forEach((m, i) => {
+    if (!num(m) || !num(sensors.viirs.values[i])) return;
+    from ??= monthAt(sensors.modis.start, i);
+    to = monthAt(sensors.modis.start, i);
+  });
+  return {
+    R: h.R, K: h.K, months, overlap: { from, to }, fit: h.fit ?? null,
+    state: num(h.R?.value) ? 'ok' : 'no-r',
+    example: busiest(sensors, months, 'modis', SOURCE_LABEL.modis),
+    kExample: busiest(sensors, months, 'noaa20', SOURCE_LABEL.noaa20),
+  };
 };

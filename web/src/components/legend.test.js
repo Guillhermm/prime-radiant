@@ -7,7 +7,7 @@ test('legend lists seven bins, no data, marks and the unit', () => {
   assert.equal(m.bins.length, 7);
   assert.equal(m.bins[0].text, 'No detections (0)');
   assert.match(m.nodata, /No data/);
-  assert.deepEqual(m.marks.map((k) => k.id), ['estimated', 'partial']);
+  assert.deepEqual(m.marks.map((k) => k.id), ['estimated', 'partial', 'terra-only']);
   assert.equal(m.unit, UNIT_SENTENCE);
   assert.match(m.unit, /per 1,000 grid cells/);
 });

@@ -1,7 +1,9 @@
 import { binClass, density, NODATA } from '../bins.js';
-import { caveatsForCell } from '../caveat-catalog.js';
+import { caveat } from '../../../core/caveats.js';
+import { INSTRUMENT, satelliteSpans } from '../satellites.js';
+import { SOURCE_TEXT } from './calendar-grid.js';
 import { MONTH_ABBR, MONTH_NAMES, formatCount, formatDensity, monthLabel } from '../format.js';
-import { compareToMedian, medianYears, rankSentence, sameMonth, ymOf } from '../stats.js';
+import { compareToMedian, rankSentence, sameMonth, yearsSpan, ymOf } from '../stats.js';
 import { divClass, rankText } from './anomaly-layer.js';
 import { isSyntheticManifest } from '../view-data.js';
 import { h } from './h.js';
@@ -12,12 +14,47 @@ import * as toast from './toast.js';
 export const NOT_AVAILABLE = 'not available yet';
 export const NO_MEDIAN = 'Not enough history for a median';
 
-const PROVENANCE = { observed: 'VIIRS, observed', harmonized: 'Harmonized', partial: 'Partial month' };
-
+// Gate V1 fix F4: estimated values read "scaled to VIIRS-equivalent", not "harmonized".
 export const provenanceText = (cell) => {
   if (cell.value === null) return 'No data';
-  const base = PROVENANCE[cell.status] ?? cell.status;
-  return cell.estimated ? `${base}, estimated` : base;
+  const base = cell.estimated ? `Estimated, ${SOURCE_TEXT[cell.source?.id] ?? 'scaled to VIIRS-equivalent'}` : 'VIIRS S-NPP, observed';
+  return cell.status === 'partial' ? `${base}, partial month` : base;
+};
+
+export const LEVEL_TEXT = { aoi: 'this area', tiles: 'the 10° tiles around this area', ring: 'the tiles around this area and the ring beyond', global: 'all the data (Brazil)' };
+
+/** "MODIS × R, R = 2.52 for September": the factor core applied, where it was fit, and its confidence. */
+export const estimationText = (cell, ratios = {}) => {
+  const f = cell.source?.factor;
+  if (!cell.estimated || !f || typeof f.value !== 'number') return cell.estimated ? 'Estimated: scaled to VIIRS-equivalent.' : null;
+  const r = ratios[f.name];
+  const what = f.name === 'R' ? 'MODIS × R' : 'NOAA-20 × K';
+  const parts = [`Estimated: ${what}, ${f.name} = ${f.value.toFixed(2)}${r?.perMonth ? ` for ${MONTH_NAMES[cell.month - 1]}` : ''}.`];
+  if (r?.level && r.level !== 'aoi') parts.push(`${f.name} comes from ${LEVEL_TEXT[r.level]}: this area has too few detections.`);
+  if (r && r.usable === false) parts.push(`${f.name} failed the usability rule at every level: low confidence.`);
+  return parts.join(' ');
+};
+
+/** Why a month has no value: core's flag, else the sensors were off. */
+export const noDataNote = (cell, { manifest = null, ratios = {} } = {}) => {
+  const flags = cell.flags ?? [];
+  if (flags.includes('outside-domain')) return 'This area lies outside the data domain (Brazil). There is no data here, not zero.';
+  if (flags.includes('terra-only')) return 'Only MODIS Terra flew before July 2002. Its counts are not scaled, so there is no value. This is not zero.';
+  const ym = ymOf(cell.year, cell.month);
+  const inside = (c) => Array.isArray(c) && ym >= c[0] && ym <= c[1];
+  if (inside(manifest?.coverage?.modis) && !inside(manifest?.coverage?.viirs) && typeof ratios.R?.value !== 'number') {
+    return 'Only MODIS flew, and MODIS saw no fire here in the months both sensors flew, so R cannot scale it. This is not zero.';
+  }
+  return 'The sensors were not operating this month. This is not zero.';
+};
+
+export const PARTIAL_NOTE = 'Partial month: a satellite missed days (outage), so this count is low. It is not filled from the other satellite.';
+
+/** Core caveats for one cell: an item per flag the cell carries, then the area-wide caveats. */
+export const cellCaveats = (cell, areaCaveats = []) => {
+  const flags = [...(cell.estimated ? ['estimated'] : []), ...(cell.flags ?? [])];
+  const items = flags.map((id) => { try { return caveat(id); } catch { return null; } }).filter(Boolean);
+  return [...items, ...areaCaveats.filter((c) => c.kind === 'caveat')];
 };
 
 const ym = (s) => `${MONTH_ABBR[Number(s.slice(5, 7)) - 1]} ${s.slice(0, 4)}`;
@@ -25,13 +62,12 @@ const ym = (s) => `${MONTH_ABBR[Number(s.slice(5, 7)) - 1]} ${s.slice(0, 4)}`;
 /** Satellites flying in month `when` ("YYYY-MM"), per family, from the manifest; nothing invented. */
 export const satellitesInOrbit = (manifest, when) => {
   const out = [];
-  for (const [family, sats] of Object.entries(manifest?.satellites ?? {})) {
-    const span = manifest.coverage?.[family];
-    if (span && (when < span[0] || when > span[1])) continue;
-    const flying = sats.filter((s) => s.from <= when);
-    if (flying.length) out.push({ family, label: family.toUpperCase(), text: flying.map((s) => `${s.name} since ${ym(s.from)}`).join(', ') });
+  for (const s of satelliteSpans(manifest).filter((x) => x.from <= when && when <= x.to)) {
+    const family = s.family === 'noaa20' ? 'viirs' : s.family;
+    const row = out.find((r) => r.family === family) ?? out[out.push({ family, label: INSTRUMENT[family], names: [] }) - 1];
+    row.names.push(`${s.name} since ${ym(s.from)}`);
   }
-  return out;
+  return out.map(({ names, ...r }) => ({ ...r, text: names.join(', ') }));
 };
 
 export const STRIP = { width: 360, height: 112, top: 18 };
@@ -112,13 +148,13 @@ const stripLabel = (cell, strip, rank) => {
 // The sheet covers the top bar on phone, so the panel carries the synthetic label itself.
 export const panelEyebrow = (manifest) => (isSyntheticManifest(manifest) ? 'Selected month · Synthetic data' : 'Selected month');
 
-export const detailModel = (cell, { aoiCells, layer = 'counts', cells = [cell], allCells = cells, manifest = null }) => {
+export const detailModel = (cell, { aoiCells, layer = 'counts', cells = [cell], manifest = null, caveats = [], ratios = {} }) => {
   const title = monthLabel(cell.year, cell.month);
-  const caveats = caveatsForCell(cell);
+  const list = cellCaveats(cell, caveats);
   const satellites = satellitesInOrbit(manifest, ymOf(cell.year, cell.month));
   const eyebrow = panelEyebrow(manifest);
   if (cell.value === null) {
-    return { title, eyebrow, noData: true, value: 'No data', note: 'The sensors were not operating this month. This is not zero.', bin: NODATA, provenance: 'No data', compare: null, strip: null, rank: null, satellites, estimation: null, extra: [], caveats: caveats.filter((c) => c.id === 'C1') };
+    return { title, eyebrow, noData: true, value: 'No data', note: noDataNote(cell, { manifest, ratios }), bin: NODATA, provenance: 'No data', compare: null, strip: null, rank: null, satellites, estimation: null, partial: null, extra: [], caveats: list };
   }
   const d = density(cell.value, aoiCells);
   const same = sameMonth(cells, cell);
@@ -127,11 +163,10 @@ export const detailModel = (cell, { aoiCells, layer = 'counts', cells = [cell], 
   const cmp = compareToMedian(cell.value, cell.median);
   const compare = cmp && {
     ...cmp,
-    lead: medianLead(name, medianYears(allCells, cell)),
+    lead: medianLead(name, yearsSpan(cell.medianYears)),
     median: formatCount(cell.median),
   };
-  let estimation = null;
-  if (cell.estimated) estimation = typeof cell.r === 'number' ? `Estimated: MODIS counts put on the VIIRS scale with R = ${cell.r}.` : 'Estimated: MODIS counts put on the VIIRS scale. The scaling factor is not available yet.';
+  const estimation = estimationText(cell, ratios);
   const extra = [];
   if (layer === 'anomaly') {
     const ranked = typeof cell.rank === 'number';
@@ -160,8 +195,9 @@ export const detailModel = (cell, { aoiCells, layer = 'counts', cells = [cell], 
     rank: rankNote,
     satellites,
     estimation,
+    partial: cell.status === 'partial' ? PARTIAL_NOTE : null,
     extra,
-    caveats,
+    caveats: list,
   };
 };
 
@@ -226,9 +262,8 @@ const content = (m, { onClose, onCopy, onTable, sheet }) => {
       h('span', { class: 'meta' }, mark('mark mark-xs'), m.provenance)));
     nodes.push(m.compare
       ? h('div', { class: `cmp cmp-${m.compare.dir}` },
-        h('span', { class: 'cmp-x', text: m.compare.text }),
-        h('span', { class: 'cmp-t' }, m.compare.lead,
-          h('small', {}, `median ${m.compare.median} `, h('span', { class: 'tag', text: 'Preview' }))))
+        h('span', { class: 'cmp-x' }, m.compare.text, ' ', h('span', { class: 'tag', text: 'Preview' })),
+        h('span', { class: 'cmp-t' }, m.compare.lead, h('small', { text: `median ${m.compare.median}` })))
       : h('p', { class: 'cmp cmp-none', text: m.noMedian }));
     nodes.push(h('div', { class: 'sect' }, h('span', { class: 'eyebrow', text: m.stripTitle })), h('div', { class: 'bars' }, stripSvg(m)));
     if (m.rank) nodes.push(h('p', { class: 'panel-note' }, m.rank, ' ', h('span', { class: 'tag', text: 'Preview' })));
@@ -238,9 +273,10 @@ const content = (m, { onClose, onCopy, onTable, sheet }) => {
     nodes.push(h('div', { class: 'sect' }, h('span', { class: 'eyebrow', text: 'Satellites in orbit' })),
       h('div', { class: 'sats' }, m.satellites.map((s) => h('div', { class: `sat sat-${s.family}` }, h('b', {}, h('i', { 'aria-hidden': 'true' }), s.label), h('span', { text: s.text })))));
   }
+  if (m.partial) nodes.push(h('p', { class: 'panel-note panel-partial', text: m.partial }));
   if (m.estimation) nodes.push(h('p', { class: 'panel-note', text: m.estimation }));
   nodes.push(h('details', { class: 'panel-caveats' }, h('summary', { text: `Caveats (${m.caveats.length})` }),
-    h('ul', {}, m.caveats.map((c) => h('li', {}, h('strong', { text: `${c.id} ` }), c.text)))));
+    h('ul', {}, m.caveats.map((c) => h('li', {}, h('strong', { text: `${c.short} ` }), c.long)))));
   // Copy link on both widths: on phone the sheet is the only place that offers it.
   nodes.push(h('div', { class: 'panel-actions' },
     h('button', { type: 'button', class: 'btn panel-copy', onclick: () => onCopy() }, icon('link'), 'Copy link'),

@@ -1,20 +1,19 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { stripModel } from './caveat-strip.js';
-import { CAVEATS, STRIP_TEXT } from '../caveat-catalog.js';
+import { stripModel, STRIP_TEXT } from './caveat-strip.js';
+import { NO_GATES } from '../../../core/caveats.js';
 
-test('strip shows the preliminary badge while the flag is set', () => {
-  assert.equal(stripModel({ preliminary: true }).badge, 'Preliminary');
-  assert.equal(stripModel({ preliminary: false }).badge, null);
+test('gate V1 passed: no Preliminary badge by default; before the gate the badge shows', () => {
+  assert.equal(stripModel().badge, null);
+  assert.equal(stripModel().preliminary, false);
+  assert.equal(stripModel({ gates: NO_GATES }).badge, 'Preliminary');
 });
 
-test('strip is not dismissible and links to the method', () => {
+test('strip is not dismissible, links to the method and counts core caveats', () => {
   const m = stripModel();
   assert.equal(m.text, STRIP_TEXT);
+  assert.match(m.text, /VIIRS-equivalent \(MODIS × R\)/);
   assert.equal(m.readMore, 'How this is made');
   assert.equal('dismiss' in m, false);
-});
-
-test('catalog has C1 to C8 with unique ids', () => {
-  assert.deepEqual(CAVEATS.map((c) => c.id), ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8']);
+  assert.equal(m.count, 9);
 });

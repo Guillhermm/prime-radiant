@@ -88,7 +88,7 @@ export const launch = async (chromePath) => {
       throw new Error(`timeout waiting for: ${what}`);
     };
     const click = async (sel) => {
-      const box = await evaluate(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return null; e.scrollIntoView({ block: 'center' }); const r = e.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()`);
+      const box = await evaluate(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return null; e.scrollIntoView({ block: 'center' }); const at = () => { const r = e.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; }; return new Promise((done) => { let last = at(); let still = 0; let n = 0; const tick = () => { const now = at(); still = now[0] === last[0] && now[1] === last[1] ? still + 1 : 0; last = now; if (still >= 3 || ++n > 120) done(now); else requestAnimationFrame(tick); }; requestAnimationFrame(tick); }); })()`);
       if (!box) throw new Error(`missing element: ${sel}`);
       for (const type of ['mousePressed', 'mouseReleased']) await cmd('Input.dispatchMouseEvent', { type, x: box[0], y: box[1], button: 'left', clickCount: 1 });
     };

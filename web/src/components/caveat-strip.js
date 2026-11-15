@@ -1,15 +1,23 @@
-import { CAVEATS, PRELIMINARY, STRIP_TEXT } from '../caveat-catalog.js';
+import { caveat, catalog } from '../../../core/caveats.js';
 import { h } from './h.js';
 import { icon } from './icons.js';
 
-/** What the caveat line shows. It has no close control by design (docs/ux.md section 2). */
-export const stripModel = ({ preliminary = PRELIMINARY, text = STRIP_TEXT } = {}) => ({
-  text,
-  preliminary,
-  badge: preliminary ? 'Preliminary' : null,
-  readMore: 'How this is made',
-  count: CAVEATS.length,
-});
+export const STRIP_TEXT = 'Hotspot counts, not burned area. Values before VIIRS are scaled to VIIRS-equivalent (MODIS × R).';
+
+/**
+ * What the caveat line shows. It has no close control by design (docs/ux.md section 2). The
+ * Preliminary badge follows core's gate map: it shows while the method is not validated.
+ */
+export const stripModel = ({ gates, text = STRIP_TEXT } = {}) => {
+  const preliminary = caveat('not-validated', gates).preliminary;
+  return {
+    text,
+    preliminary,
+    badge: preliminary ? 'Preliminary' : null,
+    readMore: 'How this is made',
+    count: catalog(gates).filter((c) => c.kind === 'caveat').length,
+  };
+};
 
 /** mount(container, {onReadMore(trigger)}). Returns {destroy()}. */
 export const mount = (container, deps = {}) => {

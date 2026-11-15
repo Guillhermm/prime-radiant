@@ -82,10 +82,12 @@ test('the service worker needs no Service-Worker-Allowed: it lives at /web/sw.js
   assert.ok(readFileSync(new URL('../../web/sw.js', import.meta.url), 'utf8').length > 0);
 });
 
-test('.vercelignore deploys only web/, core/, api/, data/ and the mock generator', () => {
+test('.vercelignore deploys only web/, core/, api/, data/ and the mock generator with its two pipeline inputs', () => {
   const lines = readFileSync(new URL('../../.vercelignore', import.meta.url), 'utf8').split('\n').filter((l) => l && !l.startsWith('#'));
   assert.equal(lines[0], '/*', 'ignore everything first');
-  assert.deepEqual(lines.filter((l) => l.startsWith('!')).sort(), ['!/api', '!/core', '!/data', '!/tools', '!/tools/mock-data.mjs', '!/vercel.json', '!/web']);
+  assert.deepEqual(lines.filter((l) => l.startsWith('!')).sort(), ['!/api', '!/core', '!/data', '!/pipeline', '!/pipeline/domain', '!/pipeline/domain/brazil.geojson',
+    '!/pipeline/write-tiles.js', '!/tools', '!/tools/mock-data.mjs', '!/vercel.json', '!/web']);
   assert.ok(lines.includes('/tools/*'), 'only the mock generator is uploaded from tools/');
+  assert.ok(lines.includes('/pipeline/*') && lines.includes('/pipeline/domain/*'), 'only the tile writer and the outline are uploaded from pipeline/');
   assert.ok(lines.includes('*.test.js'), 'test files are not deployed');
 });

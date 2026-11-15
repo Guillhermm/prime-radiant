@@ -12,7 +12,7 @@ export const formatDensity = (d) => (d < 10 ? String(Number(d.toFixed(1))) : COU
 /** Short form for a cell too small for the full number: 999, 1.2k, 12k, 1.2M. */
 const UNITS = [[1e3, 'k'], [1e6, 'M'], [1e9, 'B']];
 export const abbreviateCount = (n) => {
-  if (n < 1000) return String(n);
+  if (n < 999.5) return String(Math.round(n));
   let i = UNITS.findLastIndex(([size]) => n >= size);
   let v = n / UNITS[i][0];
   v = v < 10 ? Math.round(v * 10) / 10 : Math.round(v);

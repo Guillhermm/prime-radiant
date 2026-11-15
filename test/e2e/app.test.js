@@ -7,10 +7,10 @@ import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { findChrome, launch, wait } from './cdp.mjs';
 import { createStaticServer, loadSite } from '../../tools/serve.mjs';
-import { toCsv } from '../../core/index.js';
 import { createDataSource } from '../../web/src/data-source.js';
 import { buildResult, csvMeta } from '../../web/src/view-data.js';
-import { guardCsv, withSyntheticNote } from '../../web/src/components/export-menu.js';
+import { csvExport } from '../../web/src/components/export-menu.js';
+import { generate } from '../../tools/mock-data.mjs';
 import { parseHash } from '../../web/src/state.js';
 import { spanFromManifest } from '../../web/src/components/date-range.js';
 
@@ -32,13 +32,19 @@ before(async () => {
   server = createStaticServer(site);
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${server.address().port}`;
-  // The same site, but the fixture manifest says synthetic, so the band and its About show.
+  // The same site serving a synthetic data/ built in memory by the mock generator, as production
+  // does until real tiles are hosted: Brazil only, 2000-11 to 2019-12, so the band, the Sensors
+  // ratios and the preview ranks all have data.
   const serveFile = server.listeners('request')[0];
-  const synthetic = JSON.stringify({ ...JSON.parse(await readFile(join(root, 'fixtures/manifest.json'), 'utf8')), dataVersion: 'synthetic-test' });
+  const synth = generate({ last: '2019-12', now: new Date('2026-11-14T00:00:00Z') });
+  const files = new Map([['/data/manifest.json', synth.manifest], ['/data/domain.json', synth.domain],
+    ...Object.entries(synth.tiles).map(([id, t]) => [`/data/tiles/0.1/${id}.json`, t]),
+    ...Object.entries(synth.coarse).map(([id, t]) => [`/data/tiles/1/${id}.json`, t])]);
   synthServer = createServer((req, res) => {
-    if (new URL(req.url, 'http://x').pathname !== '/fixtures/manifest.json') return serveFile(req, res);
+    const body = files.get(new URL(req.url, 'http://x').pathname);
+    if (!body) return serveFile(req, res);
     res.writeHead(200, { ...site.headers, 'content-type': 'application/json' });
-    return res.end(synthetic);
+    return res.end(JSON.stringify(body));
   });
   await new Promise((r) => synthServer.listen(0, '127.0.0.1', r));
   synthBase = `http://127.0.0.1:${synthServer.address().port}`;
@@ -61,7 +67,6 @@ const open = async (width, query = '?fixtures=1', origin = base) => {
 
 const EXAMPLE = '.ex.chip-example';
 const CALENDAR_READY = `document.querySelector('.view-calendar .cal-grid') && !document.querySelector('.view-calendar').hidden`;
-const lastYear = `[...document.querySelectorAll('.view-calendar .cal-year-row .cal-year')].pop()?.textContent`;
 const focusedLabel = `document.activeElement.getAttribute('aria-label')`;
 
 // Clicks land by coordinates, so wait for entrance animations to stop moving the target.
@@ -74,12 +79,13 @@ const openExample = async (page) => {
   await page.until(CALENDAR_READY, 'calendar after an example');
 };
 
-const applyFrom2005 = async (page) => {
+// The fixture span is 2023-01 to 2023-06: from March leaves four months.
+const applyFromMarch = async (page) => {
   await settle(page);
-  await page.evaluate(`(() => { const i = document.querySelector('#date-from'); i.value = '2005-01'; i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  await page.evaluate(`(() => { const i = document.querySelector('#date-from'); i.value = '2023-03'; i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   await page.click('.query-form .actions .btn-primary');
-  await page.until(`location.hash.includes('from=2005-01')`, 'apply commits from=2005-01');
-  await page.until(`${lastYear} === '2005'`, 'calendar ends at 2005');
+  await page.until(`location.hash.includes('from=2023-03')`, 'apply commits from=2023-03');
+  await page.until(`document.querySelectorAll('.view-calendar .calendar:not(.anomaly-layer) .cal-cell[data-row]').length === 4`, 'calendar starts at March 2023');
 };
 
 test('the site root redirects to the app and the default load shows the first-run screen', { skip }, async () => {
@@ -113,7 +119,7 @@ test('first run, desktop: Enter coordinates opens the form at South, Draw an are
     await settle(page);
     await page.click('.cta .btn-primary');
     await page.until(`document.querySelector('.map-canvas .leaflet-pane') && document.querySelector('.map-canvas').getBoundingClientRect().height > 100`, 'map visible in the form');
-    await page.evaluate(`(() => { const set = (id, v) => { const i = document.querySelector(id); i.value = v; i.dispatchEvent(new Event('input', { bubbles: true })); }; set('#aoi-south', '-20'); set('#aoi-west', '-58'); set('#aoi-north', '-15'); set('#aoi-east', '-55'); })()`);
+    await page.evaluate(`(() => { const set = (id, v) => { const i = document.querySelector(id); i.value = v; i.dispatchEvent(new Event('input', { bubbles: true })); }; set('#aoi-south', '41'); set('#aoi-west', '-9'); set('#aoi-north', '49'); set('#aoi-east', '-1'); })()`);
     await settle(page);
     await page.click('.query-form .actions .btn-primary');
     await page.until(CALENDAR_READY, 'calendar after Apply');
@@ -160,7 +166,7 @@ test('header: the brand goes home to the first run; footer authors link to GitHu
 });
 
 test('synthetic About: a popover that explains the data, with one link to Method', { skip }, async () => {
-  const page = await open(1280, '?fixtures=1', synthBase);
+  const page = await open(1280, '', synthBase);
   try {
     await page.until(`document.querySelector('.synth-about')`, 'synthetic band');
     await page.click('.synth-about');
@@ -187,7 +193,7 @@ test('synthetic About: a popover that explains the data, with one link to Method
 });
 
 test('synthetic banner: closes with an animation, a persistent tag stays and opens About, closed for the session only', { skip }, async () => {
-  const page = await open(1280, '?fixtures=1', synthBase);
+  const page = await open(1280, '', synthBase);
   const visible = (sel) => `(() => { const el = document.querySelector('${sel}'); return Boolean(el && el.getClientRects().length); })()`;
   try {
     await page.until(visible('.synth-band'), 'banner');
@@ -208,12 +214,12 @@ test('synthetic banner: closes with an animation, a persistent tag stays and ope
     await page.until(`document.querySelector('#synth-about').matches(':popover-open')`, 'About from the tag');
     assert.match(await page.evaluate(`document.querySelector('#synth-about').textContent`), /not real fire detections/);
     await page.press('Escape');
-    await page.goto(`${synthBase}/web/?fixtures=1`);
+    await page.goto(`${synthBase}/web/`);
     await page.until(visible('.synth-tag'), 'tag after reload');
     assert.equal(await page.evaluate(visible('.synth-band')), false, 'banner stays closed in this session');
     assert.deepEqual(page.problems, []);
   } finally { await page.close(); }
-  const next = await open(400, '?fixtures=1', synthBase);
+  const next = await open(400, '', synthBase);
   try {
     await next.until(visible('.synth-band'), 'banner back in a new session');
     assert.equal(await next.evaluate(visible('.synth-tag')), false);
@@ -239,12 +245,14 @@ test('offline chip: saved data while offline, plain Offline and the offline erro
     assert.equal(await page.evaluate(`document.querySelector('.offline-chip').closest('[role=status]') !== null`), true, 'announced through a status region');
     await page.setOffline(true);
     await page.until(`${chip} === 'Offline · showing saved data'`, 'offline chip over loaded data');
-    await page.evaluate(`location.hash = location.hash.replace(/aoi=bbox:[^&]*/, 'aoi=bbox:-179,41,-175,45')`);
+    await page.evaluate(`location.hash = location.hash.replace(/aoi=bbox:[^&]*/, 'aoi=bbox:-179,61,-175,65')`);
     await page.until(`${chip} === 'Offline'`, 'plain Offline when the area cannot load');
     await page.until(`/not saved for offline use/.test(document.querySelector('[data-slot=empty]').textContent)`, 'offline error copy').catch(async (e) => { throw new Error(`${e.message}: ${await page.evaluate(`document.querySelector('[data-slot=empty]').textContent`)}`); });
     await page.setOffline(false);
     await page.until(`${chip} === null`, 'chip gone on reconnect');
-    await page.until(CALENDAR_READY, 'the area loads again once online');
+    // That tile lies outside the fixture domain: once loaded, the area says so instead of showing zeros.
+    await page.until(`/Outside the data domain/.test(document.querySelector('[data-slot=empty]').textContent)`, 'the area loads again once online');
+    assert.equal(await page.evaluate(`document.querySelector('.view-calendar').hidden`), true, 'no grid of no-data cells');
   } finally { await page.setOffline(false).catch(() => {}); await page.close(); }
 });
 
@@ -277,7 +285,7 @@ test('share menu on the area chip: arrows move, Escape returns focus, copy repor
 test('without the Popover API, About and the share menu still close on Escape and return focus', { skip }, async () => {
   const page = await browser.newPage({ width: 1280, height: 900, downloadDir });
   await page.addInitScript('for (const k of ["showPopover", "hidePopover", "togglePopover"]) delete HTMLElement.prototype[k];');
-  await page.goto(`${synthBase}/web/?fixtures=1`);
+  await page.goto(`${synthBase}/web/`);
   const shown = (sel) => `(() => { const e = document.querySelector('${sel}'); return Boolean(e && !e.hidden && e.getClientRects().length); })()`;
   try {
     await page.until(`document.querySelector('.synth-about')`, 'band');
@@ -365,11 +373,11 @@ test('example, apply, docked panel follows arrow keys, Method drawer and CSV exp
   const page = await open(1280);
   try {
     await openExample(page);
-    assert.equal(await page.evaluate(`document.querySelector('.caveat .badge')?.textContent`), 'Preliminary');
+    assert.equal(await page.evaluate(`document.querySelector('.caveat .badge')`), null, 'gate V1 passed: no Preliminary badge');
     await page.click('.area-chip');
     await page.until(`document.querySelector('.query-form[aria-modal="true"]')`, 'area popover opens');
-    await applyFrom2005(page);
-    assert.equal(await page.evaluate(`[...document.querySelectorAll('.view-calendar .cal-year-row .cal-year')].every((y) => Number(y.textContent) >= 2005)`), true);
+    await applyFromMarch(page);
+    assert.match(await page.evaluate(`document.querySelector('.view-calendar .cal-cell.is-partial')?.getAttribute('aria-label') ?? ''`), /^June 2023, 10 fire-cell-days, .*partial month, sensor outage$/, 'the partial month is marked and named');
 
     await page.evaluate(`document.querySelector('.view-calendar .cal-cell[tabindex="0"]').focus()`);
     const label = await page.evaluate(focusedLabel);
@@ -400,7 +408,7 @@ test('example, apply, docked panel follows arrow keys, Method drawer and CSV exp
     assert.equal(await page.evaluate(`document.activeElement.classList.contains('method-button')`), true);
 
     await page.click('.export-button');
-    await page.until(`document.querySelector('.toast-host [role=status] .toast-msg')?.textContent.startsWith('CSV saved: prime-radiant-2005-01-')`, 'CSV export toast');
+    await page.until(`document.querySelector('.toast-host [role=status] .toast-msg')?.textContent.startsWith('CSV saved: prime-radiant-2023-03-')`, 'CSV export toast');
     for (let i = 0; i < 50 && !(await readdir(downloadDir)).some((f) => f.endsWith('.csv')); i++) await wait(100);
     const files = (await readdir(downloadDir)).filter((f) => f.endsWith('.csv'));
     assert.equal(files.length, 1, 'one CSV downloaded');
@@ -413,10 +421,35 @@ test('example, apply, docked panel follows arrow keys, Method drawer and CSV exp
       manifestUrl: 'fixtures/manifest.json',
       fetchFn: async (url) => ({ ok: true, json: async () => JSON.parse(await readFile(join(root, url), 'utf8')) }),
     });
-    const { manifest: m, tiles } = await source.load(state.bbox);
-    const result = buildResult({ bbox: state.bbox, from: state.from, to: state.to, manifest: m, tiles });
-    const expected = guardCsv(toCsv(result.series, csvMeta(result)));
-    assert.equal(actual, withSyntheticNote(expected, Boolean(m.synthetic)));
+    const { manifest: m, tiles, domain } = await source.load(state.bbox);
+    const result = buildResult({ bbox: state.bbox, from: state.from, to: state.to, manifest: m, tiles, domain });
+    const expected = csvExport('calendar', { series: result.series, cells: result.cells, meta: csvMeta(result, { aoi: 'Fixture area (tile x17y13)' }) }).text;
+    assert.equal(actual, expected);
+    assert.match(actual, /\r\n2023,6,10,partial,false,\r\n$/);
+    assert.deepEqual(page.problems, []);
+  } finally { await page.close(); }
+});
+
+test('outside the domain: a state card with Draw an area in Brazil and the examples; Export disabled and says why', { skip }, async () => {
+  const page = await open(1280, '?fixtures=1#aoi=bbox:-179,61,-175,65');
+  try {
+    await page.until(`document.querySelector('.state-box-outside')`, 'outside state');
+    assert.equal(await page.evaluate(`document.querySelector('.state-box-outside .state-action').textContent`), 'Draw an area in Brazil');
+    assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.state-box-outside .state-chip')].map((c) => c.textContent)`), ['Fixture area (tile x17y13)', 'Pantanal', 'Amazon arc of deforestation']);
+    const btn = `document.querySelector('.export-button')`;
+    assert.equal(await page.evaluate(`${btn}.getAttribute('aria-disabled')`), 'true');
+    assert.match(await page.evaluate(`document.getElementById(${btn}.getAttribute('aria-describedby')).textContent`), /^Nothing to export: .*outside Brazil/);
+    await page.click('.export-button');
+    await wait(300);
+    assert.equal(await page.evaluate(`document.querySelector('.toast-host [role=status] .toast-msg')?.textContent ?? null`), null, 'a disabled Export does nothing');
+    await settle(page);
+    await page.click('.state-box-outside .state-action');
+    await page.until(`document.querySelector('.map-canvas .leaflet-pane') && document.querySelector('.map-canvas').getBoundingClientRect().height > 100`, 'the map opens');
+    await page.press('Escape');
+    await settle(page);
+    await page.click('.state-box-outside .state-chip');
+    await page.until(CALENDAR_READY, 'an example loads the calendar');
+    assert.equal(await page.evaluate(`${btn}.hasAttribute('aria-disabled')`), false, 'Export is back');
     assert.deepEqual(page.problems, []);
   } finally { await page.close(); }
 });
@@ -426,11 +459,12 @@ test('phone width (400px): chips wrap, popover traps focus, sheet keeps the cell
   try {
     await openExample(page);
     assert.equal(await page.evaluate(`[...document.querySelectorAll('.summary-chip')].every((c) => c.scrollWidth <= c.clientWidth + 1)`), true, 'period and area chips are not truncated');
+    assert.equal(await page.evaluate(`getComputedStyle(document.querySelector('.caveat-text'), '::after').content`), 'none', 'no Preliminary word once gate V1 passed');
     await page.click('.area-chip');
     assert.equal(await page.evaluate(`document.querySelector('.query-form').getAttribute('aria-modal')`), 'true');
     for (let i = 0; i < 25; i++) await page.press('Tab');
     assert.equal(await page.evaluate(`document.querySelector('.query-form').contains(document.activeElement)`), true, 'focus trapped in the sheet');
-    await applyFrom2005(page);
+    await applyFromMarch(page);
     assert.equal(await page.evaluate(`!document.querySelector('.query-bar').classList.contains('sheet-open') && document.activeElement.classList.contains('area-chip')`), true, 'sheet closed, focus back on the chip');
     assert.equal(await page.evaluate(`document.documentElement.scrollWidth <= window.innerWidth`), true, 'no horizontal page scroll');
     assert.equal(await page.evaluate(`(() => { const s = document.querySelector('.cal-scroll'); return s.scrollWidth <= s.clientWidth; })()`), true, 'all 12 months fit without scrolling');
@@ -457,18 +491,19 @@ test('phone width (400px): chips wrap, popover traps focus, sheet keeps the cell
 });
 
 test('?preview=1: anomaly layer with rank in the panel, then the Live view and its table', { skip }, async () => {
-  const page = await open(1280, '?fixtures=1&preview=1');
+  // Ranks need years of history, which the six fixture months lack.
+  const page = await open(1280, '?preview=1', synthBase);
   try {
     await openExample(page);
     await page.click('input[name="layer"][value="anomaly"]');
     await page.until(`location.hash.includes('layer=anomaly') && document.querySelector('.view-calendar .anomaly-layer')?.offsetParent !== null`, 'anomaly layer shown');
-    assert.equal(await page.evaluate(`document.querySelector('.view-calendar .anomaly-preview-note').textContent`), 'Preview: placeholder anomaly and live numbers, not validated.');
+    assert.equal(await page.evaluate(`document.querySelector('.view-calendar .anomaly-preview-note').textContent`), 'Synthetic data. Preview: placeholder anomaly and live numbers, not validated.');
 
     await page.evaluate(`document.querySelector('.view-calendar .anomaly-layer .cal-cell[tabindex="0"]').focus()`);
     await page.press('Enter');
     await page.until(`document.querySelector('.panel-host.is-open')`, 'panel opens from the anomaly layer');
     assert.equal(await page.evaluate(`[...document.querySelectorAll('.panel .detail-list dt')].some((d) => d.textContent === 'Percentile rank')`), true);
-    assert.equal(await page.evaluate(`document.querySelectorAll('.panel .tag').length >= 1 && [...document.querySelectorAll('.panel .tag')].every((t) => t.textContent === 'Preview')`), true, 'Preview tag on the preview numbers in the panel');
+    assert.equal(await page.evaluate(`[...document.querySelectorAll('.panel .tag')].every((t) => t.textContent === 'Preview')`), true, 'only Preview tags in the panel');
     await page.press('Escape');
     await page.until(`!document.querySelector('.panel-host.is-open')`, 'Esc closes the panel');
 
@@ -485,14 +520,14 @@ test('?preview=1: anomaly layer with rank in the panel, then the Live view and i
     await settle(page);
     await page.click('.view-live .live-card .seg-opt[data-id="table"]');
     await page.until(`document.querySelector('.view-live .live-table')?.offsetParent !== null`, 'Live table shown');
-    assert.equal(await page.evaluate(`document.querySelectorAll('.view-live .live-table tbody tr').length`), 12);
+    assert.equal(await page.evaluate(`document.querySelectorAll('.view-live .live-table tbody tr').length`), 12, 'the last twelve months');
     assert.deepEqual(page.problems, []);
   } finally { await page.close(); }
 });
 
 test('first run: Home is the selected tab; a view opens the first example there with nothing selected; Home and the brand go home', { skip }, async () => {
   for (const width of [1280, 400]) {
-    const page = await open(width, '?fixtures=1', synthBase);
+    const page = await open(width, '', synthBase);
     const selected = `[...document.querySelectorAll('[role=tab][aria-selected="true"]')].map((b) => b.dataset.view)`;
     const visibleTabs = `Boolean(document.querySelector('[role=tablist][aria-label="Views"]')?.getClientRects().length)`;
     const firstRun = `document.documentElement.classList.contains('is-first-run') && document.querySelector('${EXAMPLE}')`;
@@ -509,7 +544,7 @@ test('first run: Home is the selected tab; a view opens the first example there 
       await page.click('[role=tab][data-view="anomalies"]');
       await page.until(`!document.querySelector('.view-anomalies').hidden && document.querySelector('.anomaly-answer .answer-big')`, 'Anomalies with the first example');
       const hash = await page.evaluate('location.hash');
-      assert.match(hash, /aoi=bbox:-59,-19,-52,-12/, 'the first example card, in the hash');
+      assert.match(hash, /aoi=bbox:-58\.2,-20\.1,-55,-15\.3/, 'the first example card (Pantanal), in the hash');
       assert.match(hash, /view=anomalies/);
       assert.deepEqual(await page.evaluate(selected), ['anomalies']);
       await settle(page);
@@ -536,7 +571,7 @@ test('first run: Home is the selected tab; a view opens the first example there 
 
 test('Home resets everything: bare hash, panel closed, hero shown, its own history entry', { skip }, async () => {
   for (const width of [1280, 400]) {
-    const page = await open(width, '?fixtures=1', synthBase);
+    const page = await open(width, '', synthBase);
     const home = `document.documentElement.classList.contains('is-first-run') && document.querySelector('${EXAMPLE}') && document.getElementById('tab-home').getAttribute('aria-selected') === 'true'`;
     const openPanel = async () => {
       await page.until(CALENDAR_READY, 'calendar');
@@ -577,7 +612,7 @@ test('Home resets everything: bare hash, panel closed, hero shown, its own histo
 });
 
 test('phone (360px): Live and Sensors tables scroll inside their card, never the page', { skip }, async () => {
-  const page = await open(360, '?fixtures=1', synthBase);
+  const page = await open(360, '', synthBase);
   const noPageScroll = `document.documentElement.scrollWidth <= innerWidth`;
   try {
     await page.until(`document.querySelector('${EXAMPLE}')`, 'example cards');
@@ -601,12 +636,12 @@ test('phone (360px): Live and Sensors tables scroll inside their card, never the
 });
 
 test('phone: picking an example lands at the top of the result, not scrolled past it', { skip }, async () => {
-  const page = await open(400, '?fixtures=1', synthBase);
+  const page = await open(400, '', synthBase);
   try {
     await page.until(`document.querySelector('${EXAMPLE}')`, 'example cards');
     await settle(page);
-    await page.evaluate(`document.querySelector('${EXAMPLE}').scrollIntoView({ block: 'center' })`);
-    assert.ok(await page.evaluate('scrollY') > 300, 'the example sits below the fold');
+    // Under load the home layout can still grow after settling, so scroll until it holds.
+    await page.until(`(document.querySelector('${EXAMPLE}').scrollIntoView({ block: 'center' }), scrollY > 300)`, 'the example sits below the fold');
     await page.evaluate(`document.querySelector('${EXAMPLE}').click()`);
     await page.until(CALENDAR_READY, 'calendar after an example');
     assert.equal(await page.evaluate('scrollY'), 0);
@@ -618,22 +653,34 @@ test('synthetic data turns on every tab; Sensors shows R, the steps, a keyboard 
   const dir = await mkdtemp(join(tmpdir(), 'pr-sensors-'));
   const page = await browser.newPage({ width: 1280, height: 900, downloadDir: dir });
   try {
-    await page.goto(`${synthBase}/web/?fixtures=1`);
+    await page.goto(`${synthBase}/web/`);
     await openExample(page);
     assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('[role=tab]')].map((t) => t.dataset.view)`), ['home', 'calendar', 'sensors', 'anomalies', 'live']);
+    assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('[role=tab] .tab-tag')].map((t) => t.closest('[role=tab]').dataset.view)`), ['anomalies', 'live'], 'Sensors lost its preview tag at gate V1');
+    assert.match(await page.evaluate(`document.querySelector('.domain-note').textContent`), /Part of this area lies outside Brazil/, 'the Pantanal box reaches past the border');
     await page.click('#tab-sensors');
     await page.until(`!document.querySelector('.view-sensors').hidden && document.querySelector('.sensors-chart')`, 'Sensors view');
     assert.equal(await page.evaluate(`document.querySelector('[data-slot=verdict]').hidden`), true, 'the calendar verdict gives way to the answer card');
     assert.match(await page.evaluate(`document.querySelector('.context .eyebrow').textContent`), /^Sensors · two records, one series · Synthetic data$/);
     const answer = await page.evaluate(`document.querySelector('.sensors-answer').textContent`);
-    assert.match(answer, /Where both sensors flew · 2012–2012/);
+    assert.match(answer, /R fitted on 2012-02 to 2019-12/, 'the months R used, not core\'s nominal window');
+    assert.match(await page.evaluate(`document.querySelector('.sensors-foot').textContent`), /Hollow: partial years, off the lines\./);
+    assert.equal(await page.evaluate(`document.querySelectorAll('.sensors-hollow').length > 0`), true);
     assert.match(answer, /Synthetic/);
-    assert.match(answer, /\d\.\d×VIIRS ÷ MODIS/);
-    assert.match(answer, /Preview/);
-    assert.match(answer, /Not yet reviewed by the science team/);
+    assert.match(answer, /\d\.\d\d×VIIRS ÷ MODIS/);
+    assert.match(answer, /95% interval \d\.\d\d–\d\.\d\d/);
+    assert.match(answer, /K = \d\.\d\d: S-NPP ÷ NOAA-20/);
+    assert.doesNotMatch(answer, /Preview/, 'gate V1 validated R and K');
     assert.equal(await page.evaluate(`document.querySelectorAll('.sensors-steps .build-step').length`), 3);
     assert.equal(await page.evaluate(`document.querySelector('.sensors-stamp').textContent`), 'SYNTHETIC DATA');
     assert.match(await page.evaluate(`document.querySelector('.sensors-chart').getAttribute('aria-label')`), /^Synthetic data\. /);
+    // The chart repaints (new svg node) while the container settles: wait for one node to survive 400 ms.
+    await page.evaluate(`window.__svg = null`);
+    for (let i = 0; i < 40; i++) {
+      const same = await page.evaluate(`(() => { const s = document.querySelector('.sensors-chart'); const ok = s === window.__svg; window.__svg = s; return ok; })()`);
+      if (same) break;
+      await wait(400);
+    }
     await page.evaluate(`document.querySelector('.sensors-chart').focus()`);
     await page.press('Home');
     await page.until(`document.querySelector('#sensors-readout').textContent.startsWith('2000.')`, 'readout on the first year');
@@ -643,21 +690,22 @@ test('synthetic data turns on every tab; Sensors shows R, the steps, a keyboard 
     await settle(page);
     await page.click('.sensors-card .seg[aria-label="Display"] [data-id="table"]');
     await page.until(`document.querySelector('.sensors-table .data-table')?.offsetParent !== null`, 'table shown');
-    assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.sensors-table thead th')].map((t) => t.textContent)`), ['Year', 'MODIS', 'VIIRS', 'Harmonized', 'Source']);
+    assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.sensors-table thead th')].map((t) => t.textContent)`), ['Year', 'MODIS', 'S-NPP', 'NOAA-20', 'Harmonized', 'Source']);
     assert.match(await page.evaluate(`document.querySelector('.sensors-table caption').textContent`), /Synthetic data/);
     await page.click('.export-button');
     for (let i = 0; i < 50 && !(await readdir(dir)).some((f) => f.endsWith('.csv')); i++) await wait(100);
     const [file] = (await readdir(dir)).filter((f) => f.endsWith('.csv'));
     assert.match(file, /^prime-radiant-sensors-/);
-    const lines = (await readFile(join(dir, file), 'utf8')).split('\n');
+    const lines = (await readFile(join(dir, file), 'utf8')).split('\r\n');
     assert.match(lines[0], /^# SYNTHETIC DEMO DATA/);
-    assert.ok(lines.includes('month,modis,viirs,harmonized,source'));
+    assert.ok(lines.includes('year,month,sensor,value'));
+    assert.ok(lines.some((l) => /^2019,9,noaa20,\d+$/.test(l)), 'NOAA-20 is in the export');
     assert.deepEqual(page.problems, []);
   } finally { await page.close(); await rm(dir, { recursive: true, force: true }); }
 });
 
 test('synthetic Anomalies and Live: answer cards, percentile words, the anomaly Radiant, labels on every number', { skip }, async () => {
-  const page = await open(1280, '?fixtures=1', synthBase);
+  const page = await open(1280, '', synthBase);
   try {
     await openExample(page);
     await page.click('#tab-anomalies');
@@ -686,10 +734,11 @@ test('tab switch updates the hash, back restores the previous view, disabled vie
   const plain = await open(1280);
   try {
     await openExample(plain);
-    assert.deepEqual(await plain.evaluate(`[...document.querySelectorAll('[role=tab]')].map((t) => t.dataset.view)`), ['home', 'calendar'], 'only enabled views get a tab, after Home');
+    assert.deepEqual(await plain.evaluate(`[...document.querySelectorAll('[role=tab]')].map((t) => t.dataset.view)`), ['home', 'calendar', 'sensors'], 'only enabled views get a tab, after Home');
     assert.equal(await plain.evaluate(`document.querySelector('[role=tablist]').hidden`), false, 'Home keeps the switcher');
   } finally { await plain.close(); }
-  const page = await open(1280, '?fixtures=1&preview=1');
+  // Ranks need years of history, which the six fixture months lack.
+  const page = await open(1280, '?preview=1', synthBase);
   try {
     await openExample(page);
     await page.until(`location.hash.includes('view=calendar')`, 'calendar view in hash');

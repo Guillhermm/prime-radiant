@@ -8,7 +8,7 @@ import { h } from './components/h.js';
 import * as legend from './components/legend.js';
 import * as themeControl from './components/theme-control.js';
 import * as exportMenu from './components/export-menu.js';
-import { exportFilename } from './components/export-menu.js';
+import { csvExport } from './components/export-menu.js';
 import * as toast from './components/toast.js';
 import * as verdictRow from './components/verdict-row.js';
 import * as calendarGrid from './components/calendar-grid.js';
@@ -23,7 +23,6 @@ import * as dataTable from './components/data-table.js';
 import * as liveView from './components/live-view.js';
 import * as sensorsView from './components/sensors-view.js';
 import { segmented } from './components/segmented.js';
-import { sensorsCsv } from './sensors-model.js';
 import * as offlineChip from './components/offline-chip.js';
 import * as syntheticBand from './components/synthetic-band.js';
 import { icon } from './components/icons.js';
@@ -65,6 +64,8 @@ const mountResults = (data, deps, component, el) => {
   paint(data.get());
   return () => ctl;
 };
+
+const slicedSensors = (r) => Object.fromEntries(['modis', 'viirs', 'noaa20'].map((id) => [id, sliceSeries(r.sensors[id], r.from, r.to)]));
 
 const previewNote = (synthetic) => h('p', { class: 'hint anomaly-preview-note', text: synthetic ? `Synthetic data. ${PREVIEW_NOTE}` : PREVIEW_NOTE });
 
@@ -129,17 +130,14 @@ export const MOUNTS = {
   calendar: mountCalendarCard,
   verdict: (el, ctx) => {
     ctx.verdict = mountResults(ctx.data, (r) => ({
-      cells: r.cells, allCells: r.allCells, kpis: r.kpis, typical: r.typical, aoiCells: r.aoiCells,
+      cells: r.cells, kpis: r.kpis, typical: r.typical, aoiCells: r.aoiCells,
       onSelect: (c) => ctx.onSelect(c), onHover: (c) => ctx.grids[0]?.()?.link(c && { year: c.year, month: c.month }),
     }), verdictRow, el);
   },
   sensors: (el, ctx) => {
-    const { data, preview, synthetic, span } = ctx;
-    if (!preview) return;
+    const { data, synthetic } = ctx;
     mountResults(data, (r) => ({
-      sensors: { modis: sliceSeries(r.sensors.modis, r.from, r.to), viirs: sliceSeries(r.sensors.viirs, r.from, r.to) }, harmonized: r.series,
-      satellites: r.manifest.satellites, viirsFrom: r.manifest.coverage?.viirs?.[0], span, synthetic,
-      onWiden: () => ctx.goTo({ from: span?.from ?? null, to: span?.to ?? null }),
+      sensors: slicedSensors(r), harmonized: { ...r.harmonized, series: r.series }, manifest: r.manifest, synthetic,
     }), sensorsView, el);
   },
   anomalies: (el, { data, preview, synthetic, onSelect, onClose }) => {
@@ -263,7 +261,9 @@ export const start = async (root = document.getElementById('app')) => {
   const goTo = (patch) => { location.hash = serializeHash({ ...store.get(), ...patch }); };
 
   const status = h('p', { class: 'status', role: 'status' });
-  shell.context.append(status);
+  const domainText = h('span');
+  const domainNote = h('p', { class: 'domain-note', hidden: true }, icon('info'), domainText);
+  shell.context.append(status, h('div', { class: 'domain-row' }, domainNote));
   const showErrors = (list) => {
     status.textContent = list.length ? `Ignored from the link: ${list.map((e) => `${e.field} (${e.reason})`).join('; ')}` : '';
   };
@@ -297,18 +297,14 @@ export const start = async (root = document.getElementById('app')) => {
   caveatStrip.mount(slots.caveat, { onReadMore: (btn) => drawer.open(btn) });
   themeControl.mount(slots.themeFoot);
   mountInstall(slots.install);
-  exportMenu.mount(slots.export, {
-    getSeries: () => data.get().result?.series ?? null,
-    getMeta: () => (data.get().result ? csvMeta(data.get().result) : {}),
+  const exportCtl = exportMenu.mount(slots.export, {
     isSynthetic: () => synthetic,
+    // The Sensors view exports its four series; every other view the calendar cells.
     getFile: () => {
       const r = data.get().result;
-      if (!r || store.get().view !== 'sensors' || !preview) return null;
-      const modis = sliceSeries(r.sensors.modis, r.from, r.to);
-      return {
-        filename: exportFilename(modis, { prefix: 'prime-radiant-sensors' }),
-        text: sensorsCsv({ modis, viirs: sliceSeries(r.sensors.viirs, r.from, r.to) }, r.series, csvMeta(r)),
-      };
+      if (!r) return null;
+      const what = { series: r.series, cells: r.cells, sensors: slicedSensors(r), meta: csvMeta(r, { aoi: appShell.heroModel(store.get(), { presets }).title }) };
+      return csvExport(store.get().view === 'sensors' ? 'sensors' : 'calendar', what);
     },
   });
 
@@ -320,7 +316,7 @@ export const start = async (root = document.getElementById('app')) => {
     context: () => {
       const r = data.get().result;
       // Ranks ride along so the anomaly panel can color its bar strip; the counts panel ignores them.
-      return r ? { cells: preview ? anomalyCells(r) : r.cells, allCells: r.allCells, manifest: r.manifest } : {};
+      return r ? { cells: preview ? anomalyCells(r) : r.cells, manifest: r.manifest, caveats: r.caveats, ratios: { R: r.harmonized.R, K: r.harmonized.K } } : {};
     },
     onClose: () => { allGrids().forEach((g) => g.select?.(null)); ctx.verdict?.()?.select(null); },
     onStep: (key) => (store.get().layer === 'anomaly' && preview ? ctx.grids[1]?.() : grid())?.step?.(key),
@@ -341,8 +337,8 @@ export const start = async (root = document.getElementById('app')) => {
   // One source aborts its previous load, so the example areas load one after another.
   const loadExample = (p) => {
     const next = exampleQueue.then(async () => {
-      const { manifest: m, tiles } = await exampleSource.load(p.bbox);
-      return buildResult({ bbox: p.bbox, from: null, to: null, manifest: m, tiles });
+      const { manifest: m, tiles, domain } = await exampleSource.load(p.bbox);
+      return buildResult({ bbox: p.bbox, from: null, to: null, manifest: m, tiles, domain });
     });
     exampleQueue = next.catch(() => null);
     return next;
@@ -366,12 +362,13 @@ export const start = async (root = document.getElementById('app')) => {
   let shownState = null;
   const paintState = () => {
     const d = data.get();
-    const screen = states.screenState({ hasArea: store.get().bbox !== null, status: d.status, cells: d.result?.cells });
+    const screen = states.screenState({ hasArea: store.get().bbox !== null, status: d.status, cells: d.result?.cells, outside: d.result?.domain.outside });
     slots.empty.hidden = screen.kind === null;
     // Sensors, Anomalies and Live bring their own answer card.
     slots.verdict.hidden = !screen.results || store.get().view !== 'calendar';
     slots.caveat.hidden = store.get().bbox === null;
     if (!screen.results) shell.groups.forEach((g) => { g.hidden = true; });
+    exportCtl.setDisabled(screen.kind === 'outside' ? states.OUTSIDE_EXPORT : null);
     const next = screen.kind === 'error' ? states.errorState(d.error, { offline: offline.state().online === false }) : screen.kind && { kind: screen.kind };
     const key = JSON.stringify(next);
     if (key === shownState) return;
@@ -385,6 +382,9 @@ export const start = async (root = document.getElementById('app')) => {
     detail.close({ restore: false });
     detail.update({ aoiCells: result.aoiCells });
     drawer.update({ manifest: result.manifest });
+    const note = states.domainNote(result.domain);
+    domainText.textContent = note ?? '';
+    domainNote.hidden = !note;
     slots.version.textContent = `Data: ${result.manifest.dataVersion}`;
   });
 
@@ -406,9 +406,9 @@ export const start = async (root = document.getElementById('app')) => {
     if (!bbox) { source.cancel(); data.set({ status: 'idle', result: null, error: null }); return; }
     data.set({ status: 'loading', error: null });
     try {
-      const { manifest: m, tiles } = await source.load(bbox);
+      const { manifest: m, tiles, domain } = await source.load(bbox);
       if (mine !== seq) return;
-      data.set({ status: 'ready', result: buildResult({ bbox, from, to, manifest: m, tiles }), error: null });
+      data.set({ status: 'ready', result: buildResult({ bbox, from, to, manifest: m, tiles, domain }), error: null });
     } catch (err) {
       if (mine !== seq || err?.kind === 'aborted') return;
       data.set({ status: 'error', error: err });

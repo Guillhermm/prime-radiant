@@ -7,7 +7,7 @@ Status: accepted by the team on 2026-11-14 (planning ritual). Open decisions in 
 - Two humans, two tracks, one contract. **Kaue owns data and science** (pipeline, `core/` science, data hosting, live ingestion). **Guilherme owns the web app** (shell, inputs, views, the Vercel function). The axis can be swapped wholesale (decision H1); nothing else depends on who is who.
 - Task ID: `M{milestone}-{K|G}{n}`. K = Kaue, G = Guilherme. Every deliverable task has exactly one owner.
 - "Done" for any task: code + tests in the same commit, `node --test` green, docs that describe it true, reviewed by the other human (or the dev master) before merge.
-- ✅ marks a task whose deliverable is built and tested (checked 2026-11-14). M2-G1 and M3-G1 run on core stubs until M2-K1 and M3-K3 land. Not marked: M0-G3 (H5 still open), M1-G11 (no Sensors step until M1-K10), M1-G12 (production serves synthetic data, not real).
+- ✅ marks a task whose deliverable is built and tested (checked 2026-11-15, after merging Kaue's data and science work). M2-G1 and M3-G1 run on core stubs until M2-K1 and M3-K3 land. Not marked: M0-G3 and M1-K4 (tile hosting H5 open, no publish step), M1-G12 (production serves synthetic data, not real).
 - Size points used for balancing: S = 1, M = 2, L = 3.
 - Gates are not tasks of one person; they are checkpoints a milestone cannot pass without. Each gate names who triggers it.
 
@@ -58,10 +58,11 @@ Owned by Kaue in `core/schema.js` + `fixtures/`, reviewed by Guilherme. A change
 
 | Item | Shape (summary) | Producer | Consumer |
 |---|---|---|---|
-| Manifest `data/manifest.json` | `{schema:1, dataVersion, generated_at, base_url, grid:{res:0.1, tile_deg:10, coarse_res:1}, month0:"2000-01", last_month, granularity:"month", coverage:{modis:[from,to], viirs:[from,to]}, satellites:{era...}, tiles:[ids], citation, caveats:[ids]}` | pipeline | data-source, core |
-| Tile `data/tiles/{res}/x{tx}y{ty}.json` | columnar `{cell[], month[], modis[], viirs[]}`; `cell = row*100+col` from integer lon*10/lat*10 within the tile; month = index from `month0`; sparse: absent = 0 inside coverage, outside coverage = null | pipeline | core/tiles |
+| Manifest `data/manifest.json` | `{schema:1, dataVersion, generated_at, base_url, grid:{res:0.1, tile_deg:10, coarse_res:1}, month0:"2000-01", last_month, granularity:"month", coverage:{modis:[from,to], viirs:[from,to], noaa20:[from,to]} (a sensor with no records in the build: `null`, every value of it null), partial_months:{modis:[YYYY-MM], viirs:[], noaa20:[]}, acquisition_days?:{Terra|Aqua|SNPP|NOAA20:{YYYY-MM:days}} (docs/data.md), satellites:{era...}, tiles:[ids], domain?:{id:"ne10m-brazil", version, file:"domain.json", res:0.1}, citation, caveats:[ids]}` (`domain` is optional: absent means no clipping) | pipeline | data-source, core |
+| Tile `data/tiles/{res}/x{tx}y{ty}.json` | columnar `{cell[], month[], modis[], viirs[], noaa20[]}` (Terra-only counts sit in `modis`); `cell = row*100+col` from integer lon*10/lat*10 within the tile; month = index from `month0`; sparse: absent = 0 inside coverage, outside coverage = null | pipeline | core/tiles |
+| Domain `data/domain.json` | `{rows:{latIdx:[[c0,c1],...]}}`: 0.1 deg cells that intersect the polygon, as inclusive column runs per row (latIdx 0 = lat -90, column 0 = lon -180; sorted, non-touching). A 1 deg cell is in when any of its fine cells is. Rule: inside coverage and inside the domain, absent row = 0; outside the domain every value is null (a series for an AOI wholly outside is all null, flagged `outside-domain`; partly outside, sums cover the in-domain part and the series is flagged `partial-domain`). Records outside the polygon are dropped at build (`clipped_by_domain`); the polygon is `pipeline/domain/brazil.geojson` | pipeline | core/domain, core/aggregate |
 | Series | `{id: modis|viirs|harmonized|baseline|anomaly|live, unit:"fire-cell-days", start:"YYYY-MM", values:(number|null)[], flags?, method:{id,version}, comparable:boolean}`; null = sensor not operating, 0 = none detected (hard rule) | core | web |
-| CalendarCell | `{year, month, value, status: observed|harmonized|no-data|partial, estimated:boolean, median?, rank?}` | core/calendar | calendar-grid, cell-detail, kpi-strip |
+| CalendarCell | `{year, month, value, status: observed|harmonized|no-data|partial, estimated:boolean, flags?:string[], median?, rank?}` | core/calendar | calendar-grid, cell-detail, kpi-strip |
 | QueryState | `{bbox:[w,s,e,n], from:"YYYY-MM", to:"YYYY-MM", view: calendar|sensors|anomalies|live, layer: counts|anomaly}` in URL hash `#aoi=bbox:w,s,e,n&from=..&to=..&view=..&layer=..` | web/state | web |
 | Core API | `seriesForAoi`, `harmonize`, `baseline`, `toCalendar`, `kpis`, `toCsv` (M1); `anomaly`, `flags`, `yearRank` (M2); live tiles share the tile shape with `day[]` instead of `month[]` (M3) | core | web |
 | Live (M3) | `data/live/manifest.json` + tiles with `day[]`; `GET /api/live?bbox=&days=` -> Series `id:"live", comparable:false` | pipeline/live, api | live-view |
@@ -87,8 +88,8 @@ Gate rules:
 
 ### Kaue
 
-**M0-K1 Request FIRMS archive data (day 1, first thing)** · S · depends: none
-- Deliverable: requests submitted in the FIRMS Archive Download Tool (Earthdata login, delivered by email): (a) global, one full year (2023 default), MODIS C6.1 standard + VIIRS S-NPP standard, for the spike; (b) demo region (H3 default) full span, MODIS from 2000-11-01, VIIRS S-NPP 2012-01-20 to 2026-11-02; (c) global full span per sensor (requested now because of email lag; used only if the spike passes). NOAA-20 standard from 2018-04-01 requested for the demo region only, for the later factor question.
+✅ **M0-K1 Request FIRMS archive data (day 1, first thing)** · S · depends: none
+- Deliverable: requests submitted in the FIRMS Archive Download Tool (Earthdata login, delivered by email): (a) global, one full year (2023 default), MODIS C6.1 standard + VIIRS S-NPP standard, for the spike; (b) demo region (H3 default) full span, MODIS from 2000-11-01, VIIRS S-NPP 2012-01-20 to 2026-11-02; (c) global full span per sensor (requested now because of email lag; used only if the spike passes). NOAA-20 standard from 2018-04-01 requested for the demo region, and globally with (c), for the factor K (H11).
 - Acceptance: request confirmations saved (ids only, no credentials) in `docs/data.md` with request date, product, version, region, span; download location `raw/` is gitignored.
 - Tests: none (no code). Docs: `docs/data.md`.
 - Files: `docs/data.md`, `.gitignore`.
@@ -105,7 +106,7 @@ Gate rules:
 - Tests: unit `core/index.test.js` (shape of each export).
 - Files: `core/index.js`, `core/*.js` (stubs).
 
-**M0-K4 One-year size spike** · M · depends: M0-K1 (a) delivered, M0-K2
+✅ **M0-K4 One-year size spike** · M · depends: M0-K1 (a) delivered, M0-K2
 - Deliverable: throwaway-quality but tested streaming prototype (`pipeline/read.js` + `bin.js` minimal) run on the global year: tile count, total raw and brotli size at 0.1 and 1 deg, wall time, peak memory (`/usr/bin/time -l`), detections in vs fire-cell-days out. Recorded in `docs/data.md` with the decision: global vs demo region (H3), Node vs Python fallback, Vercel static vs external tile host (with M0-G3).
 - Acceptance: numbers measured, not estimated; extrapolation to the full span stated as extrapolation; decision written.
 - Tests: unit tests on the prototype parsers carry into M1-K1.
@@ -117,7 +118,7 @@ Gate rules:
 - Tests: none. Files: `docs/method.md`.
 
 ✅ **M0-K6 Vercel project, domain and headers** · S · depends: M0-G1
-- Deliverable: repository under Kaue's personal GitHub (H6: Vercel Hobby cannot connect an org-owned repo), Guilherme as collaborator; Vercel Hobby project serving `web/` with a placeholder page; `vercel.json` with CSP (`default-src 'self'`, `connect-src` including the tile host and map tile host once chosen), HSTS, `X-Content-Type-Options`, `Referrer-Policy`, `frame-ancestors 'none'`; domain bought only after M1 deploys on `*.vercel.app` (H7).
+- Deliverable: repository stays under Guilherme's personal GitHub (`Guillhermm/prime-radiant`, H6: Vercel Hobby cannot connect an org-owned repo), Kaue as collaborator; Guilherme creates the Vercel Hobby project on his account (the account owner) serving `web/` with a placeholder page; Kaue writes `vercel.json` with CSP (`default-src 'self'`, `connect-src` including the tile host and map tile host once chosen), HSTS, `X-Content-Type-Options`, `Referrer-Policy`, `frame-ancestors 'none'`; domain bought only after M1 deploys on `*.vercel.app` (H7).
 - Acceptance: placeholder reachable on the preview URL; headers verified with `curl -I` and recorded in `docs/deploy.md`.
 - Tests: `test/integration/headers.test.js` asserts `vercel.json` contains each required header.
 - Files: `vercel.json`, `docs/deploy.md`.
@@ -172,19 +173,19 @@ Sync point **S0 (contract freeze)**: both review schema, fixtures, stubs, QueryS
 
 ### Kaue (data, science, B view)
 
-**M1-K1 Pipeline reader and filter** · M · depends: S0, M0-K4
+✅ **M1-K1 Pipeline reader and filter** · M · depends: S0, M0-K4
 - Deliverable: `pipeline/read.js` streams `.csv` and `.csv.gz` with `node:readline` + `zlib`, header-driven columns (MODIS and VIIRS headers differ), row validation (lat/lon range, date, time HHMM, satellite, type), keeps `type=0` only, emits `{sensor, satellite, lat, lon, utcDay}`; counts of rejected rows by reason.
 - Acceptance: known answers: non-vegetation types excluded; 23:59 and 00:01 UTC fall on different days; Feb 29 parsed; malformed row rejected and counted, never thrown away silently.
 - Tests: unit `pipeline/read.test.js` on fixture CSVs.
 - Files: `pipeline/read.js`.
 
-**M1-K2 Binning and dedupe** · M · depends: M1-K1
-- Deliverable: `pipeline/bin.js` + `dedupe.js`: cell via `core/grid.js`; one fire-cell-day per (sensor family, cell, UTC day): Terra and Aqua merged into `modis` from 2002-07 (Terra-only era kept separate per the method note, default: excluded from R, shown as MODIS Terra-only in B), S-NPP only into `viirs` (NOAA-20/21 excluded until V-question answered); monthly aggregation; one year at a time in memory.
-- Acceptance: Terra+Aqua same cell/day counted once; points on a cell edge go to the east/north cell; lon +180 equals -180; NOAA-20 rows do not reach `viirs`.
+✅ **M1-K2 Binning and dedupe** · M · depends: M1-K1
+- Deliverable: `pipeline/bin.js` + `dedupe.js`: cell via `core/grid.js`; one fire-cell-day per (sensor family, cell, UTC day): Terra and Aqua merged into `modis` from 2002-07 (Terra-only era kept separate per the method note, default: excluded from R, shown as MODIS Terra-only in B), S-NPP only into `viirs`, NOAA-20 into its own `noaa20` family for K (H11), NOAA-21 excluded; monthly aggregation; one year at a time in memory.
+- Acceptance: Terra+Aqua same cell/day counted once; points on a cell edge go to the east/north cell; lon +180 equals -180; NOAA-20 rows reach `noaa20`, never `viirs`.
 - Tests: unit `pipeline/bin.test.js`, `pipeline/dedupe.test.js`.
 - Files: `pipeline/bin.js`, `pipeline/dedupe.js`.
 
-**M1-K3 Tile writer, coarse level, manifest** · M · depends: M1-K2
+✅ **M1-K3 Tile writer, coarse level, manifest** · M · depends: M1-K2
 - Deliverable: `pipeline/write-tiles.js` (columnar, sorted by cell then month, sparse), 1 deg coarse level summed from 0.1 deg, `pipeline/manifest.js` with per-sensor coverage, `last_month`, partial-month marker, citation (FIRMS + LANCE acknowledgment text, DOIs per product), `pipeline/build.js` CLI (`node pipeline/build.js --in raw/ --out data/ --years 2002-2026`).
 - Acceptance: build of the fixture CSVs produces tiles byte-identical to golden files; coarse sums equal fine sums per 1 deg cell; manifest passes schema.
 - Tests: integration `test/integration/pipeline.test.js` (50-row CSV -> golden tiles).
@@ -196,44 +197,44 @@ Sync point **S0 (contract freeze)**: both review schema, fixtures, stubs, QueryS
 - Tests: contract test extended to a real-tile sample (path from env, skipped with a message when absent so CI stays offline).
 - Files: `pipeline/publish.js`, `docs/data.md`, `test/integration/contract.test.js`.
 
-**M1-K5 Tile reader and AOI aggregation** · M · depends: S0
+✅ **M1-K5 Tile reader and AOI aggregation** · M · depends: S0
 - Deliverable: `core/tiles.js` (decode columnar tile into lookups), `core/aggregate.js` `seriesForAoi(bbox, tiles, manifest)`: cells whose centers fall inside bbox, coarse level when AOI exceeds a cell-count threshold (default: > 20,000 fine cells), antimeridian-safe, returns `modis` and `viirs` Series with null outside each sensor's coverage and 0 inside it; `tilesForBbox(bbox, manifest)` so the web loads only what is needed.
 - Acceptance: fixture AOI totals equal the hand-computed totals in `fixtures/README.md`; months before S-NPP start are null for viirs, not 0; coarse and fine give the same totals for a whole-degree AOI.
 - Tests: unit `core/tiles.test.js`, `core/aggregate.test.js`.
 - Files: `core/tiles.js`, `core/aggregate.js`.
 
-**M1-K6 Harmonization** · L · depends: M1-K5, M0-K5 answers
+✅ **M1-K6 Harmonization** · L · depends: M1-K5, M0-K5 answers
 - Deliverable: `core/harmonize.js`: R = sum(V)/sum(M) over overlap months with zero-MODIS months included; fallback to parent region when AOI MODIS sum < threshold (from Second Foundation, default 129); per-calendar-month R only where each month passes threshold, else annual R; CI by resampling whole years (seeded RNG so tests are deterministic); harmonized Series = VIIRS where VIIRS operates, MODIS x R elsewhere, `estimated:true` on scaled months; result carries R, CI, which level was used, n years.
 - Acceptance: V=[0,6,3], M=[0,2,1] gives R=3; harmonized overlap total equals VIIRS total; MODIS sum 0 triggers fallback; per-month vs annual switch at the threshold; CI deterministic for a fixed seed.
 - Tests: unit `core/harmonize.test.js` (all mathematician known answers).
 - Files: `core/harmonize.js`.
 - Slice before starting: (a) R + harmonized series, (b) fallback + per-month, (c) CI.
 
-**M1-K7 Baseline and current month vs median** · S · depends: M1-K5
+✅ **M1-K7 Baseline and current month vs median** · S · depends: M1-K5
 - Deliverable: `core/baseline.js`: median of the same calendar month over earlier complete years, current year excluded, partial months excluded, years used returned with the value.
 - Acceptance: a year never enters its own baseline; even-count median averages the two middles; no complete earlier years returns null with a reason.
 - Tests: unit `core/baseline.test.js`.
 - Files: `core/baseline.js`.
 
-**M1-K8 Calendar and KPI view-models** · S · depends: M1-K6, M1-K7
+✅ **M1-K8 Calendar and KPI view-models** · S · depends: M1-K6, M1-K7
 - Deliverable: `core/calendar.js` `toCalendar` (status observed | harmonized | no-data | partial, estimated flag, median per cell) and `kpis` (total in range, current month value, median, years used, R and level, sensor era).
 - Acceptance: no-data and zero never collapse; partial month labeled; KPI numbers equal the series they come from.
 - Tests: unit `core/calendar.test.js`.
 - Files: `core/calendar.js`.
 
-**M1-K9 CSV export and caveat catalog** · S · depends: M1-K6
-- Deliverable: `core/csv.js` `toCsv(kind, series, meta)`: kinds calendar (year, month, value, status), sensors (year, month, sensor, value with sensor column, raw + harmonized in one schema); `#` metadata header with unit, AOI, sensor set, method id/version, R, data version, citation; cells starting with `= + - @` tab-prefixed (formula injection guard); RFC 4180 quoting. `core/caveats.js`: ids, short and long text, `preliminary` flag driven by gate status.
+✅ **M1-K9 CSV export and caveat catalog** · S · depends: M1-K6
+- Deliverable: `core/csv.js` `toCsv(kind, series, meta)`: kinds calendar (year, month, value, status), sensors (year, month, sensor, value with sensor column, raw + harmonized in one schema); `#` metadata header with unit, AOI, sensor set, method id/version, R, data version, citation; text cells starting with `= + - @`, tab or CR prefixed with a single quote (OWASP formula injection guard; numbers untouched); RFC 4180 quoting. `core/caveats.js`: ids, short and long text, `preliminary` flag driven by gate status.
 - Acceptance: export of fixture AOI matches golden CSV; injection cases escaped; null exports as empty, 0 as 0.
 - Tests: unit `core/csv.test.js`, `core/caveats.test.js`.
 - Files: `core/csv.js`, `core/caveats.js`.
 
-**M1-K10 Sensors view (B)** · L · depends: M1-K6, M1-G1, M1-G10 (DataTable)
+✅ **M1-K10 Sensors view (B)** · L · depends: M1-K6, M1-G1, M1-G10 (DataTable)
 - Deliverable: `web/src/components/sensor-chart.js`: hand-built SVG, three series (MODIS #0072B2, VIIRS #E69F00, harmonized black thick), dash patterns + direct labels, era line at 2012-01-20 and at 2026-11-02, toggles per series, keyboard focus on points with readable value, R + level + CI shown with plain method note, sparse-overlap warning chip, `DataTable` alternative, export buttons wired to `core/csv` through Guilherme's export menu.
 - Acceptance: each series toggles independently; screen reader reads month, sensor, value; low-confidence chip appears when fallback was used; renders at 400px without horizontal page scroll.
 - Tests: unit on the scale/path builder (`sensor-chart.test.js`, pure functions); integration view-model on fixtures.
 - Files: `web/src/components/sensor-chart.js`.
 
-**M1-K11 Science gate V1** · S · depends: M1-K6, M1-K7, M1-K9, M1-K4
+✅ **M1-K11 Science gate V1** · S · depends: M1-K6, M1-K7, M1-K9, M1-K4
 - Deliverable: `docs/method.md` v1 + known-answer tests + real-data R for the demo AOIs submitted to `second-foundation:validate`; fixes applied; `caveats.js` `preliminary` flags cleared for what passed.
 - Acceptance: written verdict per item (unit, binning, R, fallback, CI, median, caveat wording); anything not passed stays labeled or is cut per the gate rule.
 - Files: `docs/method.md`, `core/caveats.js`.
@@ -302,7 +303,7 @@ Sync point **S0 (contract freeze)**: both review schema, fixtures, stubs, QueryS
 - Tests: unit on filename and table model.
 - Files: `web/src/components/data-table.js`, `export-menu.js`.
 
-**M1-G11 End-to-end smoke tests** · M · depends: M1-G6, M1-K10, decision H9
+✅ **M1-G11 End-to-end smoke tests** · M · depends: M1-G6, M1-K10, decision H9
 - Deliverable: two or three e2e tests on fixtures served locally: open default, enter AOI via form, see calendar, open a cell, switch to Sensors, export CSV and compare with golden; one phone-width run.
 - Acceptance: run offline in CI; no live network.
 - Tests: `test/e2e/*.test.js`.
@@ -414,7 +415,7 @@ Sync **S4**: anomaly stub replaced by real core; V2, D2, Q2; deploy.
 - Files: `web/src/components/live-view.js`, `data-source.js`.
 
 ✅ **M3-G2 Keyed proxy api/live (cuttable)** · M · depends: M3-G1, H10
-- Deliverable: `api/live.js` Vercel function: `MAP_KEY` from env (set in the Vercel dashboard by the account owner, Kaue), bbox validated and snapped to 0.5 deg, days 1-2, whitelisted sources, `Cache-Control: s-maxage=900, stale-while-revalidate`, `fetch` injected for tests, errors never echo the upstream URL (it contains the key); WAF rate-limit rule if Hobby allows it (unverified).
+- Deliverable: `api/live.js` Vercel function: `MAP_KEY` from env (set in the Vercel dashboard by the account owner, Guilherme), bbox validated and snapped to 0.5 deg, days 1-2, whitelisted sources, `Cache-Control: s-maxage=900, stale-while-revalidate`, `fetch` injected for tests, errors never echo the upstream URL (it contains the key); WAF rate-limit rule if Hobby allows it (unverified).
 - Acceptance: key never in response, logs or client bundle (grep of built site and a response capture); invalid bbox 400.
 - Tests: unit with stubbed fetch, including an upstream error containing the key.
 - Files: `api/live.js`, `vercel.json`.
@@ -432,7 +433,7 @@ Load: K 2+2+1 = 5, G 2+2+1 = 5.
 | M3-K2 daily Action | M3-G2 keyed proxy (if not cut) |
 | M3-K3 comparison model, V3 | M3-G3 release |
 
-Sync **S5**: first real Action run feeds the preview; V3, D3, Q3; integration owner Kaue (owner of the Action and the Vercel account).
+Sync **S5**: first real Action run feeds the preview; V3, D3, Q3; integration owner Kaue (owner of the Action); Guilherme, as Vercel account owner, runs the production deploy.
 
 ## 8. Whole-project load
 
@@ -459,7 +460,7 @@ Off the critical path thanks to the contract: the whole web track (runs on fixtu
 | V1 rejects harmonization or R too unstable | B's main line cannot ship | Raw-only toggle + MODIS-only units for A (mathematician's simple route); A+B still complete |
 | Small or zero ratio in sparse AOIs | Absurd harmonized numbers | Threshold + parent-region fallback; sparse chip; CI shown |
 | null vs 0 confusion at era edges | Wrong numbers on screen | Hard rule in schema; tests at S-NPP start and end; distinct no-data hatch |
-| S-NPP ended 2026-11-02 | VIIRS series stops; current months have no VIIRS | Post-S-NPP months use MODIS x R (estimated mark); NOAA-20 factor deferred to physicist (H11) |
+| S-NPP ended 2026-11-02 | VIIRS series stops; current months have no VIIRS | Post-S-NPP months use NOAA-20 x K (estimated mark, H11); K needs NOAA-20 archive data for every extent served |
 | Archive standard product lags NRT by weeks to months (unverified) | "Current month" in A is not the calendar month | Manifest `last_month` drives the label "latest archived month"; D fills the gap |
 | Two humans editing shared files | Merge conflicts | Directory ownership (section 1); shared files (`package.json`, `README.md`, `core/schema.js`, `vercel.json`) changed only in small dedicated commits |
 | Map tile policy or library advisory | Map picker blocked | H8 check in M0; SVG fallback; form path always complete |
@@ -487,15 +488,15 @@ Never cut: AOI by form and map, calendar with accessible ramp and no-data distin
 |---|---|---|
 | H1 | Who owns which track | Kaue data/science, Guilherme web; swap is free |
 | H2 | Granularity | Monthly; current partial month labeled partial |
-| H3 | Grid extent and demo region | Global if the spike fits H5 limits, else South America (Brazil: Pantanal 2020 and 2024, Amazon arc) first |
+| H3 | Grid extent and demo region | Decided 2026-11-14: Brazil full history (FIRMS yearly country CSVs, 2000-2025) + global 2026 from archive Shapefiles (`docs/data.md`); the pipeline reads CSV and DBF. Global history only if added later |
 | H4 | Max AOI size | 0.1 deg for AOI up to 20,000 cells, coarse 1 deg above, hard cap at continent scale (exact number after spike) |
 | H5 | Where tiles live | Cloudflare R2 public bucket if tiles exceed Vercel limits or if the live cron must publish without a redeploy; else deployed with the site via `vercel deploy` (tiles stay out of git) |
-| H6 | Repository owner | Kaue's personal GitHub (Vercel Hobby cannot connect org repos), Guilherme collaborator |
+| H6 | Repository owner | Decided 2026-11-14: Guilherme's personal GitHub (`Guillhermm/prime-radiant`), Vercel project on Guilherme's Hobby account, Kaue collaborator |
 | H7 | Domain | Bought after M1 is live on `*.vercel.app`; name to choose |
 | H8 | Map base | Vendored Leaflet + OSM if policy and advisory checks pass, else SVG Natural Earth outline |
 | H9 | e2e tool | Decided: headless Chrome driven over the DevTools Protocol with Node built-ins (no dependency); tests skip when Chrome is absent |
 | H10 | D scope | Cron path only; keyed proxy built only with slack |
-| H11 | Post-S-NPP VIIRS | VIIRS series ends 2026-11-02; later months MODIS x R, marked estimated; NOAA-20 factor deferred |
+| H11 | Post-S-NPP VIIRS | Decided 2026-11-14: after 2026-11-02 VIIRS continues as NOAA-20 x K, K = sum(S-NPP)/sum(NOAA-20) per AOI over full months 2018-04 to 2026-10 (`docs/method.md` 4.4), marked estimated; needs NOAA-20 binned as its own family in M1-K2 and gate V1 |
 | H12 | CSV export content | AOI aggregates, not raw detection rows |
 | H13 | Harmonization route | R per AOI with fallback; MODIS-only route kept as the V1 fallback |
 
@@ -503,5 +504,5 @@ Never cut: AOI by form and map, calendar with accessible ramp and no-data distin
 
 - The first plan had the live cron writing `data/live` tiles and redeploying. Tiles are generated files and cannot be committed, so a git-triggered redeploy cannot see them. H5 resolves this: R2 (Action uploads, no redeploy) or a CLI deploy from the Action that rebuilds history tiles too, which needs the raw archive in CI. R2 is the simpler of the two for D.
 - "Parent region" for the fallback was undefined during planning. Default in M0-K5: enclosing 10 x 10 deg tile, then a continent box; the Second Foundation decides.
-- Vercel Hobby is single-user: account-dashboard actions (env vars, domain) sit with the account owner (Kaue under H6), which is why M0-K6 and the M3 `MAP_KEY` setup belong to that account owner.
+- Vercel Hobby is single-user: account-dashboard actions (env vars, domain) sit with the account owner (Guilherme under H6), so the Vercel project creation in M0-K6 and the M3 `MAP_KEY` setup are done by Guilherme; Kaue keeps `vercel.json` and the headers test.
 - Each human drives their own Foundation sessions on their track; the dev master reviews both, and the senior-dev seats are briefed per slice from this document.

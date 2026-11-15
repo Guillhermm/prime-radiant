@@ -1,6 +1,6 @@
 import { PRESETS } from '../presets.js';
 import { MONTH_ABBR } from '../format.js';
-import { binClass, aoiCellCount, NODATA } from '../bins.js';
+import { binClass, NODATA } from '../bins.js';
 import { h } from './h.js';
 import { icon } from './icons.js';
 import * as radiant from './radiant.js';
@@ -15,11 +15,22 @@ export const liveStatus = (fetchedAt, now = new Date()) => {
   return { available: true, text: `Live data, updated ${fetchedAt}` };
 };
 
+export const OUTSIDE_EXPORT = 'Nothing to export: this area lies outside Brazil, the data domain.';
+
+export const OUTSIDE_LINE = 'This area lies outside Brazil, the only region the data covers. There is no data here: no counts, not zeros.';
+
+/** One line for an area partly outside the domain; null when it is wholly inside or there is no domain. */
+export const domainNote = (domain) => {
+  if (!domain?.partial) return null;
+  const pct = Math.round((domain.inside / domain.cells) * 100);
+  return `Part of this area lies outside Brazil, the data domain: counts cover the ${pct}% inside it.`;
+};
+
 export const EMPTY_TITLE = ['When does this place ', 'burn?'];
 export const EMPTY_LEAD = 'Pick an area and see every month of satellite fire detections since 2000 in one calendar: when the season peaks, which years were worst, and how this month compares.';
 
 /**
- * State model. kinds: empty, zero, loading, error, live-unavailable.
+ * State model. kinds: empty, zero, outside, loading, error, live-unavailable.
  * `error` takes {what, hint}; `live-unavailable` takes {fetchedAt, now}.
  */
 export const stateModel = (state, { presets = PRESETS } = {}) => {
@@ -28,6 +39,11 @@ export const stateModel = (state, { presets = PRESETS } = {}) => {
       return { kind: 'empty', role: null, busy: false, title: EMPTY_TITLE.join(''), lines: [EMPTY_LEAD], chips: presets.map((p) => ({ id: p.id, label: p.label })), action: null };
     case 'zero':
       return { kind: 'zero', role: 'status', busy: false, lines: ['0 fire-cell-days in range.', 'No hotspots detected, sensors were operating.'], chips: [], action: null };
+    case 'outside':
+      return {
+        kind: 'outside', role: 'status', busy: false, title: 'Outside the data domain', lines: [OUTSIDE_LINE, 'Draw an area in Brazil, or open an example.'],
+        chips: presets.map((p) => ({ id: p.id, label: p.label })), action: { id: 'draw', label: 'Draw an area in Brazil' },
+      };
     case 'loading':
       return { kind: 'loading', role: 'status', busy: true, lines: ['Loading fire data for this area'], chips: [], action: null };
     case 'error':
@@ -44,10 +60,12 @@ export const stateModel = (state, { presets = PRESETS } = {}) => {
  * Zero only when every cell in range is a real 0: a null month means a sensor was off, so
  * "sensors were operating" would not be true.
  */
-export const screenState = ({ hasArea, status, cells = [] }) => {
+export const screenState = ({ hasArea, status, cells = [], outside = false }) => {
   if (!hasArea) return { kind: 'empty', results: false };
   if (status === 'loading') return { kind: 'loading', results: false };
   if (status === 'error') return { kind: 'error', results: false };
+  // Outside the domain every value is null by design: the state says so instead of a grid of "No data".
+  if (status === 'ready' && outside) return { kind: 'outside', results: false };
   if (status === 'ready' && cells.length > 0 && cells.every((c) => c.value === 0)) return { kind: 'zero', results: true };
   return { kind: null, results: true };
 };
@@ -124,7 +142,7 @@ const emptyView = (m, deps) => {
   cards.forEach(({ p, ribbon, foot }, i) => {
     deps.loadExample?.(p).then((r) => {
       if (!r || !view.isConnected) return;
-      const cells = aoiCellCount(p.bbox, r.manifest.grid.res);
+      const cells = r.aoiCells;
       ribbon.replaceChildren(...ribbonModel(r.typical, cells).map((x) => h('i', { class: `bin-${x.bin}` })));
       const span = typicalSpan(r.typical);
       foot.textContent = span ? `Typical year, median ${span} · Preview` : 'Not enough history for a typical year';
@@ -152,8 +170,16 @@ export const mount = (container, deps = {}) => {
     if (m.title) nodes.push(h('h2', { class: 'state-title', text: m.title }));
     m.lines.forEach((t, i) => nodes.push(h('p', { class: i === 0 ? `state-line state-${m.kind}` : 'hint', text: t })));
     if (m.kind === 'loading') nodes.push(skeleton());
-    if (m.action) nodes.push(h('button', { type: 'button', class: 'btn btn-primary state-action', text: m.action.label, onclick: () => deps.onRetry?.() }));
-    container.replaceChildren(h('div', { class: `state state-box-${m.kind}`, role: m.role }, nodes));
+    if (m.action) {
+      const run = m.action.id === 'draw' ? (ev) => deps.onDraw?.(ev.currentTarget) : () => deps.onRetry?.();
+      nodes.push(h('button', { type: 'button', class: 'btn btn-primary state-action', onclick: run }, m.action.id === 'draw' ? icon('drawArea') : null, m.action.label));
+    }
+    if (m.chips.length) {
+      nodes.push(h('div', { class: 'state-chips', role: 'group', 'aria-label': 'Examples' },
+        m.chips.map((c) => h('button', { type: 'button', class: 'chip state-chip', 'data-preset': c.id, text: c.label, onclick: () => deps.onPick?.(c.id) }))));
+    }
+    const card = m.kind === 'outside' ? ' card state-card' : '';
+    container.replaceChildren(h('div', { class: `state state-box-${m.kind}${card}`, role: m.role }, nodes));
   };
   const clear = () => { container.removeAttribute('aria-busy'); container.replaceChildren(); };
   return { show, clear, destroy: clear };

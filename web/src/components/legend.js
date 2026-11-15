@@ -12,6 +12,7 @@ export const legendModel = () => ({
   marks: [
     { id: 'estimated', label: 'Estimated value' },
     { id: 'partial', label: 'Partial month' },
+    { id: 'terra-only', label: 'Not harmonized: Terra only, before Aqua (Jul 2002)' },
   ],
   unit: UNIT_SENTENCE,
 });

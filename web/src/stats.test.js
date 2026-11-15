@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { compareToMedian, medianYears, ordinal, partialNote, peakMonth, rankSentence, sameMonth, typicalYear, yearTotals } from './stats.js';
+import { compareToMedian, yearsSpan, ordinal, partialNote, peakMonth, rankSentence, sameMonth, typicalYear, yearTotals } from './stats.js';
 
 const cell = (year, month, value, o = {}) => ({ year, month, value, status: 'harmonized', estimated: true, ...o });
 
@@ -48,28 +48,41 @@ test('compare to median: ratio at 2x and under half, percent between, honest zer
   assert.equal(compareToMedian(null, 5), null);
 });
 
-test('median years: earlier years of the same month with a value', () => {
-  const all = [cell(2000, 9, null), cell(2001, 9, 1), cell(2002, 9, 2), cell(2003, 9, 3), cell(2002, 8, 9)];
-  assert.deepEqual(medianYears(all, { year: 2003, month: 9 }), { count: 2, from: 2001, to: 2002 });
-  assert.equal(medianYears(all, { year: 2001, month: 9 }), null);
+test('years span: count and range of the years core.baseline used', () => {
+  assert.deepEqual(yearsSpan([2003, 2001, 2002]), { count: 3, from: 2001, to: 2003 });
+  assert.equal(yearsSpan([]), null);
+  assert.equal(yearsSpan(undefined), null);
 });
 
-test('typical year: core.baseline median per month over complete years only', () => {
-  // Nov 2000 to Oct 2003: complete years 2001 and 2002, Nov and Dec also 2000.
-  const values = [];
-  for (let i = 0; i < 36; i++) values.push(i);
-  const t = typicalYear({ id: 'h', unit: 'fire-cell-days', start: '2000-11', values });
+test('typical year: core.baseline median per month over complete years, its 5-year and partial-month rules', () => {
+  // Jan 2003 to Mar 2010: complete years 2003 to 2009; value = index.
+  const values = Array.from({ length: 87 }, (_, i) => i);
+  const series = { id: 'harmonized', unit: 'fire-cell-days', start: '2003-01', values };
+  const t = typicalYear(series);
   assert.equal(t.length, 12);
-  // January: 2001 (index 2) and 2002 (index 14), median 8. October 2003 (index 35) is not used.
-  assert.deepEqual(t[0], { month: 1, median: 8, from: 2001, to: 2002 });
-  // November: 2000, 2001, 2002 -> indexes 0, 12, 24 -> median 12.
-  assert.deepEqual(t[10], { month: 11, median: 12, from: 2000, to: 2002 });
-  // October 2001 and 2002 (indexes 11 and 23) give 17, the largest median.
-  assert.equal(peakMonth(t).month, 10);
+  // January: indexes 0, 12, ..., 72 (2003 to 2009), median 36. March 2010 (index 86) is not used.
+  assert.deepEqual(t[0], { month: 1, median: 36, from: 2003, to: 2009 });
+  assert.equal(peakMonth(t).month, 12);
+  // An outage month leaves the median; with fewer than 5 Januaries left there is none.
+  const outage = typicalYear(series, { partialMonths: ['2003-01', '2004-01', '2005-01'] });
+  assert.equal(outage[0].median, null);
+  assert.equal(outage[1].median, 37);
 });
 
 test('typical year without a complete year is all null', () => {
   const t = typicalYear({ id: 'h', unit: 'u', start: '2012-01', values: [1, 2, 3] });
   assert.ok(t.every((x) => x.median === null));
   assert.equal(peakMonth(t), null);
+});
+
+test('year totals: Terra-only months make a year partial, and a year of them only reads Terra only', async () => {
+  const cell = (year, month, value, flags = []) => ({ year, month, value, flags });
+  const cells = [
+    ...Array.from({ length: 12 }, (_, i) => cell(2001, i + 1, null, ['terra-only'])),
+    ...Array.from({ length: 12 }, (_, i) => (i < 6 ? cell(2002, i + 1, null, ['terra-only']) : cell(2002, i + 1, 10))),
+  ];
+  const [y2002, y2001] = yearTotals(cells);
+  assert.deepEqual([y2002.total, y2002.partial, y2002.terraOnly, y2002.first], [60, true, true, 7]);
+  assert.equal(partialNote(y2002), '2002 from July, Terra only before');
+  assert.deepEqual([y2001.total, y2001.terraOnly], [null, true]);
 });

@@ -1,75 +1,65 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { harmonize } from '../../core/index.js';
-import { exampleMonth, fromCore, monthAt, overlapRatio, sensorPoints, sensorsCsv, sensorsSummary as summaryOf } from './sensors-model.js';
+import { fromCore, monthAt, sensorPoints, sensorsSummary } from './sensors-model.js';
 
-const sensorsSummary = (s) => summaryOf(s, harmonize(s));
-
-const series = (id, start, values) => ({ id, unit: 'fire-cell-days', start, values });
-// 2011-11 to 2012-03: MODIS throughout, VIIRS from 2012-01.
-const sample = () => ({
-  modis: series('modis', '2011-11', [10, 20, 2, 0, 3]),
-  viirs: series('viirs', '2011-11', [null, null, 6, 0, 9]),
-});
+const series = (id, start, values) => ({ id, unit: 'fire-cell-days', start, values, method: { id: 'raw', version: 1 }, comparable: false });
+const months = (n, f) => Array.from({ length: n }, (_, i) => f(i));
+// 2010-01 to 2013-12: MODIS throughout; S-NPP 2012-01 to 2013-06 at twice MODIS; NOAA-20 from 2012-07, equal to S-NPP.
+const sample = () => {
+  const m = months(48, (i) => 10 + (i % 12));
+  const sensors = {
+    modis: series('modis', '2010-01', m),
+    viirs: series('viirs', '2010-01', m.map((v, i) => (i >= 24 && i <= 41 ? 2 * v : null))),
+    noaa20: series('noaa20', '2010-01', m.map((v, i) => (i >= 30 ? 2 * v : null))),
+  };
+  const manifest = {
+    month0: '2010-01', last_month: '2013-12',
+    coverage: { modis: ['2010-01', '2013-12'], viirs: ['2012-01', '2013-06'], noaa20: ['2012-07', '2013-12'] },
+    partial_months: { modis: [], viirs: [], noaa20: [] },
+  };
+  return { sensors, manifest, h: harmonize([{ level: 'aoi', ...sensors }], manifest) };
+};
 
 test('monthAt rolls over years', () => {
   assert.equal(monthAt('2011-11', 2), '2012-01');
 });
 
-test('R is a ratio of sums over the months both sensors report; zero months count but are not "with detections"', () => {
-  const r = overlapRatio(sample());
-  assert.equal(r.r, 15 / 5);
-  assert.equal(r.months, 3);
-  assert.equal(r.withFire, 2);
-  assert.equal(r.from, '2012-01');
-  assert.equal(r.to, '2012-03');
+test('fromCore names the source of every month of core\'s series: MODIS × R, S-NPP, NOAA-20 × K', () => {
+  const { sensors, manifest, h } = sample();
+  const m = fromCore(sensors, h, manifest);
+  assert.deepEqual([m[0].source, m[24].source, m[42].source], ['MODIS × R', 'S-NPP', 'NOAA-20 × K']);
+  assert.deepEqual([m[0].estimated, m[24].estimated, m[42].estimated], [true, false, true]);
+  assert.equal(m[0].value, h.series.values[0]);
+  assert.equal(m[0].value, 20, 'R = 2 here, applied by core');
+  assert.equal(m[42].value, 2 * (10 + 6), 'NOAA-20 × K with K = 1');
+  assert.deepEqual(m[42].factor, { name: 'K', value: 1 });
+  assert.throws(() => fromCore({ ...sensors, modis: { ...sensors.modis, start: '2009-01' } }, h, manifest), /does not align/);
 });
 
-test('no overlap or no MODIS fire in it leaves R null', () => {
-  assert.equal(overlapRatio({ modis: series('modis', '2011-11', [1, 2]), viirs: series('viirs', '2011-11', [null, null]) }).r, null);
-  assert.equal(overlapRatio({ modis: series('modis', '2012-01', [0, 0]), viirs: series('viirs', '2012-01', [4, 0]) }).r, null);
+test('summary: core R and K, the overlap span, the busiest month scaled from MODIS and from NOAA-20', () => {
+  const { sensors, manifest, h } = sample();
+  const s = sensorsSummary(sensors, h, manifest);
+  assert.equal(s.R.value, 2);
+  assert.equal(s.K.value, 1);
+  assert.equal(s.state, 'ok');
+  assert.deepEqual(s.overlap, { from: '2012-01', to: '2013-06' });
+  assert.deepEqual(s.example, { month: '2010-12', count: 21, core: 42, factor: { name: 'R', value: 2 } });
+  assert.deepEqual(s.kExample, { month: '2013-12', count: 42, core: 42, factor: { name: 'K', value: 1 } });
+  const none = { ...sensors, modis: { ...sensors.modis, values: sensors.modis.values.map(() => 0) } };
+  assert.equal(sensorsSummary(none, harmonize([{ level: 'aoi', ...none }], manifest), manifest).state, 'no-r');
 });
 
-test('harmonized is core\'s series, not recomputed here: the value, the sensor it carries, null when neither flew', () => {
-  const s = { modis: series('modis', '2011-11', [10, null, 2, null]), viirs: series('viirs', '2011-11', [null, null, 6, 7]) };
-  assert.deepEqual(fromCore(s, harmonize(s)), [
-    { value: 10, estimated: false, source: 'MODIS' }, { value: null, estimated: false, source: null },
-    { value: 2, estimated: false, source: 'MODIS' }, { value: 7, estimated: false, source: 'VIIRS' },
-  ]);
-  const marked = { ...harmonize(s), values: [30, null, 6, 7], estimated: [true, false, false, false] };
-  assert.deepEqual(fromCore(s, marked)[0], { value: 30, estimated: true, source: 'Adjusted by core' });
-  assert.throws(() => fromCore(s, { ...harmonize(s), start: '2011-12' }), /does not align/);
-});
-
-test('the example month is the busiest one MODIS saw alone', () => {
-  assert.deepEqual(exampleMonth(sample(), 3), { month: '2011-12', modis: 20, scaled: 60 });
-  assert.equal(exampleMonth({ modis: series('modis', '2012-01', [1]), viirs: series('viirs', '2012-01', [1]) }, 1), null);
-});
-
-test('by year sums each sensor and marks a year estimated when any month is', () => {
-  const s = sample();
-  const marked = { ...harmonize(s), values: [30, 60, 6, 0, 9], estimated: [true, true, false, false, false] };
-  const pts = sensorPoints(s, fromCore(s, marked), 'year');
-  assert.deepEqual(pts.map((p) => [p.key, p.modis, p.viirs, p.harmonized, p.estimated]), [
-    ['2011', 30, null, 90, true],
-    ['2012', 5, 15, 15, false],
-  ]);
-  assert.equal(sensorPoints(s, fromCore(s, marked), 'month').length, 5);
-});
-
-test('summary states: ok, no overlap, no fire', () => {
-  assert.equal(sensorsSummary(sample()).state, 'ok');
-  assert.equal(sensorsSummary({ modis: series('modis', '2011-11', [1]), viirs: series('viirs', '2011-11', [null]) }).state, 'no-overlap');
-  assert.equal(sensorsSummary({ modis: series('modis', '2012-01', [0]), viirs: series('viirs', '2012-01', [0]) }).state, 'no-fire');
-});
-
-test('CSV: three series by month with a Source column, R and the Preview note in the header', () => {
-  const csv = sensorsCsv(sample(), harmonize(sample()), { dataVersion: 'synthetic-test' });
-  const lines = csv.trim().split('\n');
-  assert.ok(lines.includes('# R: 3 (Preview, explanatory only, not applied to the harmonized column)'));
-  assert.ok(lines.includes('# harmonized: core method stub 0, the series the Calendar shows'));
-  assert.ok(lines.includes('# dataVersion: synthetic-test'));
-  assert.ok(lines.includes('month,modis,viirs,harmonized,source'));
-  assert.ok(lines.includes('2011-11,10,,10,MODIS'));
-  assert.ok(lines.includes('2012-02,0,0,0,MODIS'), '0 stays 0');
+test('points by year sum each sensor and mark a year estimated when any month is', () => {
+  const { sensors, manifest, h } = sample();
+  const ms = fromCore(sensors, h, manifest);
+  const years = sensorPoints(sensors, ms, 'year');
+  assert.deepEqual(years.map((p) => p.key), ['2010', '2011', '2012', '2013']);
+  assert.equal(years[0].viirs, null);
+  assert.equal(years[0].noaa20, null);
+  assert.equal(years[0].harmonized, 2 * years[0].modis);
+  assert.deepEqual(years[3].sources, ['S-NPP', 'NOAA-20 × K']);
+  assert.equal(years[3].estimated, true);
+  assert.equal(years[2].estimated, false);
+  assert.equal(sensorPoints(sensors, ms, 'month').length, 48);
 });
