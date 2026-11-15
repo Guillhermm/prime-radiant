@@ -1,8 +1,8 @@
-import { PRESETS } from '../presets.js';
+import { sensorValueLine, suggestionCaption } from '../places.js';
 import { MONTH_ABBR } from '../format.js';
 import { binClass, NODATA } from '../bins.js';
 import { h } from './h.js';
-import { icon } from './icons.js';
+import { icon, mark } from './icons.js';
 import * as radiant from './radiant.js';
 
 export const LIVE_STALE_HOURS = 48;
@@ -15,15 +15,19 @@ export const liveStatus = (fetchedAt, now = new Date()) => {
   return { available: true, text: `Live data, updated ${fetchedAt}` };
 };
 
-export const OUTSIDE_EXPORT = 'Nothing to export: this area lies outside Brazil, the data domain.';
+// The region's name comes from overview.json; without it the copy says "the data domain".
+const domainName = (region) => (region ? `${region}, the data domain` : 'the data domain');
 
-export const OUTSIDE_LINE = 'This area lies outside Brazil, the only region the data covers. There is no data here: no counts, not zeros.';
+export const outsideExport = (region = null) => `Nothing to export: this area lies outside ${domainName(region)}.`;
+
+export const outsideLine = (region = null) => `This area lies outside ${region ?? 'the data domain'}, the only region the data covers. There is no data here: no counts, not zeros.`;
+const drawInside = (region) => `Draw an area in ${region ?? 'the data domain'}`;
 
 /** One line for an area partly outside the domain; null when it is wholly inside or there is no domain. */
-export const domainNote = (domain) => {
+export const domainNote = (domain, region = null) => {
   if (!domain?.partial) return null;
   const pct = Math.round((domain.inside / domain.cells) * 100);
-  return `Part of this area lies outside Brazil, the data domain: counts cover the ${pct}% inside it.`;
+  return `Part of this area lies outside ${domainName(region)}: counts cover the ${pct}% inside it.`;
 };
 
 export const EMPTY_TITLE = ['When does this place ', 'burn?'];
@@ -33,16 +37,16 @@ export const EMPTY_LEAD = 'Pick an area and see every month of satellite fire de
  * State model. kinds: empty, zero, outside, loading, error, live-unavailable.
  * `error` takes {what, hint}; `live-unavailable` takes {fetchedAt, now}.
  */
-export const stateModel = (state, { presets = PRESETS } = {}) => {
+export const stateModel = (state, { presets = [], region = null } = {}) => {
   switch (state.kind) {
     case 'empty':
-      return { kind: 'empty', role: null, busy: false, title: EMPTY_TITLE.join(''), lines: [EMPTY_LEAD], chips: presets.map((p) => ({ id: p.id, label: p.label })), action: null };
+      return { kind: 'empty', role: null, busy: false, title: EMPTY_TITLE.join(''), lines: [EMPTY_LEAD], chips: presets.slice(0, 3).map((p) => ({ id: p.id, label: p.label })), action: null };
     case 'zero':
       return { kind: 'zero', role: 'status', busy: false, lines: ['0 fire-cell-days in range.', 'No hotspots detected, sensors were operating.'], chips: [], action: null };
     case 'outside':
       return {
-        kind: 'outside', role: 'status', busy: false, title: 'Outside the data domain', lines: [OUTSIDE_LINE, 'Draw an area in Brazil, or open an example.'],
-        chips: presets.map((p) => ({ id: p.id, label: p.label })), action: { id: 'draw', label: 'Draw an area in Brazil' },
+        kind: 'outside', role: 'status', busy: false, title: 'Outside the data domain', lines: [outsideLine(region), `${drawInside(region)}, or open an example.`],
+        chips: presets.slice(0, 3).map((p) => ({ id: p.id, label: p.label })), action: { id: 'draw', label: drawInside(region) },
       };
     case 'loading':
       return { kind: 'loading', role: 'status', busy: true, lines: ['Loading fire data for this area'], chips: [], action: null };
@@ -110,14 +114,28 @@ const skeleton = () => h('div', { class: 'skeleton', 'aria-hidden': 'true' },
   h('span', { class: 'sk-line' }),
   h('div', { class: 'sk-grid' }, Array.from({ length: SKELETON_CELLS }, () => h('span', { class: 'skeleton-cell' }))));
 
+// The first-run Radiant: the suggestion (hotspot 1) when overview.json loaded, else the first example
+// area (fixture mode), else the brand mark with no caption.
+const heroSubject = (deps) => {
+  const presets = deps.presets ?? [];
+  const suggested = deps.overview ? presets.find((p) => p.rank === 1) : null;
+  if (suggested) return { preset: suggested, caption: () => suggestionCaption(deps.overview) };
+  if (presets[0]) return { preset: presets[0], caption: (r) => `${presets[0].label}, ${r.cells[0]?.year}–${r.cells[r.cells.length - 1]?.year}, as a Radiant: rings are years, slices are months.` };
+  return null;
+};
+
 const emptyView = (m, deps) => {
   const art = h('figure', { class: 'hero-art' });
-  const cards = (deps.presets ?? PRESETS).map((p) => {
+  const subject = heroSubject(deps);
+  if (!subject) art.append(mark('mark hero-mark'));
+  // Three examples at most: the ranked hotspots come after the fixture area in fixture mode.
+  const cards = (deps.presets ?? []).slice(0, 3).map((p) => {
     const ribbon = h('div', { class: 'ribbon', 'aria-hidden': 'true' }, Array.from({ length: 12 }, () => h('i', { class: 'is-loading' })));
     const foot = h('p', { class: 'ex-foot' });
     const card = h('button', { type: 'button', class: 'ex chip-example', 'data-preset': p.id, onclick: () => deps.onPick?.(p.id) },
       h('span', { class: 'ex-t' }, h('span', { text: p.label }), icon('arrow')),
       h('span', { class: 'ex-c mono', text: bboxText(p.bbox) }),
+      typeof p.value === 'number' && deps.overview ? h('span', { class: 'ex-v', text: sensorValueLine(p.value, deps.overview) }) : null,
       ribbon,
       h('span', { class: 'ribbon-l', 'aria-hidden': 'true' }, MONTH_ABBR.map((x) => h('span', { text: x[0] }))),
       foot);
@@ -134,36 +152,38 @@ const emptyView = (m, deps) => {
           h('button', { type: 'button', class: 'btn btn-lg', onclick: (ev) => deps.onCoords?.(ev.currentTarget) }, icon('crosshair'), 'Enter coordinates')),
         h('dl', { class: 'cover' }, recordDates(deps.manifest).map((d) => h('div', {}, h('dt', { text: d.k }), h('dd', { text: d.v }))))),
       art),
-    h('section', { class: 'examples', 'aria-labelledby': 'examples-title' },
+    cards.length ? h('section', { class: 'examples', 'aria-labelledby': 'examples-title' },
       h('h2', { id: 'examples-title', class: 'eyebrow', text: 'Or open an example' }),
-      h('div', { class: 'ex-grid' }, cards.map((c) => c.card))));
+      h('div', { class: 'ex-grid' }, cards.map((c) => c.card))) : null);
 
   // Example data is decoration: a failed load leaves the cards usable without their ribbons.
-  cards.forEach(({ p, ribbon, foot }, i) => {
+  cards.forEach(({ p, ribbon, foot }) => {
     deps.loadExample?.(p).then((r) => {
       if (!r || !view.isConnected) return;
-      const cells = r.aoiCells;
-      ribbon.replaceChildren(...ribbonModel(r.typical, cells).map((x) => h('i', { class: `bin-${x.bin}` })));
+      ribbon.replaceChildren(...ribbonModel(r.typical, r.aoiCells).map((x) => h('i', { class: `bin-${x.bin}` })));
       const span = typicalSpan(r.typical);
       foot.textContent = span ? `Typical year, median ${span} · Preview` : 'Not enough history for a typical year';
-      if (i === 0) {
-        const hostRad = h('div', { class: 'radiant-hero' });
-        art.replaceChildren(hostRad, h('figcaption', { text: `${p.label}, ${r.cells[0]?.year}–${r.cells[r.cells.length - 1]?.year}, as a Radiant: rings are years, slices are months.${deps.synthetic ? ' Synthetic data.' : ''}` }));
-        radiant.mount(hostRad, { cells: r.cells, aoiCells: cells, labels: 'abbr', onSelect: () => deps.onPick?.(p.id) });
-      }
     }).catch(() => {});
   });
+  if (subject) {
+    deps.loadExample?.(subject.preset).then((r) => {
+      if (!r || !view.isConnected) return;
+      const hostRad = h('div', { class: 'radiant-hero' });
+      art.replaceChildren(hostRad, h('figcaption', { text: `${subject.caption(r)}${deps.synthetic ? ' Synthetic data.' : ''}` }));
+      radiant.mount(hostRad, { cells: r.cells, aoiCells: r.aoiCells, labels: 'abbr', onSelect: () => deps.onPick?.(subject.preset.id) });
+    }).catch(() => {});
+  }
   return view;
 };
 
 /**
- * mount(container, {presets, manifest, synthetic, onPick(id), onRetry(), onDraw(btn),
- * onCoords(btn), loadExample(preset)}). Returns {show(state), clear(), destroy()}.
+ * mount(container, {presets, overview, manifest, synthetic, onPick(id), onRetry(), onDraw(btn),
+ * onCoords(btn), loadExample(preset)}). presets and overview are read at each show(). Returns {show(state), clear(), destroy()}.
  * The loading skeleton sets aria-busy on the container; any other state clears it.
  */
 export const mount = (container, deps = {}) => {
   const show = (state) => {
-    const m = stateModel(state, { presets: deps.presets });
+    const m = stateModel(state, { presets: deps.presets, region: deps.overview?.region?.name ?? null });
     container.setAttribute('aria-busy', String(m.busy));
     if (m.kind === 'empty') { container.replaceChildren(emptyView(m, deps)); return; }
     const nodes = [];
@@ -182,5 +202,5 @@ export const mount = (container, deps = {}) => {
     container.replaceChildren(h('div', { class: `state state-box-${m.kind}${card}`, role: m.role }, nodes));
   };
   const clear = () => { container.removeAttribute('aria-busy'); container.replaceChildren(); };
-  return { show, clear, destroy: clear };
+  return { show, clear, destroy: clear, update: (next) => Object.assign(deps, next) };
 };

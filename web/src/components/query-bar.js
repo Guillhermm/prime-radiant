@@ -50,7 +50,7 @@ export const layerChoices = (views) => (isEnabledView('anomalies', views)
 
 export const mount = (container, {
   store, span = null, maxAreaDeg2 = Infinity, now, presets, mapSlot = null,
-  goTo = (patch) => store.set(patch), onAoiInput = () => {}, onDrawMap = null, onMapToggle = null, copy,
+  goTo = (patch) => store.set(patch), onAoiInput = () => {}, onDrawMap = null, onMapToggle = null, onAreaChip = null, copy,
 } = {}) => {
   let aoi = { valid: false };
   let dates = { valid: false };
@@ -121,7 +121,12 @@ export const mount = (container, {
     rangeChip.setAttribute('aria-label', m.periodLabel);
   };
   paintSummary(store.get());
-  areaChip.addEventListener('click', () => (isSheetOpen() && opener === areaChip ? closeSheet() : openSheet(areaChip, form.querySelector('#aoi-south'))));
+  // With a place picker the area chip opens it; the form stays one step away from there.
+  areaChip.addEventListener('click', () => {
+    if (onAreaChip) { closeSheet(); onAreaChip(areaChip); return; }
+    if (isSheetOpen() && opener === areaChip) closeSheet();
+    else openSheet(areaChip, form.querySelector('#aoi-south'));
+  });
   rangeChip.addEventListener('click', () => (isSheetOpen() && opener === rangeChip ? closeSheet() : openSheet(rangeChip, form.querySelector('#date-from'))));
   closeBtn.addEventListener('click', closeSheet);
   form.addEventListener('keydown', (e) => {

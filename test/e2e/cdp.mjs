@@ -114,6 +114,8 @@ export const launch = async (chromePath) => {
         await cmd('Network.setBypassServiceWorker', { bypass: offline });
         await cmd('Network.emulateNetworkConditions', { offline, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
       },
+      // [{name: 'prefers-color-scheme', value: 'dark'}, {name: 'prefers-reduced-motion', value: 'reduce'}]
+      emulateMedia: (features) => cmd('Emulation.setEmulatedMedia', { features }),
       // Runs before any page script on every navigation (feature removal, device emulation).
       addInitScript: (source) => cmd('Page.addScriptToEvaluateOnNewDocument', { source }),
       emulateDevice: async ({ userAgent, platform, maxTouchPoints = 0 }) => {

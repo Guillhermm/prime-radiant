@@ -26,6 +26,7 @@ let browser;
 let base;
 let synthBase;
 let downloadDir;
+let synthOverview;
 
 before(async () => {
   if (skip) return;
@@ -38,7 +39,8 @@ before(async () => {
   // ratios and the preview ranks all have data.
   const serveFile = server.listeners('request')[0];
   const synth = generate({ last: '2019-12', now: new Date('2026-11-14T00:00:00Z') });
-  const files = new Map([['/data/manifest.json', synth.manifest], ['/data/domain.json', synth.domain],
+  synthOverview = synth.overview;
+  const files = new Map([['/data/manifest.json', synth.manifest], ['/data/domain.json', synth.domain], ['/data/overview.json', synth.overview],
     ...Object.entries(synth.tiles).map(([id, t]) => [`/data/tiles/0.1/${id}.json`, t]),
     ...Object.entries(synth.coarse).map(([id, t]) => [`/data/tiles/1/${id}.json`, t])]);
   synthServer = createServer((req, res) => {
@@ -225,7 +227,7 @@ test('synthetic banner: closes with an animation, a persistent tag stays and ope
     assert.equal(await page.evaluate(`document.querySelector('.topbar').getBoundingClientRect().top`), 0, 'content moved up into place');
     assert.equal(await page.evaluate(`sessionStorage.getItem('pr-synth-banner-closed')`), '1');
     assert.match(await page.evaluate(`document.querySelector('.topbar .synth-tag').textContent`), /Synthetic data/);
-    assert.equal(await page.evaluate(`document.querySelector('.synth-tag').parentElement.nextElementSibling?.dataset.slot`), 'method', 'tag sits right before Method');
+    assert.equal(await page.evaluate(`document.querySelector('.synth-tag').parentElement.nextElementSibling?.dataset.slot`), 'method', 'tag sits right before Method, then the place button');
     await page.click('.synth-tag');
     await page.until(`document.querySelector('#synth-about').matches(':popover-open')`, 'About from the tag');
     assert.match(await page.evaluate(`document.querySelector('#synth-about').textContent`), /not real fire detections/);
@@ -241,8 +243,8 @@ test('synthetic banner: closes with an animation, a persistent tag stays and ope
     assert.equal(await next.evaluate(visible('.synth-tag')), false);
     await next.click('.synth-close');
     await next.until(`document.querySelector('.synth-band').hidden`, 'banner closed on phone');
-    const [tagRight, methodLeft, brandRight, tagLeft] = await next.evaluate(`(() => { const r = (s) => document.querySelector(s).getBoundingClientRect(); return [r('.synth-tag').right, r('[data-slot=method]').left, r('.brand').right, r('.synth-tag').left]; })()`);
-    assert.ok(tagRight <= methodLeft && brandRight <= tagLeft, `phone header order brand, tag, Method without overlap: ${[brandRight, tagLeft, tagRight, methodLeft]}`);
+    const [tagRight, methodLeft, brandRight, tagLeft, methodRight, areasLeft, areasRight] = await next.evaluate(`(() => { const r = (s) => document.querySelector(s).getBoundingClientRect(); return [r('.synth-tag').right, r('[data-slot=method]').left, r('.brand').right, r('.synth-tag').left, r('[data-slot=method]').right, r('[data-slot=areas]').left, r('[data-slot=areas]').right]; })()`);
+    assert.ok(tagRight <= methodLeft && brandRight <= tagLeft && methodRight <= areasLeft && areasRight <= 400, `phone header order brand, tag, Method, place button without overlap: ${[brandRight, tagLeft, tagRight, methodLeft, methodRight, areasLeft, areasRight]}`);
     await openExample(next);
     await next.evaluate(`(() => { const c = [...document.querySelectorAll('.view-calendar .calendar:not(.anomaly-layer) .cal-cell[data-row]')].pop(); c.scrollIntoView({ block: 'end' }); c.focus(); })()`);
     await next.press('Enter');
@@ -392,8 +394,8 @@ test('example, apply, docked panel follows arrow keys, Method drawer and CSV exp
   try {
     await openExample(page);
     assert.equal(await page.evaluate(`document.querySelector('.caveat .badge')`), null, 'gate V1 passed: no Preliminary badge');
-    await page.click('.area-chip');
-    await page.until(`document.querySelector('.query-form[aria-modal="true"]')`, 'area popover opens');
+    await page.click('.range-chip');
+    await page.until(`document.querySelector('.query-form[aria-modal="true"]')`, 'area and period popover opens');
     await applyFromMarch(page);
     assert.match(await page.evaluate(`document.querySelector('.view-calendar .cal-cell.is-partial')?.getAttribute('aria-label') ?? ''`), /^June 2023, 10 fire-cell-days, .*partial month, sensor outage$/, 'the partial month is marked and named');
 
@@ -471,15 +473,15 @@ test('example, apply, docked panel follows arrow keys, Method drawer and CSV exp
   } finally { await page.close(); }
 });
 
-test('outside the domain: a state card with Draw an area in Brazil and the examples; Export disabled and says why', { skip }, async () => {
+test('outside the domain: a state card with Draw an area in the data domain and the examples; Export disabled and says why', { skip }, async () => {
   const page = await open(1280, '?fixtures=1#aoi=bbox:-179,61,-175,65');
   try {
     await page.until(`document.querySelector('.state-box-outside')`, 'outside state');
-    assert.equal(await page.evaluate(`document.querySelector('.state-box-outside .state-action').textContent`), 'Draw an area in Brazil');
-    assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.state-box-outside .state-chip')].map((c) => c.textContent)`), ['Fixture area (tile x17y13)', 'Pantanal', 'Amazon arc of deforestation']);
+    assert.equal(await page.evaluate(`document.querySelector('.state-box-outside .state-action').textContent`), 'Draw an area in the data domain', 'fixture mode has no overview.json, so no region name');
+    assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.state-box-outside .state-chip')].map((c) => c.textContent)`), ['Fixture area (tile x17y13)']);
     const btn = `document.querySelector('.export-button')`;
     assert.equal(await page.evaluate(`${btn}.getAttribute('aria-disabled')`), 'true');
-    assert.match(await page.evaluate(`document.getElementById(${btn}.getAttribute('aria-describedby')).textContent`), /^Nothing to export: .*outside Brazil/);
+    assert.match(await page.evaluate(`document.getElementById(${btn}.getAttribute('aria-describedby')).textContent`), /^Nothing to export: this area lies outside the data domain\.$/);
     await page.click('.export-button');
     await wait(300);
     assert.equal(await page.evaluate(`document.querySelector('.export-menu').matches(':popover-open')`), false, 'a disabled Export opens no menu');
@@ -502,12 +504,12 @@ test('phone width (400px): chips wrap, popover traps focus, sheet keeps the cell
     await openExample(page);
     assert.equal(await page.evaluate(`[...document.querySelectorAll('.summary-chip')].every((c) => c.scrollWidth <= c.clientWidth + 1)`), true, 'period and area chips are not truncated');
     assert.equal(await page.evaluate(`getComputedStyle(document.querySelector('.caveat-text'), '::after').content`), 'none', 'no Preliminary word once gate V1 passed');
-    await page.click('.area-chip');
+    await page.click('.range-chip');
     assert.equal(await page.evaluate(`document.querySelector('.query-form').getAttribute('aria-modal')`), 'true');
     for (let i = 0; i < 25; i++) await page.press('Tab');
     assert.equal(await page.evaluate(`document.querySelector('.query-form').contains(document.activeElement)`), true, 'focus trapped in the sheet');
     await applyFromMarch(page);
-    assert.equal(await page.evaluate(`!document.querySelector('.query-bar').classList.contains('sheet-open') && document.activeElement.classList.contains('area-chip')`), true, 'sheet closed, focus back on the chip');
+    assert.equal(await page.evaluate(`!document.querySelector('.query-bar').classList.contains('sheet-open') && document.activeElement.classList.contains('range-chip')`), true, 'sheet closed, focus back on the chip');
     assert.equal(await page.evaluate(`document.documentElement.scrollWidth <= window.innerWidth`), true, 'no horizontal page scroll');
     assert.equal(await page.evaluate(`(() => { const s = document.querySelector('.cal-scroll'); return s.scrollWidth <= s.clientWidth; })()`), true, 'all 12 months fit without scrolling');
     assert.equal(await page.evaluate(`getComputedStyle(document.querySelector('.tabs')).position`), 'fixed', 'views become a bottom bar');
@@ -586,7 +588,7 @@ test('first run: Home is the selected tab; a view opens the first example there 
       await page.click('[role=tab][data-view="anomalies"]');
       await page.until(`!document.querySelector('.view-anomalies').hidden && document.querySelector('.anomaly-answer .answer-big')`, 'Anomalies with the first example');
       const hash = await page.evaluate('location.hash');
-      assert.match(hash, /aoi=bbox:-58\.2,-20\.1,-55,-15\.3/, 'the first example card (Pantanal), in the hash');
+      assert.ok(hash.includes(`aoi=bbox:${synthOverview.hotspots[0].bbox.join(',')}`), 'the suggestion, hotspot 1, in the hash');
       assert.match(hash, /view=anomalies/);
       assert.deepEqual(await page.evaluate(selected), ['anomalies']);
       await settle(page);
@@ -695,11 +697,11 @@ test('synthetic data turns on every tab; Sensors shows R, the steps, a keyboard 
   const dir = await mkdtemp(join(tmpdir(), 'pr-sensors-'));
   const page = await browser.newPage({ width: 1280, height: 900, downloadDir: dir });
   try {
-    await page.goto(`${synthBase}/web/`);
-    await openExample(page);
+    await page.goto(`${synthBase}/web/#aoi=bbox:-58.2,-20.1,-55,-15.3&view=calendar`);
+    await page.until(CALENDAR_READY, 'calendar of a box that crosses the border');
     assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('[role=tab]')].map((t) => t.dataset.view)`), ['home', 'calendar', 'sensors', 'anomalies', 'live']);
     assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('[role=tab] .tab-tag')].map((t) => t.closest('[role=tab]').dataset.view)`), ['anomalies', 'live'], 'Sensors lost its preview tag at gate V1');
-    assert.match(await page.evaluate(`document.querySelector('.domain-note').textContent`), /Part of this area lies outside Brazil/, 'the Pantanal box reaches past the border');
+    assert.match(await page.evaluate(`document.querySelector('.domain-note').textContent`), new RegExp(`Part of this area lies outside ${synthOverview.region.name}, the data domain`), 'the box reaches past the border, named from overview.json');
     await page.click('#tab-sensors');
     await page.until(`!document.querySelector('.view-sensors').hidden && document.querySelector('.sensors-chart')`, 'Sensors view');
     assert.equal(await page.evaluate(`document.querySelector('[data-slot=verdict]').hidden`), true, 'the calendar verdict gives way to the answer card');
@@ -800,7 +802,7 @@ test('phone full map from the sheet: Leaflet stays isolated, and the Method draw
   const page = await open(400);
   try {
     await openExample(page);
-    await page.click('.area-chip');
+    await page.click('.range-chip');
     await settle(page);
     await page.click('.query-form .draw-map');
     await page.until(`document.querySelector('.map-panel.is-full .map-canvas .leaflet-pane') && document.body.classList.contains('map-open')`, 'full map open');
@@ -851,5 +853,130 @@ test('PWA: the manifest is valid and the service worker registers and activates'
     assert.equal(await page.evaluate(`navigator.serviceWorker.getRegistration().then((r) => r.scope)`), `${base}/web/`);
     assert.equal(await page.evaluate(`caches.keys().then((k) => k.some((n) => n.startsWith('pr-shell-')))`), true);
     assert.equal(await fetch(`${base}/web/manifest.webmanifest`).then((r) => r.headers.get('content-type')), 'application/manifest+json');
+  } finally { await page.close(); }
+});
+
+const AREAS_OPEN = `document.querySelector('.area-drawer[aria-modal="true"] .hm-map')`;
+const bboxHash = (b) => `aoi=bbox:${b.join(',')}`;
+
+test('place picker from the header on Anomalies: keys and rows stage a pick, Use this area keeps the view, Escape discards', { skip }, async () => {
+  const [first, second, third] = synthOverview.hotspots;
+  const page = await open(1280, `?preview=1#${bboxHash(first.bbox)}&view=anomalies`, synthBase);
+  try {
+    await page.until(`document.querySelector('.view-anomalies:not([hidden]) .anomaly-answer .answer-big')`, 'Anomalies view');
+    await settle(page);
+    const btn = `document.querySelector('.areas-button')`;
+    assert.equal(await page.evaluate(`${btn}.getAttribute('aria-expanded')`), 'false');
+    await page.click('.areas-button');
+    await page.until(AREAS_OPEN, 'the drawer opens');
+    assert.equal(await page.evaluate(`${btn}.getAttribute('aria-expanded')`), 'true');
+    assert.equal(await page.evaluate(`document.activeElement.classList.contains('hm-map')`), true, 'focus starts on the map');
+    const region = synthOverview.region?.name;
+    assert.equal(await page.evaluate(`document.querySelector('#ad-list-title').textContent`), region ? `Hottest in ${region}` : 'Hottest areas');
+    assert.match(await page.evaluate(`document.querySelector('.ad-unit').textContent`), new RegExp(`^Fire-cell-days of 0\\.1° cells, summed per 1° square · VIIRS S-NPP ${synthOverview.year}`));
+    assert.match(await page.evaluate(`document.querySelector('.plate-note').textContent`), /count only the part inside it\.$/);
+    assert.equal(await page.evaluate(`document.querySelectorAll('.hs-row').length`), synthOverview.hotspots.length);
+    const primary = `document.querySelector('.ad-primary')`;
+    assert.deepEqual(await page.evaluate(`[${primary}.textContent, ${primary}.disabled, document.querySelector('.ad-hint').textContent]`), ['Use this area', true, 'Pick a square or a hotspot']);
+
+    // Arrow keys move the focus square and Enter stages it.
+    await page.press('ArrowLeft');
+    await page.press('Enter');
+    await page.until(`!${primary}.disabled`, 'Enter stages the focused square');
+    assert.equal(await page.evaluate(`[...document.querySelectorAll('.hs-row[aria-pressed="true"]')].length`), 0, 'a plain square is not a hotspot row');
+
+    await page.evaluate(`document.querySelectorAll('.hs-row')[1].click()`);
+    assert.equal(await page.evaluate(`document.querySelectorAll('.hs-row')[1].getAttribute('aria-pressed')`), 'true');
+    assert.match(await page.evaluate(`document.querySelector('.ad-sel').textContent`), new RegExp(`${second.value.toLocaleString('en-US')} fire-cell-days in ${synthOverview.year}`));
+    await settle(page);
+    await page.click('.ad-primary');
+    await page.until(`location.hash.includes(${JSON.stringify(bboxHash(second.bbox))})`, 'the area changes in the hash');
+    assert.match(await page.evaluate('location.hash'), /view=anomalies/, 'the view stays');
+    await page.until(`document.querySelector('.view-anomalies:not([hidden])') && !document.querySelector('.area-drawer')`, 'Anomalies again, drawer closed');
+    assert.equal(await page.evaluate(`document.activeElement === ${btn} && ${btn}.getAttribute('aria-expanded') === 'false'`), true, 'focus back on Areas');
+
+    // The pencil on the area chip opens the same drawer; Escape discards the staged pick.
+    await settle(page);
+    await page.click('.area-chip');
+    await page.until(AREAS_OPEN, 'the pencil opens the drawer');
+    await page.evaluate(`document.querySelectorAll('.hs-row')[2].click()`);
+    await page.press('Escape');
+    await page.until(`!document.querySelector('.area-drawer')`, 'Escape closes');
+    assert.equal(await page.evaluate(`document.activeElement.classList.contains('area-chip')`), true, 'focus back on the chip');
+    assert.ok((await page.evaluate('location.hash')).includes(bboxHash(second.bbox)), 'nothing committed');
+    assert.ok(!(await page.evaluate('location.hash')).includes(bboxHash(third.bbox)));
+
+    // Draw or enter coordinates hands over to the area form.
+    await settle(page);
+    await page.click('.areas-button');
+    await page.until(AREAS_OPEN, 'open again');
+    await page.evaluate(`document.querySelector('.ad-manual').click()`);
+    await page.until(`!document.querySelector('.area-drawer') && document.querySelector('.query-bar').classList.contains('sheet-open')`, 'the area form opens');
+    assert.deepEqual(page.problems, []);
+  } finally { await page.close(); }
+});
+
+test('first run suggests hotspot 1 without writing the hash; Open calendar from Home; tabs open the last chosen area', { skip }, async () => {
+  const [first, second] = synthOverview.hotspots;
+  for (const width of [1280, 400]) {
+    const page = await open(width, '', synthBase);
+    try {
+      await page.until(`document.querySelector('.hero-art figcaption')`, 'the suggested Radiant');
+      const region = synthOverview.region?.name;
+      assert.equal(await page.evaluate(`document.querySelector('.hero-art figcaption').textContent`), `Suggested: the 1° area with most VIIRS fire-cell-days in ${region ?? 'the data'}, ${synthOverview.year}. Rings are years, slices are months. Synthetic data.`);
+      assert.equal(await page.evaluate('location.hash'), '', 'a suggestion is not written to the hash');
+      assert.equal(await page.evaluate(`document.querySelectorAll('${EXAMPLE}').length`), 3, 'the top three hotspots are the examples');
+      assert.equal(await page.evaluate(`document.querySelector('${EXAMPLE} .ex-v').textContent`), `${first.value.toLocaleString('en-US')} VIIRS fire-cell-days in ${synthOverview.year}`);
+      assert.match(await page.evaluate(`document.querySelector('${EXAMPLE} .ex-c').textContent`), /^\d+°[NS]–\d+°[NS] · \d+°[EW]–\d+°[EW]$/, 'the coordinate line is the range only');
+      await settle(page);
+      await page.click('.areas-button');
+      await page.until(AREAS_OPEN, 'drawer from Home');
+      assert.equal(await page.evaluate(`document.querySelector('.ad-primary').textContent`), 'Open calendar');
+      await page.evaluate(`document.querySelectorAll('.hs-row')[1].click()`);
+      await page.evaluate(`document.querySelector('.ad-primary').click()`);
+      await page.until(`${CALENDAR_READY} && location.hash.includes(${JSON.stringify(bboxHash(second.bbox))})`, 'the calendar of the pick');
+      await page.evaluate(`document.getElementById('tab-home').click()`);
+      await page.until(`document.documentElement.classList.contains('is-first-run')`, 'home');
+      await settle(page);
+      await page.evaluate(`document.getElementById('tab-sensors').click()`);
+      await page.until(`!document.querySelector('.view-sensors').hidden`, 'Sensors');
+      assert.ok((await page.evaluate('location.hash')).includes(bboxHash(second.bbox)), 'the last chosen area, not the suggestion');
+      assert.deepEqual(page.problems, []);
+    } finally { await page.close(); }
+  }
+});
+
+test('a shared link wins over the suggestion, and is the area the tabs reopen after Home', { skip }, async () => {
+  const shared = [-50, -12, -48, -10];
+  const page = await open(1280, `#${bboxHash(shared)}&view=calendar`, synthBase);
+  try {
+    await page.until(CALENDAR_READY, 'the linked calendar');
+    assert.equal(await page.evaluate(`document.querySelector('.context h1').textContent`), 'Custom area');
+    assert.ok((await page.evaluate('location.hash')).includes(bboxHash(shared)));
+    await page.evaluate(`document.getElementById('tab-home').click()`);
+    await page.until(`document.documentElement.classList.contains('is-first-run')`, 'home');
+    await settle(page);
+    await page.evaluate(`document.getElementById('tab-calendar').click()`);
+    await page.until(CALENDAR_READY, 'calendar again');
+    assert.ok((await page.evaluate('location.hash')).includes(bboxHash(shared)), 'the linked area, not hotspot 1');
+    assert.deepEqual(page.problems, []);
+  } finally { await page.close(); }
+});
+
+test('without overview.json the picker offers the manual path, quietly', { skip }, async () => {
+  const page = await open(1280);
+  try {
+    await page.until(`document.querySelector('${EXAMPLE}')`, 'fixture example');
+    assert.equal(await page.evaluate(`document.querySelector('.hero-art figcaption')?.textContent.startsWith('Suggested') ?? false`), false, 'no suggestion');
+    await settle(page);
+    await page.click('.areas-button');
+    await page.until(`document.querySelector('.area-drawer .ad-empty')`, 'unavailable state');
+    assert.equal(await page.evaluate(`document.querySelector('.ad-empty p').textContent`), "The hotspot map isn't available right now. You can still choose an area yourself.");
+    assert.equal(await page.evaluate(`document.activeElement.id`), 'area-title');
+    await page.evaluate(`[...document.querySelectorAll('.ad-empty .btn')].find((b) => b.textContent === 'Enter coordinates').click()`);
+    await page.until(`document.activeElement.id === 'aoi-south'`, 'the coordinates form, South focused');
+    await page.press('Escape');
+    await page.until(`document.activeElement.classList.contains('areas-button')`, 'focus back on Areas');
+    assert.deepEqual(page.problems, []);
   } finally { await page.close(); }
 });

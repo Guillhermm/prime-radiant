@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { OUTSIDE_LINE, OUTSIDE_EXPORT, bboxText, domainNote, errorState, liveStatus, recordDates, ribbonModel, screenState, stateModel } from './states.js';
+import { outsideLine, outsideExport, bboxText, domainNote, errorState, liveStatus, recordDates, ribbonModel, screenState, stateModel } from './states.js';
 
 test('empty offers one chip per example area', () => {
   const m = stateModel({ kind: 'empty' }, { presets: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] });
@@ -84,18 +84,26 @@ test('example ribbon: density class of each month median, no median is no data',
 test('an area outside the domain gets its own state, never a zero or a grid of no data', () => {
   const nulls = [{ value: null }, { value: null }];
   assert.deepEqual(screenState({ hasArea: true, status: 'ready', cells: nulls, outside: true }), { kind: 'outside', results: false });
-  const m = stateModel({ kind: 'outside' });
+  const four = ['a', 'b', 'c', 'd'].map((id) => ({ id, label: id.toUpperCase(), bbox: [0, 0, 1, 1] }));
+  const m = stateModel({ kind: 'outside' }, { presets: four });
   assert.equal(m.title, 'Outside the data domain');
-  assert.equal(m.lines[0], OUTSIDE_LINE);
-  assert.match(OUTSIDE_LINE, /not zeros/);
+  assert.equal(m.lines[0], outsideLine());
+  assert.match(outsideLine(), /^This area lies outside the data domain, .*not zeros\.$/);
   assert.equal(m.role, 'status');
-  assert.deepEqual(m.action, { id: 'draw', label: 'Draw an area in Brazil' }, 'the way out is the primary action');
-  assert.deepEqual(m.chips.map((c) => c.id), ['pantanal', 'amazon-arc'], 'with the example areas');
-  assert.match(OUTSIDE_EXPORT, /^Nothing to export: .*outside Brazil/);
+  assert.deepEqual(m.action, { id: 'draw', label: 'Draw an area in the data domain' }, 'the way out is the primary action');
+  const named = stateModel({ kind: 'outside' }, { region: 'Testland' });
+  assert.deepEqual(named.action, { id: 'draw', label: 'Draw an area in Testland' }, 'the region name from overview.json');
+  assert.equal(named.lines[1], 'Draw an area in Testland, or open an example.');
+  assert.match(named.lines[0], /^This area lies outside Testland, the only region/);
+  assert.deepEqual(m.chips.map((c) => c.id), ['a', 'b', 'c'], 'with the first three example areas');
+  assert.deepEqual(stateModel({ kind: 'outside' }).chips, [], 'none without examples');
+  assert.equal(outsideExport(), 'Nothing to export: this area lies outside the data domain.');
+  assert.equal(outsideExport('Testland'), 'Nothing to export: this area lies outside Testland, the data domain.');
 });
 
 test('an area partly outside names the share the counts cover', () => {
-  assert.equal(domainNote({ cells: 20000, inside: 10000, partial: true }), 'Part of this area lies outside Brazil, the data domain: counts cover the 50% inside it.');
+  assert.equal(domainNote({ cells: 20000, inside: 10000, partial: true }, 'Testland'), 'Part of this area lies outside Testland, the data domain: counts cover the 50% inside it.');
+  assert.equal(domainNote({ cells: 20000, inside: 10000, partial: true }), 'Part of this area lies outside the data domain: counts cover the 50% inside it.');
   assert.equal(domainNote({ cells: 100, inside: 100, partial: false }), null);
   assert.equal(domainNote(undefined), null);
 });

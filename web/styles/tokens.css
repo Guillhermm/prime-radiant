@@ -393,3 +393,23 @@
 @media (prefers-reduced-motion: reduce) {
   :root { --motion: 0s; }
 }
+
+/* Place picker heat map: one night plate in every theme, so the inferno classes keep their contrast
+   (designer spec, place flow section 3). */
+:root {
+  --plate: #151622;
+  --plate-text: #eef1f8;
+  --plate-muted: #a4adc4;
+  --plate-edge: rgb(255 255 255 / 0.08);
+  --hm-0: #2a2d45;
+  --hm-1: #972766;
+  --hm-2: #c33b4f;
+  --hm-3: #e55c30;
+  --hm-4: #f8890c;
+  --hm-5: #fbbe23;
+  --hm-6: #f2f27d;
+  --hm-sel: #4da3ff;
+  --hm-focus: #fbba1f;
+  --pin-bg: #ffffff;
+  --pin-text: #0c0d17;
+}

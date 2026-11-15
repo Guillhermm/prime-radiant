@@ -111,6 +111,7 @@ export const mount = (container, { views, activeView, onView, previewIds = [], s
     synthetic: slot('synthetic'),
     synthTag: slot('synth-tag', 'span'),
     offline: slot('offline', 'span'),
+    areas: slot('areas', 'span'),
     method: slot('method', 'span'),
     export: slot('export', 'span'),
     themeFoot: slot('theme-foot', 'span'),
@@ -126,6 +127,7 @@ export const mount = (container, { views, activeView, onView, previewIds = [], s
     live: slot('live'),
     detail: slot('detail', 'aside', { class: 'panel-host' }),
     drawer: slot('drawer'),
+    areaDrawer: slot('area-drawer'),
     map: slot('map'),
   };
   const groupSlots = { calendar: [slots.calendar], sensors: [slots.sensors], anomalies: [slots.anomalies], live: [slots.live] };
@@ -142,11 +144,11 @@ export const mount = (container, { views, activeView, onView, previewIds = [], s
     h('header', { class: 'topbar' },
       // An empty hash is the first-run view: the hashchange listener clears the area.
       h('a', { class: 'brand', href: '#', 'aria-label': 'Prime Radiant, home' }, mark('mark brand-mark'), h('span', { text: 'Prime Radiant' })), tablist,
-      h('div', { class: 'topbar-actions' }, slots.offline, slots.synthTag, slots.method, slots.export)),
+      h('div', { class: 'topbar-actions' }, slots.offline, slots.synthTag, slots.method, slots.areas, slots.export)),
     h('div', { class: 'page' },
       h('div', { class: 'main-col' }, context, slots.verdict, slots.caveat, main, footerEl(slots)),
       slots.detail),
-    slots.drawer);
+    slots.drawer, slots.areaDrawer);
 
   return {
     slots,

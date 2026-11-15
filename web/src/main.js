@@ -1,6 +1,7 @@
 import { PREVIEW_VIEWS, viewsFor } from './views.js';
 import { createStore, parseHash, serializeHash } from './state.js';
 import { findPreset, presetsFor } from './presets.js';
+import { defaultArea, hotspotPresets } from './places.js';
 import * as appShell from './components/app-shell.js';
 import * as queryBar from './components/query-bar.js';
 import { spanFromManifest } from './components/date-range.js';
@@ -16,6 +17,7 @@ import * as mapPicker from './components/map-picker.js';
 import * as caveatStrip from './components/caveat-strip.js';
 import * as cellDetail from './components/cell-detail.js';
 import * as methodDrawer from './components/method-drawer.js';
+import * as areaDrawer from './components/area-drawer.js';
 import * as states from './components/states.js';
 import * as anomalyLayer from './components/anomaly-layer.js';
 import * as radiant from './components/radiant.js';
@@ -233,10 +235,13 @@ const mountInstall = (slot) => {
 export const start = async (root = document.getElementById('app')) => {
   const params = new URLSearchParams(location.search);
   const fixtures = params.get('fixtures') === '1';
+  // One list for the whole app: the hotspots from overview.json join it when they arrive.
   const presets = presetsFor({ fixtures });
   const source = createDataSource(dataSourceConfig({ fixtures }));
   let manifestError = null;
   const manifest = await source.manifest().catch((e) => { manifestError = e; return null; });
+  const places = { status: manifest ? 'loading' : 'missing', overview: null };
+  const overviewReady = manifest ? source.overview() : Promise.resolve(null);
   const synthetic = isSyntheticManifest(manifest);
   const { views, preview } = viewsFor({ synthetic, previewParam: params.get('preview') === '1' });
   const span = manifest ? spanFromManifest(manifest) : null;
@@ -250,7 +255,7 @@ export const start = async (root = document.getElementById('app')) => {
       // Home does what the brand link does: an empty hash clears the area.
       if (view === 'home') location.hash = '';
       else if (store.get().bbox) viewTransition(() => store.set({ view }));
-      else openDefault(view);
+      else openDefault(view, document.getElementById(`tab-${view}`));
     },
     previewIds: preview ? PREVIEW_VIEWS : [],
     synthetic,
@@ -274,11 +279,26 @@ export const start = async (root = document.getElementById('app')) => {
     onAoiInput: (v) => { if (v.valid) map.ctl?.setBbox(v.bbox); },
     onDrawMap: () => map.ctl?.openFull(),
     onMapToggle: () => (isPhone() ? map.ctl?.openFull() : map.ctl?.show()),
+    onAreaChip: (chip) => areas.open(chip),
   });
   map.ctl = mapPicker.mount(slots.map, { bbox: state.bbox, onChange: (b) => qb.aoi.set(b) });
 
   const drawer = methodDrawer.mount(slots.drawer, {
-    trigger: slots.method, manifest, beforeOpen: () => { map.ctl?.closeFull(); qb.close(); }, themeMount: (el) => themeControl.mount(el),
+    trigger: slots.method, manifest, beforeOpen: () => { map.ctl?.closeFull(); qb.close(); areas.close({ restore: false }); }, themeMount: (el) => themeControl.mount(el),
+  });
+  // The place picker. Its primary keeps the view and changes only the area; from Home it opens the calendar.
+  const areas = areaDrawer.mount(slots.areaDrawer, {
+    trigger: slots.areas,
+    getOverview: () => places,
+    isHome: () => store.get().bbox === null,
+    currentBbox: () => store.get().bbox,
+    beforeOpen: () => { map.ctl?.closeFull(); qb.close(); drawer.close(); },
+    onCommit: (bbox) => {
+      const home = store.get().bbox === null;
+      goTo({ ...queryBar.presetPatch({ bbox }, store.get(), span), ...(home ? { view: 'calendar' } : {}) });
+      if (home) window.scrollTo({ top: 0 });
+    },
+    onManual: (target, back) => qb.open(target === 'both' ? (isPhone() ? 'area' : 'map') : target, back ?? undefined),
   });
   toast.prepare();
   // The service worker serves cached tiles offline, so a fetch can succeed with the network down:
@@ -356,10 +376,16 @@ export const start = async (root = document.getElementById('app')) => {
     window.scrollTo({ top: 0 });
     document.getElementById('main-view')?.focus({ preventScroll: true });
   };
-  // A view picked on the first screen opens the first example card in that view, nothing selected.
-  const openDefault = (view) => openExample(presets[0], { view });
+  // A view picked on the first screen opens, with nothing selected, the last area chosen this
+  // session, else the suggestion (the hottest hotspot, or the fixture area); with neither, the picker.
+  let lastArea = state.bbox;
+  const openDefault = (view, from) => {
+    const pick = defaultArea({ last: lastArea, suggestion: presets[0]?.bbox ?? null });
+    if (pick) openExample({ bbox: pick.bbox }, { view });
+    else areas.open(from);
+  };
   const stateView = states.mount(slots.empty, {
-    presets, manifest, synthetic, loadExample,
+    presets, overview: null, manifest, synthetic, loadExample,
     onPick: (id) => openExample(findPreset(id, presets)),
     onRetry: () => run(store.get()),
     onDraw: (btn) => qb.open('map', btn),
@@ -374,7 +400,7 @@ export const start = async (root = document.getElementById('app')) => {
     slots.verdict.hidden = !screen.results || store.get().view !== 'calendar';
     slots.caveat.hidden = store.get().bbox === null;
     if (!screen.results) shell.groups.forEach((g) => { g.hidden = true; });
-    exportCtl.setDisabled(screen.kind === 'outside' ? states.OUTSIDE_EXPORT : null);
+    exportCtl.setDisabled(screen.kind === 'outside' ? states.outsideExport(places.overview?.region?.name) : null);
     const next = screen.kind === 'error' ? states.errorState(d.error, { offline: offline.state().online === false }) : screen.kind && { kind: screen.kind };
     const key = JSON.stringify(next);
     if (key === shownState) return;
@@ -388,7 +414,7 @@ export const start = async (root = document.getElementById('app')) => {
     detail.close({ restore: false });
     detail.update({ aoiCells: result.aoiCells });
     drawer.update({ manifest: result.manifest });
-    const note = states.domainNote(result.domain);
+    const note = states.domainNote(result.domain, places.overview?.region?.name);
     domainText.textContent = note ?? '';
     domainNote.hidden = !note;
     slots.version.textContent = `Data: ${result.manifest.dataVersion}`;
@@ -434,12 +460,14 @@ export const start = async (root = document.getElementById('app')) => {
   const closeAll = () => {
     detail.close({ restore: false });
     drawer.close();
+    areas.close({ restore: false });
     qb.close();
     map.ctl?.closeFull(true);
     document.querySelectorAll(':popover-open').forEach((p) => p.hidePopover());
   };
   let lastQuery = state;
   store.subscribe((s) => {
+    if (s.bbox) lastArea = s.bbox;
     if (!s.bbox && lastQuery.bbox) closeAll();
     const next = hashOf(s);
     if (location.hash !== next) location.hash = next;
@@ -456,6 +484,16 @@ export const start = async (root = document.getElementById('app')) => {
   });
   render(state);
   run(state);
+  // overview.json is optional: without it the hero keeps its manual buttons and the picker says so.
+  overviewReady.then((overview) => {
+    places.overview = overview;
+    places.status = overview ? 'ready' : 'missing';
+    presets.push(...hotspotPresets(overview));
+    stateView.update({ overview });
+    shownState = null;
+    render(store.get());
+    areas.update();
+  });
   return store;
 };
 

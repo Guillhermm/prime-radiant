@@ -1,4 +1,4 @@
-import { validateManifest, validateTile, validateDomain } from '../../core/schema.js';
+import { validateManifest, validateTile, validateDomain, validateOverview } from '../../core/schema.js';
 import { tilesForBbox, cellCount, MAX_FINE_CELLS } from '../../core/index.js';
 import { createDomain } from '../../core/domain.js';
 import { parseTileId } from '../../core/grid.js';
@@ -16,9 +16,11 @@ export class DataSourceError extends Error {
 
 // Paths are relative to the page, which sits one level under the site root in dev
 // (the repo root is served, page at /web/) and at the root on Vercel, where ../ stays at the root.
+// The fixtures have no overview.json, so fixture mode does not ask for one.
 export const dataSourceConfig = ({ fixtures = false } = {}) => ({
   manifestUrl: fixtures ? '../fixtures/manifest.json' : '../data/manifest.json',
   root: '../',
+  withOverview: !fixtures,
 });
 
 const baseOf = (manifest, root) => {
@@ -36,6 +38,9 @@ export const domainUrl = (manifest, root = '') => {
   if (!/^[\w-][\w.-]*$/.test(file)) throw new DataSourceError('invalid', `manifest: domain file "${file}" is not a plain file name`);
   return `${baseOf(manifest, root)}${file}`;
 };
+
+/** URL of overview.json, next to the tiles under the manifest's base_url. */
+export const overviewUrl = (manifest, root = '') => `${baseOf(manifest, root)}overview.json`;
 
 /**
  * The tiles a query needs. harmonize falls back from the area to its 10 degree tiles, then the
@@ -62,12 +67,13 @@ export const tilesNeeded = (bbox, manifest, domain = null) => {
 
 /**
  * @param {{manifestUrl: string, root?: string, fetchFn?: typeof fetch, concurrency?: number}} cfg
+ * `overview()` resolves to the validated overview.json or null, never rejects.
  * `load(bbox)` aborts the previous load, fetches the needed tiles (at most `concurrency` at a
  * time), validates each with core's schema and returns `{manifest, domain, tiles: {fine, coarse}, ids}`.
  * The manifest, the domain and validated tiles are cached for the session; a failed or aborted
  * fetch is not.
  */
-export const createDataSource = ({ manifestUrl, root = '', fetchFn = (...a) => fetch(...a), concurrency = 6 }) => {
+export const createDataSource = ({ manifestUrl, root = '', withOverview = true, fetchFn = (...a) => fetch(...a), concurrency = 6 }) => {
   const tileCache = new Map();
   let manifestPromise = null;
   let domainPromise = null;
@@ -112,6 +118,19 @@ export const createDataSource = ({ manifestUrl, root = '', fetchFn = (...a) => f
     return domainPromise;
   };
 
+  // The place picker's map is optional: anything wrong with it (missing, invalid, offline) is null,
+  // and the app falls back to drawing or typing an area.
+  const overview = async () => {
+    if (!withOverview) return null;
+    try {
+      const m = await manifest();
+      const o = await getJson(overviewUrl(m, root));
+      return validateOverview(o).length ? null : o;
+    } catch {
+      return null;
+    }
+  };
+
   const fetchTile = async (m, res, id, signal) => {
     const key = `${res}/${id}`;
     if (tileCache.has(key)) return tileCache.get(key);
@@ -150,5 +169,5 @@ export const createDataSource = ({ manifestUrl, root = '', fetchFn = (...a) => f
     }
   };
 
-  return { manifest, load, cancel: () => current?.abort() };
+  return { manifest, overview, load, cancel: () => current?.abort() };
 };

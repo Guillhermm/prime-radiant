@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { createDataSource, tilesNeeded, tileUrl, domainUrl, dataSourceConfig, DataSourceError } from './data-source.js';
+import { createDataSource, tilesNeeded, tileUrl, domainUrl, overviewUrl, dataSourceConfig, DataSourceError } from './data-source.js';
 
 const read = (p) => readFileSync(new URL(`../../${p}`, import.meta.url), 'utf8');
 const manifest = JSON.parse(read('fixtures/manifest.json'));
@@ -133,4 +133,32 @@ test('a failed tile is not cached', async () => {
   await assert.rejects(ds.load(BOX), (e) => e.kind === 'network');
   fail = false;
   assert.deepEqual((await ds.load(BOX)).ids.fine, ['x17y13']);
+});
+
+const OVERVIEW = { schema: 1, dataVersion: 'v1', region: null, sensor: 'viirs', year: 2023, res: 1, unit: 'fire-cell-days', partial_months: [], cells: [[-10, 40, 5]], hotspots: [{ bbox: [-10, 40, -9, 41], value: 5 }] };
+const withOverview = (body) => {
+  const inner = fakeFetch();
+  const fn = async (url, opts) => (url.endsWith('overview.json')
+    ? (fn.calls.push(url), body === undefined ? { ok: false, status: 404, json: async () => ({}) } : { ok: true, status: 200, json: async () => body })
+    : inner(url, opts));
+  fn.calls = [];
+  return fn;
+};
+
+test('overview: next to the tiles under base_url, validated, and null on any failure', async () => {
+  assert.equal(overviewUrl(manifest, '../'), '../fixtures/overview.json');
+  const ok = withOverview(OVERVIEW);
+  assert.deepEqual(await src(ok).overview(), OVERVIEW);
+  assert.deepEqual(ok.calls, ['../fixtures/overview.json']);
+  assert.equal(await src(withOverview(undefined)).overview(), null, 'missing');
+  assert.equal(await src(withOverview({ ...OVERVIEW, year: 'last' })).overview(), null, 'invalid');
+  assert.equal(await src(async () => { throw new TypeError('offline'); }).overview(), null, 'offline, manifest unreachable');
+});
+
+test('fixture mode does not ask for an overview', async () => {
+  assert.equal(dataSourceConfig({ fixtures: true }).withOverview, false);
+  assert.equal(dataSourceConfig().withOverview, true);
+  const f = withOverview(OVERVIEW);
+  assert.equal(await src(f, { withOverview: false }).overview(), null);
+  assert.deepEqual(f.calls, []);
 });
