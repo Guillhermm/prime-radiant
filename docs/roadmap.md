@@ -7,7 +7,7 @@ Status: accepted by the team on 2026-11-14 (planning ritual). Open decisions in 
 - Two humans, two tracks, one contract. **Kaue owns data and science** (pipeline, `core/` science, data hosting, live ingestion). **Guilherme owns the web app** (shell, inputs, views, the Vercel function). The axis can be swapped wholesale (decision H1); nothing else depends on who is who.
 - Task ID: `M{milestone}-{K|G}{n}`. K = Kaue, G = Guilherme. Every deliverable task has exactly one owner.
 - "Done" for any task: code + tests in the same commit, `node --test` green, docs that describe it true, reviewed by the other human (or the dev master) before merge.
-- ✅ marks a task whose deliverable is built and tested (checked 2026-11-15, after merging Kaue's data and science work). M2-G1 and M3-G1 run on core stubs until M2-K1 and M3-K3 land. Not marked: M0-G3 and M1-K4 (H5 decided 2026-11-15 and `pipeline/publish.js` built, but no real publish has run yet), M1-G12 (production has no real data until that publish).
+- ✅ marks a task whose deliverable is built and tested (checked 2026-11-15, after merging Kaue's data and science work). M2-G1 and M3-G1 run on core stubs until M2-K1 and M3-K3 land. Not marked: M1-K4 (the publish ran on 2026-11-15, by hand and through the `publish-data` workflow; still open: the contract test on a real-tile sample and the cell hand-checked against the FIRMS map), M1-G12 (production serves real data; still open: `docs/demo.md` rewritten for real data).
 - Size points used for balancing: S = 1, M = 2, L = 3.
 - Gates are not tasks of one person; they are checkpoints a milestone cannot pass without. Each gate names who triggers it.
 
@@ -137,7 +137,7 @@ Gate rules:
 - Tests: unit `web/src/state.test.js`, `web/src/views.test.js`.
 - Files: `web/src/state.js`, `web/src/views.js`.
 
-**M0-G3 Tile hosting spike** · S · depends: M0-K4 numbers (can start before with a guess)
+✅ **M0-G3 Tile hosting spike** · S · depends: M0-K4 numbers (can start before with a guess)
 - Deliverable: decision H5 between (a) tiles deployed with the site through `vercel deploy` from a local or CI build (tiles stay gitignored, so a git-triggered Vercel build cannot see them) and (b) Cloudflare R2 public bucket with CORS for the app origin, `manifest.base_url` pointing to it. Check Vercel Hobby upload and file-count limits and R2 free tier against the spike sizes; check whether the Vercel CLI honors `.gitignore` or only `.vercelignore` (unverified). Record in `docs/deploy.md`.
 - Acceptance: one fixture tile fetched from the chosen host by a page on the preview URL with the CSP from M0-K6, no console errors.
 - Tests: none beyond the manual check; the fetch path is tested in M1-G5.
@@ -467,6 +467,16 @@ Off the critical path thanks to the contract: the whole web track (runs on fixtu
 | API key leak in D | Security incident | Cron path needs no key; proxy cuttable; key tests in M3-G2; secret scan in M3-G3 |
 | GitHub Action cron delay or failure | Stale live data | Stale threshold + "Live unavailable" state; last good data kept |
 | CSV formula injection | Spreadsheet attack | Guard in `core/csv.js`, tested |
+
+## 10a. After M3: global extent
+
+**M4-K1 Chunked pipeline for a global build** · L · depends: M1-K4, H3 changed to global
+- Why: the R2 side is not the limit (global tiles are estimated near 660 MB, two versions kept, against 10 GB free), the build is. Global raw CSVs are estimated near 40 GB, likely more than the free disk of a GitHub-hosted runner, and the Brazil build already peaks near 1 GB of memory.
+- Deliverable: the build processes the input in parts (by year, or by region and year), downloads one file, folds it into the running tile totals and deletes it before the next, so disk holds one raw file at a time and memory stays bounded; `tools/fetch-country.mjs` and the `publish-data` workflow follow the same loop; the global source (all country files or an archive request) chosen and recorded in `docs/data.md`.
+- Acceptance: a chunked build of the Brazil files gives tiles byte-identical to today's one-pass build; peak disk and memory recorded for one global year; the workflow fits in the runner's disk and time limits, or the build moves off Actions with the reason recorded.
+- Gate: global extent goes through a Second Foundation check before it ships (V1 was validated on Brazil).
+- Tests: integration test that chunked and one-pass builds agree on the fixtures.
+- Files: `pipeline/build.js`, `tools/fetch-country.mjs`, `.github/workflows/publish-data.yml`, `docs/data.md`.
 
 ## 11. Cut list (in order, A and B stay complete)
 
