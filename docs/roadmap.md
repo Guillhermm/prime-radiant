@@ -42,7 +42,7 @@ prime-radiant/
     src/data-source.js  manifest + tile loading, cache, fixture swap
     src/components/  app-shell, query-bar, aoi-form, map-picker, date-range, calendar-grid,
                      legend, cell-detail, kpi-strip, data-table, caveat-strip, method-drawer,
-                     states, export-menu, sensor-chart (K), anomaly-layer, flag-list (K), live-view
+                     states, export-menu, sensor-chart (K), anomaly-layer, anomaly-summary, live-view
   fixtures/        tiny manifest, 3 tiles, 50-row FIRMS CSV per sensor, NRT CSV, live response (owner K)
   test/            unit tests sit next to the module (*.test.js); test/integration, test/e2e
   docs/            method.md (K), ux.md (G), data.md (K), deploy.md (K), README links
@@ -350,12 +350,12 @@ Sync points:
 - Files: `core/anomaly.js`, `core/calendar.js`, `core/index.js`.
 - Status: built with the V2 fixes A1-A6 (S-NPP outage months filled from NOAA-20 x K, single-sensor confirmation, scaled year ranks, sparse-baseline labels).
 
-**M2-K2 Flagged periods list and figures** · M · depends: M2-K1, M1-G10
+✅ **M2-K2 Flagged periods list and figures** · M · depends: M2-K1, M1-G10
 - Deliverable: `flag-list.js` (flagged months grouped into consecutive periods, rule stated on screen, keyboard selectable, selects the cell in the grid via QueryState), rank-of-year cards reusing KPI strip patterns.
 - Acceptance: selecting a period focuses the first cell; rule text matches `docs/method.md`.
 - Tests: unit on period grouping; integration on fixture.
-- Files: `web/src/components/flag-list.js`.
-- Status: in progress. Built: `core/periods.js` (`flaggedPeriods`, `flagRuleText`) with unit tests. Planned: `flag-list.js` and the rank-of-year cards.
+- Files: `web/src/components/anomaly-summary.js`.
+- Status: built: `core/periods.js` periods in the range shown as keyboard buttons that open their first month, the `flagRuleText` rule on screen, and a year-rank card from core's `yearRank` ("5–6" when observed and scaled totals disagree).
 
 ✅ **M2-K3 Science gate V2** · S · depends: M2-K1
 - Deliverable: baseline + anomaly section of `docs/method.md` validated; caveat for small n and sparse areas.
@@ -371,11 +371,12 @@ Sync points:
 - Tests: unit on diverging bin mapping and labels.
 - Files: `web/src/components/anomaly-layer.js`, `legend.js`.
 
-**M2-G2 Anomalies tab, e2e, release** · S · depends: M2-G1, M2-K2, V2
+✅ **M2-G2 Anomalies tab, e2e, release** · S · depends: M2-G1, M2-K2, V2
 - Deliverable: enable `anomalies` in VIEWS, e2e test for toggle + flag list, D2 review, Q2, deploy, docs true (README marks C built).
 - Acceptance: gates passed; demo script extended.
 - Tests: `test/e2e/anomalies.test.js`.
 - Files: `web/src/views.js`, `test/e2e/`, `docs/demo.md`, `README.md`.
+- Status: built: Anomalies and the "Counts | vs median" layer are on for real data with core's ranks, no Preview tag, core's anomaly caveats listed; e2e in `test/e2e/app.test.js` (real-data mode). Still open: D2 review, Q2, deploy, `docs/demo.md`.
 
 Load: K 2+2+1 = 5, G 2+1 = 3. Guilherme absorbs M1 polish from D1/Q1 findings here; if none, Guilherme starts M3-G1.
 

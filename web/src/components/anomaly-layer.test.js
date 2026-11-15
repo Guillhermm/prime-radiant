@@ -99,15 +99,16 @@ test('table: years newest first, percentile in words, no data and no rank kept a
   assert.deepEqual(t.rows[0].cells.slice(0, 3), ['No data', 'No rank', '']);
   assert.equal(t.rows[1].cells[0], '92nd, flagged');
   assert.match(t.caption, /Synthetic data/);
-  assert.match(t.caption, /Preview/);
+  assert.match(t.caption, /earlier years/);
+  assert.doesNotMatch(t.caption, /Preview/, 'gate V2 validated the ranks');
 });
 
-test('extremes: Low and High only for an exact 0 or 1, spelled out with the month count in the table', async () => {
+test('extremes: Low and High only for an exact 0 or 1, a record against earlier years in the table', async () => {
   const { anomalyTableModel } = await import('./anomaly-layer.js');
   assert.equal(anomalyCellModel({ cell: cell(2024, 10, 1, { rank: 0 }) }, 1000).text, 'Low');
   assert.equal(anomalyCellModel({ cell: cell(2024, 10, 9, { rank: 1 }) }, 1000).text, 'High');
   assert.equal(anomalyCellModel({ cell: cell(2024, 10, 9, { rank: 1 }) }, 1000).short, '100', 'the phone keeps digits');
   assert.equal(anomalyCellModel({ cell: cell(2024, 10, 9, { rank: 0.996 }) }, 1000).text, '100th');
   const t = anomalyTableModel([cell(2022, 10, 1, { rank: 0 }), cell(2023, 10, 5, { rank: 0.5 }), cell(2024, 10, 9, { rank: 1, flagged: true }), cell(2021, 10, null)]);
-  assert.deepEqual(t.rows.map((r) => r.cells[9]), ['highest of 3 Octobers, flagged', '50th', 'lowest of 3 Octobers', 'No data']);
+  assert.deepEqual(t.rows.map((r) => r.cells[9]), ['record high, flagged', '50th', 'record low', 'No data']);
 });

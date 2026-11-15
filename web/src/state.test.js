@@ -78,7 +78,6 @@ test('from after to is rejected', () => {
 });
 
 test('disabled, unknown view and unknown layer fall back', () => {
-  assert.equal(bad('#view=live', 'view').view, 'calendar');
   assert.equal(bad('#view=zzz', 'view').view, 'calendar');
   assert.equal(bad('#layer=zzz', 'layer').layer, 'counts');
 });
@@ -115,9 +114,10 @@ test('store treats equal bbox arrays as no change', () => {
   assert.equal(n, 1);
 });
 
-test('Sensors opens from a link; without ?preview=1 a link to Anomalies falls back to the calendar', () => {
+test('Sensors, Anomalies and Live open from a link', () => {
   assert.equal(parseHash('#view=sensors').state.view, 'sensors');
-  assert.equal(parseHash('#view=anomalies').state.view, 'calendar');
+  assert.equal(parseHash('#view=anomalies').state.view, 'anomalies');
+  assert.equal(parseHash('#view=live').state.view, 'live');
 });
 
 test('cleanName trims, strips control characters and caps at 60 characters', () => {

@@ -5,7 +5,7 @@ import { gridModel, cellLabel, initialPosition, nextPosition } from './calendar-
 import { h } from './h.js';
 
 /**
- * Input contract (expected from core/anomaly.js, M2-K1; not built yet).
+ * Input contract (core/anomaly.js).
  *
  * Either the CalendarCell carries the fields itself:
  *   { ...CalendarCell, rank: number|null, flagged: boolean }
@@ -114,17 +114,15 @@ export const anomalyAnswer = (cells) => {
 export const anomalyTableModel = (cells, { synthetic = false } = {}) => {
   const years = [...new Set(cells.map((c) => c.year))].sort((a, b) => b - a);
   const at = new Map(cells.map((c) => [`${c.year}-${c.month}`, c]));
-  const counted = (month) => cells.filter((c) => c.month === month && c.value !== null).length;
   const text = (c) => {
     if (!c) return '';
     if (c.value === null) return 'No data';
     if (typeof c.rank !== 'number') return 'No rank';
-    const name = `${MONTH_NAMES[c.month - 1]}s`;
-    const word = { 0: `lowest of ${counted(c.month)} ${name}`, 1: `highest of ${counted(c.month)} ${name}` }[c.rank];
+    const word = { 0: 'record low', 1: 'record high' }[c.rank];
     return `${word ?? ordinal(Math.round(c.rank * 100))}${c.flagged ? ', flagged' : ''}`;
   };
   return tableModel({
-    caption: `Percentile of each month among the same month in other years.${synthetic ? ' Synthetic data, not real fire detections.' : ''} Preview, not reviewed by the science team.`,
+    caption: `Percentile of each month among the same month in earlier years.${synthetic ? ' Synthetic data, not real fire detections.' : ''}`,
     corner: 'Year',
     columns: MONTH_NAMES.map((m) => m.slice(0, 3)),
     rows: years.map((y) => ({ header: String(y), cells: MONTH_NAMES.map((_, i) => text(at.get(`${y}-${i + 1}`))) })),

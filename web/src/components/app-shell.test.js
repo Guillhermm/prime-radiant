@@ -5,9 +5,9 @@ import { ICON_NAMES } from './icons.js';
 import { VIEWS } from '../views.js';
 
 test('disabled views are absent from the tabs', () => {
-  assert.deepEqual(tabsModel(VIEWS, 'calendar').map((t) => [t.id, t.selected]), [['calendar', true], ['sensors', false]], 'Anomalies and Live wait for ?preview=1');
-  const preview = VIEWS.map((v) => ({ ...v, enabled: true }));
-  assert.deepEqual(tabsModel(preview, 'sensors').map((t) => [t.id, t.selected]), [['calendar', false], ['sensors', true], ['anomalies', false], ['live', false]]);
+  const off = VIEWS.map((v) => ({ ...v, enabled: v.id !== 'live' }));
+  assert.deepEqual(tabsModel(off, 'calendar').map((t) => [t.id, t.selected]), [['calendar', true], ['sensors', false], ['anomalies', false]]);
+  assert.deepEqual(tabsModel(VIEWS, 'sensors').map((t) => [t.id, t.selected]), [['calendar', false], ['sensors', true], ['anomalies', false], ['live', false]]);
 });
 
 test('tab keys wrap and ignore others', () => {
@@ -21,7 +21,8 @@ test('tab keys wrap and ignore others', () => {
 
 test('title names the view', () => {
   assert.equal(viewTitle(VIEWS, 'calendar'), 'Calendar - Prime Radiant');
-  assert.equal(viewTitle(VIEWS, 'live'), 'Prime Radiant');
+  assert.equal(viewTitle(VIEWS, 'live'), 'Live - Prime Radiant');
+  assert.equal(viewTitle(VIEWS, 'nope'), 'Prime Radiant');
 });
 
 test('the shell has a result group for every view', () => {
