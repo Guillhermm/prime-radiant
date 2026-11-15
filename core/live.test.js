@@ -106,7 +106,8 @@ test('live data starting after the 1st: the days before are not observed, skippe
   assert.deepEqual(r.month.daysMissing, []);
   assert.equal(r.month.live.values.length, r.month.band.median.length);
   assert.deepEqual(r.month.live.values.slice(0, 5), [null, null, null, null, 1]);
-  assert.equal(r.month.band.median[3], 0, 'nothing counted yet: the band holds no share either');
+  assert.equal(r.month.band.median[3], null, 'nothing counted yet: no band, never a band of 0');
+  assert.ok(r.month.band.median[4] > 0);
   assert.equal(r.lowConfidence, true);
   assert.ok(r.lowConfidenceReasons.some((x) => /not observed/.test(x)));
 });

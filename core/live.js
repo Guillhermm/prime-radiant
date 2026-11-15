@@ -192,7 +192,8 @@ const inc = (share, month, d) => share[month - 1][d - 1] - (d > 1 ? share[month 
  * `month`: current month to date, step 'day', from the 1st to the last day with data. The value is
  * the sum of the complete (non-null) days; a null (partial or missing) day is skipped, never
  * counted as 0, and later complete days still count. values[d-1] is the running sum through
- * day d, null on a missing day itself; band[d-1] the band for the days counted through d.
+ * day d, null on a missing day itself; band[d-1] the band for the days counted through d, null
+ * before the first counted day.
  * When live data starts after the 1st, the days before it are not observed (`daysNotObserved`,
  * apart from the partial days in `daysMissing`): skipped like a missing day, the band uses only the
  * days counted, the result is low confidence, and with fewer than LIVE_MIN_COUNTED_DAYS days counted
@@ -269,7 +270,8 @@ export function liveComparison({ live, harmonized, share, fetchedAt = null, now 
     out.daysNotObserved = unseen;
     if (unseen.length) reasons.push(`${unseen[0]} to ${unseen.at(-1)} not observed (live data starts on ${first})`);
     else if (missing.length > ds.length * LIVE_MAX_MISSING) reasons.push(`${missing.length} of ${ds.length} days so far are missing`);
-    const band = toBand(fracs.map((f) => bandAt(pool, f, minYears)));
+    // Before the first counted day nothing is compared: null, not a band of 0.
+    const band = toBand(fracs.map((f) => (f > 0 ? bandAt(pool, f, minYears) : { p25: null, median: null, p75: null })));
     out.lastCompleteDay = lastData.day;
     out.month = { live: { ...meta, step: 'day', start: `${cur}-01`, values }, band, provisional: true, month: cur,
       daysCounted: counted, daysMissing: missing, daysNotObserved: unseen, basis: { years: pool.length, share: frac } };
