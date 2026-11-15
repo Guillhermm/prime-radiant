@@ -478,6 +478,11 @@ Off the critical path thanks to the contract: the whole web track (runs on fixtu
 - Tests: integration test that chunked and one-pass builds agree on the fixtures.
 - Files: `pipeline/build.js`, `tools/fetch-country.mjs`, `.github/workflows/publish-data.yml`, `docs/data.md`.
 
+**M4-G1 Rank named regions in the place picker** · M/L · depends: place picker step 1, polygon AOIs
+- Status: proposed 2026-11-15, after step 1 (which ranks 1 deg squares labeled with country and state).
+- Deliverable: the pipeline sums fire-cell-days per state or province (Natural Earth admin-1, global, public domain) into `overview.json`; the drawer lists the hottest regions by total, with density (per 1,000 cells) as a second column and a later sort toggle; opening a region uses its polygon as the area, not its bounding box (today an area is a bbox, which would pull in the neighbors), so polygon AOIs in `core/` come first. Biomes or ecoregions after that, once a source with a checked license is chosen.
+- Gate: a Second Foundation check of the per-region sums and of density as a ranking.
+
 **M4-K2 Fire outlook (machine learning), proposed, not decided** · L · depends: M2 (C) done, a decision by the humans on scope and stack
 - Status: idea under discussion (2026-11-15), nothing built. To be discussed before it is sliced.
 - What it would predict: not individual ignitions (in Brazil most are human), but expected activity per 0.1 deg cell and per month, for example the chance that next month lands above the cell's median. Shown as an experimental layer on the calendar and the map.
