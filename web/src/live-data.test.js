@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { liveInput, loadLiveTables, LIVE_REASONS } from './live-data.js';
+import { liveInput, loadLiveTables, LIVE_REASONS, runningTotalDisclaimer } from './live-data.js';
 
 const read = (p) => JSON.parse(fs.readFileSync(new URL(p, import.meta.url), 'utf8'));
 const share = read('../../core/data/daily-share.json').share;
@@ -81,15 +81,33 @@ test('a global live build with the static mask: no type scaling, no type-bias no
   assert.equal(out.lowConfidence, false);
 });
 
-test('a global live build: inside the share region, month to date; outside, whole past months only', () => {
+test('a global live build: inside the share region, month to date; outside, the running total without a band, then whole past months', () => {
   const g = { ...lm, static_mask: { data_version: 'v1', cells: 10 }, share_domain: { id: 'brazil', file: 'share-domain.json', res: 0.1 } };
   const inside = liveInput({ result: result(), live: { manifest: g, domain: null, shareDomain: domain, tiles: { x17y13: tile } }, share, type0, now });
   assert.equal(inside.live.step, 'day');
   // A share region far away (one cell row near the South Pole): the area is not in it.
   const far = { rows: { 5: [[0, 9]] } };
   const away = liveInput({ result: result(), live: { manifest: g, domain: null, shareDomain: far, tiles: { x17y13: tile } }, share, type0, now });
-  assert.equal(away.reason, LIVE_REASONS.wholeMonths(g.coverage.noaa20?.[0] ?? g.day0));
-  assert.match(away.reason, /^Live data covers the whole world since \d{4}-\d{2}-\d{2}\. Outside Brazil/);
+  assert.equal(away.reason, undefined);
+  assert.equal(away.band, null, 'no archive band outside the share region');
+  assert.equal(away.live.step, 'day');
+  assert.ok(Math.abs(away.live.values.at(-1) - 12 * 10 * 1.2) < 1e-9, 'NOAA-20 x K, S-NPP units');
+  assert.equal(away.title, 'This month so far');
+  assert.match(away.sub, /no comparison with past years yet/);
+  assert.equal(away.disclaimer, 'NOAA-20 near-real-time, scaled to S-NPP, approximate. Running total since 1 Nov only. Not a monthly total, no comparison to past years. Static heat sources are masked from the archive; newer flares or eruptions can leak in.');
+  // Live from 11-08 (prod, 2026-11-16): days 1 to 7 not observed, still a running total, low confidence.
+  const late = { ...g, fetched_at: '2026-11-16T03:30:00Z', day0: '2026-11-08', last_day: '2026-11-15', coverage: { ...g.coverage, noaa20: ['2026-11-08', '2026-11-15'] } };
+  const t8 = { cell: Array(8).fill(0), day: [...Array(8).keys()], modis: Array(8).fill(null), viirs: Array(8).fill(null), noaa20: Array(8).fill(10) };
+  const nov = liveInput({ result: result(), live: { manifest: late, domain: null, shareDomain: far, tiles: { x17y13: t8 } }, share, type0, now: new Date('2026-11-16T06:00:00Z') });
+  assert.equal(nov.band, null);
+  assert.deepEqual(nov.live.values.slice(0, 7), Array(7).fill(null));
+  assert.equal(nov.disclaimer, 'NOAA-20 near-real-time, scaled to S-NPP, approximate. Running total since 8 Nov only (1 to 7 Nov not observed). Not a monthly total, no comparison to past years. Static heat sources are masked from the archive; newer flares or eruptions can leak in.');
+  assert.equal(nov.lowConfidence, true);
+  assert.ok(nov.lowConfidenceReasons.some((r) => /not observed/.test(r)));
+  // Too few days counted for a month: the reason stays.
+  const t3 = { cell: Array(3).fill(0), day: [...Array(3).keys()], modis: Array(3).fill(null), viirs: Array(3).fill(null), noaa20: Array(3).fill(10) };
+  const early = { ...g, fetched_at: '2026-11-11T03:30:00Z', day0: '2026-11-08', last_day: '2026-11-10', coverage: { ...g.coverage, noaa20: ['2026-11-08', '2026-11-10'] } };
+  assert.equal(liveInput({ result: result(), live: { manifest: early, domain: null, shareDomain: far, tiles: { x17y13: t3 } }, share, type0, now: new Date('2026-11-11T06:00:00Z') }).reason, LIVE_REASONS.wholeMonths('2026-11-08'));
   // Live from 2026-10-01 to 11-12: October is whole and compared, November is left out.
   const long = { ...g, day0: '2026-10-01', coverage: { ...g.coverage, noaa20: ['2026-10-01', '2026-11-12'] } };
   const t = { cell: Array(43).fill(0), day: [...Array(43).keys()], modis: Array(43).fill(null), viirs: Array(43).fill(null), noaa20: Array(43).fill(10) };
@@ -99,4 +117,10 @@ test('a global live build: inside the share region, month to date; outside, whol
   assert.equal(oct.live.values.length, 1);
   assert.ok(Math.abs(oct.live.values[0] - 31 * 10 * 1.2) < 1e-9);
   assert.equal(oct.band.median.length, 1);
+  assert.match(oct.notes.at(-1), /^This month so far: [\d,]+ fire-cell-days through 12 Nov, not compared with past years outside Brazil\.$/);
+});
+
+test('the running-total disclaimer names one unseen day without a range', () => {
+  const m = { month: '2026-11', live: { values: [null, 5, 9] }, daysNotObserved: ['2026-11-01'] };
+  assert.match(runningTotalDisclaimer(m), /Running total since 2 Nov only \(1 Nov not observed\)\./);
 });

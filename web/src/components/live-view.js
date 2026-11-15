@@ -1,6 +1,7 @@
 import { formatCount, MONTH_ABBR, MONTH_NAMES, monthLabel } from '../format.js';
 import { mount as mountTable, tableModel } from './data-table.js';
 import { h } from './h.js';
+import { icon } from './icons.js';
 import { segmented } from './segmented.js';
 import { liveStatus, mount as mountStates } from './states.js';
 
@@ -20,6 +21,8 @@ import { liveStatus, mount as mountStates } from './states.js';
  *     },
  *     provisional?: boolean,            // default true: the last value is the current, still-open period
  *     preview?: boolean,                // default true: tags the statistics Preview (false once gate V3 passed)
+ *     band may be null: the live line alone, with no comparison (outside the share region).
+ *     disclaimer?: string,              // shown in the chart card, above the chart
  *     reason?: string,                  // instead of live and band: why there is no comparison
  *     title?, sub?: string, lowConfidence?: boolean, lowConfidenceReasons?: string[], notes?: string[],
  *   }
@@ -81,7 +84,7 @@ export const liveAnswer = ({ live, band, provisional = true }) => {
   const step = live.step ?? 'month';
   const last = live.values.length - 1;
   const v = live.values[last];
-  const med = band.median[last];
+  const med = band?.median[last];
   const day = periodLabel(live.start, step, last);
   // Daily values are the month's running total, so the answer names the month and the last day.
   const when = step === 'day' ? `${monthLabel(Number(day.slice(0, 4)), Number(day.slice(5, 7)))} through day ${Number(day.slice(8))}` : day;
@@ -117,9 +120,12 @@ export const spreadLabels = (labels, gap = GAP) => {
   return sorted;
 };
 
+const noBand = (n) => ({ p25: Array(n).fill(null), median: Array(n).fill(null), p75: Array(n).fill(null) });
+
 const validate = ({ live, band }) => {
   if (!live || !Array.isArray(live.values) || !live.start) throw new TypeError('live-view: live must be a Series with start and values');
   if (live.id !== 'live' || live.comparable !== false) throw new RangeError('live-view: the live Series must have id "live" and comparable false');
+  if (band === null) return;
   for (const k of ['p25', 'median', 'p75']) {
     if (!Array.isArray(band?.[k]) || band[k].length !== live.values.length) throw new RangeError(`live-view: band.${k} must have the same length as live.values`);
   }
@@ -134,6 +140,8 @@ export const liveModel = ({ fetched_at: fetchedAt = null, live, band, provisiona
   if (!status.available) return { available: false, status, state: { kind: 'live-unavailable', fetchedAt, now } };
   if (reason) return { available: false, status, state: { kind: 'live-unavailable', fetchedAt, now, reason } };
   validate({ live, band });
+  const compared = band !== null;
+  band = compared ? band : noBand(live.values.length);
   const step = live.step ?? 'month';
   const n = live.values.length;
   const { height, top, bottom } = VIEW;
@@ -182,7 +190,7 @@ export const liveModel = ({ fetched_at: fetchedAt = null, live, band, provisiona
   const raw = [];
   const lv = live.values[last];
   const tail = (arr) => arr[last];
-  if (typeof lv === 'number') raw.push({ text: 'Current season', cls: 'live', y: y(lv) + 4 });
+  if (typeof lv === 'number') raw.push({ text: compared ? 'Current season' : 'Running total', cls: 'live', y: y(lv) + 4 });
   if (typeof tail(band.median) === 'number') raw.push({ text: 'Historical median', cls: 'median', y: y(tail(band.median)) + 4 });
   // The band is named inside itself where it is widest; when it is too thin there, it gets a direct label.
   let widest = null;
@@ -200,7 +208,7 @@ export const liveModel = ({ fetched_at: fetchedAt = null, live, band, provisiona
     : null;
 
   return {
-    available: true, status, fetchedText: fetchedLabel(fetchedAt, now), step, current, bandLabel,
+    available: true, compared, status, fetchedText: fetchedLabel(fetchedAt, now), step, current, bandLabel,
     badge: provisional ? 'Provisional' : null,
     note: 'Live detections are shown on their own. They are never added to the harmonized totals.',
     width, height, left, innerW, bottom: top + innerH, compact,
@@ -213,6 +221,15 @@ export const liveTableModel = ({ live, band, provisional = true, preview = true 
   validate({ live, band });
   const step = live.step ?? 'month';
   const last = live.values.length - 1;
+  const header = (i) => `${periodLabel(live.start, step, i)}${provisional && i === last ? ' (provisional)' : ''}`;
+  if (band === null) {
+    return tableModel({
+      caption: `Running total of fire-cell-days, not compared with past years.${synthetic ? ' Synthetic data, not real fire detections.' : ''}`,
+      corner: step === 'day' ? 'Day' : 'Month',
+      columns: ['Running total'],
+      rows: live.values.map((v, i) => ({ header: header(i), cells: [typeof v === 'number' ? formatCount(v) : 'No data'] })),
+    });
+  }
   // A null live value means no data; a null band value means too few past years to compute it.
   const cell = (v, missing) => (typeof v === 'number' ? formatCount(v) : missing);
   return tableModel({
@@ -269,8 +286,8 @@ export const mount = (container, deps = {}) => {
     const a = liveAnswer(input);
     const preview = input.preview !== false;
     const low = input.lowConfidence === true;
-    const answer = h('section', { class: 'card answer-card live-answer', 'aria-label': 'This season so far' },
-      h('p', { class: 'eyebrow answer-eyebrow' }, h('span', { text: 'This fire season' }), synthetic ? tagEl('Synthetic', 'tag-synth') : null,
+    const answer = h('section', { class: 'card answer-card live-answer', 'aria-label': m.compared ? 'This season so far' : 'This month so far' },
+      h('p', { class: 'eyebrow answer-eyebrow' }, h('span', { text: m.compared ? 'This fire season' : 'This month, not compared' }), synthetic ? tagEl('Synthetic', 'tag-synth') : null,
         m.badge ? tagEl(m.badge, 'tag-fire') : null, low ? tagEl('Low confidence') : null),
       h('p', { class: 'answer-big live-headline', text: a.headline }),
       a.delta ? h('p', { class: 'answer-lead' }, a.delta, preview ? ' ' : null, preview ? tagEl('Preview') : null) : null,
@@ -283,13 +300,13 @@ export const mount = (container, deps = {}) => {
       role: 'img', 'aria-label': p.aria, 'data-k': k,
     }));
     const prefix = synthetic ? 'Synthetic data. ' : '';
-    const svg = s('svg', { class: 'live-chart', viewBox: `0 0 ${m.width} ${m.height}`, role: 'group', 'aria-label': `${prefix}Current season against the historical band, a Preview` },
-      text(`${prefix}Current season fire-cell-days against the 25th to 75th percentile band and median of past years`, {}, 'title'),
+    const svg = s('svg', { class: 'live-chart', viewBox: `0 0 ${m.width} ${m.height}`, role: 'group', 'aria-label': m.compared ? `${prefix}Current season against the historical band, a Preview` : `${prefix}Running total of this month, not compared with past years` },
+      text(m.compared ? `${prefix}Current season fire-cell-days against the 25th to 75th percentile band and median of past years` : `${prefix}Running total of fire-cell-days this month`, {}, 'title'),
       m.ticks.map((t) => s('g', {}, s('line', { class: 'live-grid', x1: m.left, x2: m.left + m.innerW, y1: t.y, y2: t.y }), text(t.text, { class: 'live-tick', x: m.left - 6, y: t.y + 4, 'text-anchor': 'end' }))),
       m.xticks.map((t) => text(t.text, { class: 'live-tick', x: t.x, y: m.bottom + 18, 'text-anchor': t.anchor })),
-      s('path', { class: 'live-band', d: m.bandPath }),
+      m.bandPath ? s('path', { class: 'live-band', d: m.bandPath }) : null,
       m.bandLabel ? text(m.bandLabel.text, { class: 'live-band-label', x: m.bandLabel.x, y: m.bandLabel.y, 'text-anchor': 'middle' }) : null,
-      s('path', { class: 'live-median', d: m.medianPath }),
+      m.medianPath ? s('path', { class: 'live-median', d: m.medianPath }) : null,
       s('path', { class: 'live-line', d: m.linePath }),
       s('path', { class: 'live-tail', d: m.tailPath }),
       circles,
@@ -333,6 +350,7 @@ export const mount = (container, deps = {}) => {
           h('h2', { id: 'live-title' }, `${input.title ?? 'Current season against past years'} `, preview ? tagEl('Preview') : null),
           h('p', { class: 'sub', text: input.sub ?? 'The last 12 months. The band and the median come from earlier years of this area.' })),
         display.el),
+      input.disclaimer ? h('p', { class: 'live-disclaimer' }, icon('info'), h('span', { text: input.disclaimer })) : null,
       chartBox,
       tableHost, (input.notes ?? []).map((t) => h('p', { class: 'hint', text: t })), h('p', { class: 'hint', text: m.note }));
     container.replaceChildren(h('div', { class: 'live-view' }, answer, card));

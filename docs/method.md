@@ -261,6 +261,12 @@ months, NOAA-20 for NOAA-20 x K months (`core/partial.js`).
   (manifest `share_domain`, `share-domain.json`): an area with at least half its 0.1 degree cells in
   Brazil gets the month to date; any other area is compared by whole past months only, because fires
   ramp differently within a month elsewhere (gate V5: an even split reads Punjab's October 2-3 times low).
+  The current month's running total (NOAA-20 x K, S-NPP units) does not use the shares, so outside the
+  share region it is still shown, without a band and without a percent, under the disclaimer "NOAA-20
+  near-real-time, scaled to S-NPP, approximate. Running total since {first day counted} only ({days}
+  not observed). Not a monthly total, no comparison to past years. Static heat sources are masked from
+  the archive; newer flares or eruptions can leak in." (gate V5 addendum, 2026-11-16). Once a whole
+  live month exists the whole-months comparison takes over and the running total becomes a note.
   Without the mask, Brazil only (the live build is clipped to the Brazil domain). Partial days are found
   on global record counts, before any clip.
 - **Wording**: approximate; NOAA-20 scaled to S-NPP; near-real-time; unfiltered by type; last complete

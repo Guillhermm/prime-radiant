@@ -29,6 +29,21 @@ export const LIVE_REASONS = {
   wholeMonths: (since) => `Live data covers the whole world${since ? ` since ${since}` : ''}. Outside Brazil it is compared by whole months only, because the timing of fires within a month was measured over Brazil, so this area gets its first comparison once a whole month of live data is in.`,
 };
 
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const dayMon = (d) => `${Number(d.slice(8, 10))} ${MON[Number(d.slice(5, 7)) - 1]}`;
+
+/**
+ * The disclaimer over an uncompared running total outside the share region (gate V5 addendum,
+ * 2026-11-16): from the first day counted, naming the days of the month not observed.
+ */
+export const runningTotalDisclaimer = (month) => {
+  const firstDay = month.live.values.findIndex((v) => v !== null);
+  const since = `${month.month}-${String(firstDay + 1).padStart(2, '0')}`;
+  const unseen = month.daysNotObserved ?? [];
+  const gap = unseen.length ? ` (${Number(unseen[0].slice(8))}${unseen.length > 1 ? ` to ${dayMon(unseen.at(-1))}` : ` ${MON[Number(unseen[0].slice(5, 7)) - 1]}`} not observed)` : '';
+  return `NOAA-20 near-real-time, scaled to S-NPP, approximate. Running total since ${dayMon(since)} only${gap}. Not a monthly total, no comparison to past years. Static heat sources are masked from the archive; newer flares or eruptions can leak in.`;
+};
+
 /**
  * live-view input from the archive result and the live data (gate V3): NOAA-20 x K over the
  * area, clipped to the live domain, against the archive band. Month to date when core gives it,
@@ -55,11 +70,15 @@ export const liveInput = ({ result, live, share, type0, now = new Date() }) => {
     partialMonths: result.partialMonths ?? [], type0Share: lm.static_mask ? NO_TYPE_SCALING : type0 });
   // The share table was measured over Brazil; elsewhere fires ramp differently within a month (gate V5:
   // Punjab in October reads 2-3 times low), so only whole past months are compared there.
+  // The month's running total does not use the shares, so it is still shown there, without a band.
+  let total = null;
   if (!measured) {
+    total = cmp.month;
     cmp.month = null;
     cmp.season = wholeMonths(cmp.season);
-    if (!cmp.season) return { reason: LIVE_REASONS.wholeMonths(lm.coverage?.noaa20?.[0] ?? lm.day0), fetched_at: fetchedAt };
+    if (!cmp.season && !total) return { reason: LIVE_REASONS.wholeMonths(lm.coverage?.noaa20?.[0] ?? lm.day0), fetched_at: fetchedAt };
   }
+  if (total && !cmp.season) return runningTotal({ total, cmp, fetchedAt });
   const view = cmp.month ?? cmp.season;
   if (!view) return { reason: cmp.reason ? `${LIVE_REASONS.noDays} (${cmp.reason}.)` : LIVE_REASONS.noDays, fetched_at: fetchedAt };
   const notes = [];
@@ -67,12 +86,26 @@ export const liveInput = ({ result, live, share, type0, now = new Date() }) => {
   if (cmp.month) notes.push(`${cmp.daysCounted} complete day${cmp.daysCounted === 1 ? '' : 's'} counted through ${cmp.lastCompleteDay}${cmp.daysMissing.length ? `, ${cmp.daysMissing.length} missing (skipped, the band uses only the days counted)` : ''}.`);
   if (cmp.typeBias) notes.push(cmp.typeBias);
   if (cells !== null && result.domain?.partial) notes.push('Only the part of the area inside Brazil is counted.');
+  const last = total?.live.values.findLast((v) => v !== null);
+  if (typeof last === 'number') notes.push(`This month so far: ${Math.round(last).toLocaleString('en-US')} fire-cell-days through ${dayMon(cmp.lastCompleteDay)}, not compared with past years outside Brazil.`);
   return {
     fetched_at: fetchedAt, live: view.live, band: view.band, provisional: true, preview: false,
     title: cmp.month ? 'This month so far against past years' : 'This season against past years',
     sub: cmp.month
       ? 'Running total of NOAA-20 detections in S-NPP units. The band is the middle half of the same days in earlier VIIRS-era years.'
       : 'Live months so far. The band is the middle half of the same months in earlier VIIRS-era years.',
+    lowConfidence: cmp.lowConfidence === true, lowConfidenceReasons: cmp.lowConfidenceReasons, notes,
+  };
+};
+
+const runningTotal = ({ total, cmp, fetchedAt }) => {
+  const notes = [`${total.daysCounted} complete day${total.daysCounted === 1 ? '' : 's'} counted through ${cmp.lastCompleteDay}${total.daysMissing.length ? `, ${total.daysMissing.length} missing (skipped)` : ''}.`];
+  if (cmp.typeBias) notes.push(cmp.typeBias);
+  return {
+    fetched_at: fetchedAt, live: total.live, band: null, provisional: true, preview: false,
+    title: 'This month so far',
+    sub: 'Running total of NOAA-20 detections in S-NPP units. Outside Brazil there is no comparison with past years yet.',
+    disclaimer: runningTotalDisclaimer(total),
     lowConfidence: cmp.lowConfidence === true, lowConfidenceReasons: cmp.lowConfidenceReasons, notes,
   };
 };

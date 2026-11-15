@@ -174,3 +174,20 @@ test('daily running totals: the answer names the month and the last day', () => 
   const daily = input({ live: { id: 'live', unit: 'fire-cell-days', comparable: false, step: 'day', start: '2026-11-01', values: [10, 20, null, 150] } });
   assert.deepEqual(liveAnswer(daily), { headline: 'November 2026 through day 4 so far: 150 fire-cell-days', delta: '+25% vs the median of the same days in past years' });
 });
+
+test('no band: the running total alone, with no band or median paths, labels, key items or table columns', () => {
+  const day = input({ band: null, live: { id: 'live', unit: 'fire-cell-days', comparable: false, step: 'day', start: '2026-11-01', values: [null, null, 12, 30] } });
+  const m = liveModel({ ...day, now: NOW });
+  assert.equal(m.compared, false);
+  assert.equal(m.bandPath, '');
+  assert.equal(m.medianPath, '');
+  assert.equal(m.bandLabel, null);
+  assert.deepEqual(m.labels.map((l) => l.text), ['Running total']);
+  assert.deepEqual(liveModel({ ...day, now: NOW, width: 360 }).key, [{ text: 'Running total', cls: 'live' }]);
+  assert.ok(m.points.every((p) => !/median|middle half/.test(p.aria)));
+  assert.equal(liveAnswer(day).delta, null);
+  const t = liveTableModel(day);
+  assert.deepEqual(t.columns, ['Running total']);
+  assert.deepEqual(t.rows.map((r) => r.cells), [['No data'], ['No data'], ['12'], ['30']]);
+  assert.match(t.caption, /^Running total of fire-cell-days, not compared with past years\.$/);
+});
