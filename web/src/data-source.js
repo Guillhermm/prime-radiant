@@ -72,7 +72,8 @@ export const tilesNeeded = (bbox, manifest, domain = null) => {
 /**
  * @param {{manifestUrl: string, root?: string, fetchFn?: typeof fetch, concurrency?: number}} cfg
  * `overview()` resolves to the validated overview.json or null, never rejects; `places()` the same
- * for places.json, fetched once and cached for the session, the failure included.
+ * for places.json, fetched once and cached for the session, the failure included. `domain()` resolves
+ * to the validated domain file (null without one) and rejects like load() does.
  * `load(bbox)` aborts the previous load, fetches the needed tiles (at most `concurrency` at a
  * time), validates each with core's schema and returns `{manifest, domain, tiles: {fine, coarse}, ids}`.
  * The manifest, the domain and validated tiles are cached for the session; a failed or aborted
@@ -189,5 +190,5 @@ export const createDataSource = ({ manifestUrl, root = '', withOverview = true, 
     }
   };
 
-  return { manifest, overview, places, load, cancel: () => current?.abort() };
+  return { manifest, overview, places, domain: async () => domain(await manifest()), load, cancel: () => current?.abort() };
 };

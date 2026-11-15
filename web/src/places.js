@@ -1,3 +1,5 @@
+import { parseTileId } from '../../core/grid.js';
+
 // Pure model of the place picker: the overview heat map, the hotspot list, the drawer copy and which
 // area a tab opens. overview.json is described in docs/data.md ("Overview for the place picker").
 
@@ -139,3 +141,28 @@ export const squareText = (model, square, overview) => {
   const rank = model.ranks.get(square.key);
   return `${centerLabel(square.bbox)}, ${valueLine(square.value, overview)}${rank ? `, hotspot ${rank}` : ''}.`;
 };
+
+const r1 = (x) => Math.round(x * 10) / 10;
+
+/**
+ * [west, south, east, north] of the data region: the domain's 0.1 deg cells when there is a domain
+ * (rows keyed by latitude index from -90, runs of longitude indexes from -180, both inclusive), else
+ * the manifest's 10 deg tiles. Null when neither says anything.
+ */
+export const dataRegionBbox = (manifest, domain = null) => {
+  const rows = Object.entries(domain?.rows ?? {}).filter(([, runs]) => runs.length);
+  if (rows.length) {
+    const lats = rows.map(([k]) => Number(k));
+    const cols = rows.flatMap(([, runs]) => runs.flat());
+    return [r1(Math.min(...cols) / 10 - 180), r1(Math.min(...lats) / 10 - 90), r1((Math.max(...cols) + 1) / 10 - 180), r1((Math.max(...lats) + 1) / 10 - 90)];
+  }
+  const tiles = (manifest?.tiles ?? []).map(parseTileId);
+  if (!tiles.length) return null;
+  return [Math.min(...tiles.map((t) => t.tx)) * 10 - 180, Math.min(...tiles.map((t) => t.ty)) * 10 - 90,
+    (Math.max(...tiles.map((t) => t.tx)) + 1) * 10 - 180, (Math.max(...tiles.map((t) => t.ty)) + 1) * 10 - 90];
+};
+
+export const DATA_REGION_NAME = 'Whole data region';
+
+/** Caption under the first-run Radiant when it shows the whole data region (no overview.json). */
+export const regionCaption = (first, last) => `The whole data region, ${first}–${last}. Rings are years, slices are months.`;

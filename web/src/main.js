@@ -1,7 +1,7 @@
 import { PREVIEW_VIEWS, viewsFor } from './views.js';
 import { createStore, parseHash, serializeHash } from './state.js';
 import { findPreset, presetsFor } from './presets.js';
-import { defaultArea, hotspotAt, hotspotPresets, placeLabel } from './places.js';
+import { dataRegionBbox, defaultArea, hotspotAt, hotspotPresets, placeLabel } from './places.js';
 import * as appShell from './components/app-shell.js';
 import * as queryBar from './components/query-bar.js';
 import { spanFromManifest } from './components/date-range.js';
@@ -389,9 +389,17 @@ export const start = async (root = document.getElementById('app')) => {
     if (pick) openExample({ bbox: pick.bbox, name: pick.kind === 'last' ? lastName : presets[0]?.name ?? null }, { view });
     else areas.open(from);
   };
+  // A month picked on the home Radiant opens the calendar on that area and selects the month once
+  // its result is in (see the subscription after the mounts).
+  let pendingMonth = null;
   const stateView = states.mount(slots.empty, {
-    presets, overview: null, manifest, synthetic, loadExample,
+    presets, overview: null, overviewSettled: false, manifest, synthetic, loadExample,
+    dataRegion: () => source.domain().then((d) => dataRegionBbox(manifest, d)),
     onPick: (id) => openExample(findPreset(id, presets)),
+    onPickMonth: (preset, cell) => {
+      pendingMonth = { bbox: preset.bbox, year: cell.year, month: cell.month };
+      openExample(preset, { view: 'calendar' });
+    },
     onRetry: () => run(store.get()),
     onDraw: (btn) => qb.open('map', btn),
     onCoords: (btn) => qb.open('area', btn),
@@ -460,6 +468,19 @@ export const start = async (root = document.getElementById('app')) => {
     paintState();
   };
   data.subscribe(() => render(store.get()));
+  // Registered after the grids and the panel reset, so the selection lands on the painted result.
+  data.subscribe(({ status: st, result }) => {
+    if (st !== 'ready' || !pendingMonth) return;
+    const want = pendingMonth;
+    if (want.bbox.join() !== result.bbox.join()) return;
+    pendingMonth = null;
+    const cell = result.cells.find((c) => c.year === want.year && c.month === want.month);
+    if (!cell) return;
+    ctx.onSelect(cell);
+    // Desktop keeps focus in the grid beside the docked panel, as a click on a cell does; the phone
+    // sheet takes focus itself.
+    if (!isPhone()) grid()?.focus();
+  });
   // Home is the bare `#`: going there drops every parameter and closes whatever was open over the page.
   const hashOf = (s) => (s.bbox ? serializeHash(s) : '');
   const closeAll = () => {
@@ -494,8 +515,9 @@ export const start = async (root = document.getElementById('app')) => {
     places.overview = overview;
     places.status = overview ? 'ready' : 'missing';
     presets.push(...hotspotPresets(overview));
-    stateView.update({ overview });
-    shownState = null;
+    stateView.update({ overview, overviewSettled: true });
+    // The first screen updates in place, so its Radiant is not drawn twice; any other state is redrawn.
+    if (!stateView.refresh()) shownState = null;
     render(store.get());
     areas.update();
   });

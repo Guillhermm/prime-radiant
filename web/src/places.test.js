@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   heatBin, HEAT_LABELS, centerLabel, hotspotPresets, placeLabel, hotspotLabels, hotspotAt, valueLine, sensorValueLine, defaultArea, suggestionCaption,
-  drawerModel, mapModel, squareFor, stepSquare, squareText,
+  drawerModel, mapModel, dataRegionBbox, regionCaption, squareFor, stepSquare, squareText,
 } from './places.js';
 
 const overview = {
@@ -98,4 +98,13 @@ test('keys: arrows move a degree and skip gaps, stop at the edge, Shift moves fi
   assert.equal(stepSquare(mm, at('-41,-6'), 'Tab'), null, 'not a map key');
   assert.equal(squareText(mm, at('-45,-7'), overview), '6.5°S 44.5°W, 3,391 fire-cell-days in 2025, hotspot 1.');
   assert.equal(squareText(mm, at('-46,-7'), overview), '6.5°S 45.5°W, 0 fire-cell-days in 2025.');
+});
+
+test('dataRegionBbox: the domain cells when there is a domain, else the manifest tiles', () => {
+  // Rows are latitude indexes from -90 at 0.1 deg, runs are inclusive longitude indexes from -180.
+  const domain = { rows: { 562: [[1265, 1266]], 563: [[1264, 1268], [1270, 1272]], 600: [] } };
+  assert.deepEqual(dataRegionBbox({ tiles: ['x0y0'] }, domain), [-53.6, -33.8, -52.7, -33.6]);
+  assert.deepEqual(dataRegionBbox({ tiles: ['x17y13', 'x18y13', 'x17y14'] }), [-10, 40, 10, 60]);
+  assert.equal(dataRegionBbox({ tiles: [] }), null);
+  assert.equal(regionCaption(2000, 2026), 'The whole data region, 2000–2026. Rings are years, slices are months.');
 });

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { outsideLine, outsideExport, bboxText, domainNote, errorState, liveStatus, recordDates, ribbonModel, screenState, stateModel } from './states.js';
+import { heroCaption, heroPlan, heroRadiantLabel, outsideLine, outsideExport, bboxText, domainNote, errorState, liveStatus, recordDates, ribbonModel, screenState, stateModel } from './states.js';
 
 test('empty offers one chip per example area', () => {
   const m = stateModel({ kind: 'empty' }, { presets: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] });
@@ -106,4 +106,30 @@ test('an area partly outside names the share the counts cover', () => {
   assert.equal(domainNote({ cells: 20000, inside: 10000, partial: true }), 'Part of this area lies outside the data domain: counts cover the 50% inside it.');
   assert.equal(domainNote({ cells: 100, inside: 100, partial: false }), null);
   assert.equal(domainNote(undefined), null);
+});
+
+const manifest = { month0: '2000-11', last_month: '2026-10' };
+const hotspot = { id: 'hotspot-1', rank: 1, label: 'Pará, Brazil', bbox: [-53, -9, -52, -8] };
+
+test('heroPlan: the suggestion, else the first example, else the whole data region once overview.json is known missing', () => {
+  assert.equal(heroPlan({ manifest: null }), null, 'no manifest: the brand mark');
+  assert.deepEqual(heroPlan({ manifest, presets: [hotspot], overview: { year: 2025 }, overviewSettled: true }), { kind: 'suggested', preset: hotspot });
+  const fixture = { id: 'fixture-box', label: 'Fixture area', bbox: [-10, 40, 0, 50] };
+  assert.deepEqual(heroPlan({ manifest, presets: [fixture] }), { kind: 'example', preset: fixture });
+  assert.deepEqual(heroPlan({ manifest, presets: [] }), { kind: 'pending' }, 'overview.json still on its way');
+  assert.deepEqual(heroPlan({ manifest, presets: [], overviewSettled: true }), { kind: 'region' });
+});
+
+test('heroCaption needs only the manifest years, so it is set with the placeholder', () => {
+  const overview = { year: 2025, region: { name: 'Testland' } };
+  assert.match(heroCaption({ kind: 'suggested', preset: hotspot }, { manifest, overview }), /^Suggested: the 1° area .* in Testland, 2025\..* Pick a month to open it in the calendar\.$/);
+  assert.equal(heroCaption({ kind: 'region' }, { manifest, synthetic: true }),
+    'The whole data region, 2000–2026. Rings are years, slices are months. Pick a month to open it in the calendar. Synthetic data.');
+  assert.match(heroCaption({ kind: 'example', preset: { label: 'Fixture area' } }, { manifest }), /^Fixture area, 2000–2026, as a Radiant/);
+  assert.equal(heroCaption({ kind: 'pending' }, { manifest }), '');
+});
+
+test('heroRadiantLabel says how to use the Radiant, and that it is loading before data', () => {
+  assert.match(heroRadiantLabel(hotspot), /^Fire calendar of Pará, Brazil: .*Enter opens the month in the calendar\.$/);
+  assert.match(heroRadiantLabel(null), /loading/);
 });

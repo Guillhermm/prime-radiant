@@ -1,4 +1,5 @@
-import { sensorValueLine, suggestionCaption } from '../places.js';
+import { DATA_REGION_NAME, regionCaption, sensorValueLine, suggestionCaption } from '../places.js';
+import { cellLabel } from './calendar-grid.js';
 import { MONTH_ABBR } from '../format.js';
 import { binClass, NODATA } from '../bins.js';
 import { h } from './h.js';
@@ -114,21 +115,79 @@ const skeleton = () => h('div', { class: 'skeleton', 'aria-hidden': 'true' },
   h('span', { class: 'sk-line' }),
   h('div', { class: 'sk-grid' }, Array.from({ length: SKELETON_CELLS }, () => h('span', { class: 'skeleton-cell' }))));
 
-// The first-run Radiant: the suggestion (hotspot 1) when overview.json loaded, else the first example
-// area (fixture mode), else the brand mark with no caption.
-const heroSubject = (deps) => {
-  const presets = deps.presets ?? [];
-  const suggested = deps.overview ? presets.find((p) => p.rank === 1) : null;
-  if (suggested) return { preset: suggested, caption: () => suggestionCaption(deps.overview) };
-  if (presets[0]) return { preset: presets[0], caption: (r) => `${presets[0].label}, ${r.cells[0]?.year}–${r.cells[r.cells.length - 1]?.year}, as a Radiant: rings are years, slices are months.` };
-  return null;
+/**
+ * What the first-run Radiant shows: the suggestion (hotspot 1) when overview.json loaded, else the
+ * first example area (fixture mode), else, once overview.json is known to be missing, the whole data
+ * region; 'pending' while overview.json is still on its way. Null without a manifest: the brand mark.
+ */
+export const heroPlan = ({ presets = [], overview = null, overviewSettled = false, manifest = null } = {}) => {
+  if (!manifest?.month0 || !manifest?.last_month) return null;
+  const suggested = overview ? presets.find((p) => p.rank === 1) : null;
+  if (suggested) return { kind: 'suggested', preset: suggested };
+  if (presets[0]) return { kind: 'example', preset: presets[0] };
+  return { kind: overviewSettled ? 'region' : 'pending' };
 };
 
-const emptyView = (m, deps) => {
-  const art = h('figure', { class: 'hero-art' });
-  const subject = heroSubject(deps);
-  if (!subject) art.append(mark('mark hero-mark'));
-  // Three examples at most: the ranked hotspots come after the fixture area in fixture mode.
+/**
+ * Caption for the hero Radiant. It needs only the record's years, from the manifest, so it is set
+ * with the placeholder and the figure never changes height when the data arrives. Empty while pending.
+ */
+export const heroCaption = (plan, { manifest, overview = null, synthetic = false } = {}) => {
+  if (plan.kind === 'pending') return '';
+  const preset = plan.preset;
+  const [first, last] = [manifest.month0, manifest.last_month].map((m) => Number(m.slice(0, 4)));
+  const text = {
+    suggested: () => suggestionCaption(overview),
+    example: () => `${preset.label}, ${first}–${last}, as a Radiant: rings are years, slices are months.`,
+    region: () => regionCaption(first, last),
+  }[plan.kind]();
+  return `${text} Pick a month to open it in the calendar.${synthetic ? ' Synthetic data.' : ''}`;
+};
+
+/** The hero Radiant's accessible name, before and after its data. */
+export const heroRadiantLabel = (preset) => (preset
+  ? `Fire calendar of ${preset.label}: rings are years, slices are months. Arrow keys move between months, Enter opens the month in the calendar.`
+  : 'Fire calendar overview, loading.');
+
+// Draws the Radiant at once in the placeholder color, on the record's months from the manifest, then
+// swaps in the subject's data on the same slices so the colors fade in place: no layout shift.
+// Returns {resolve(plan)} for a 'pending' plan that learns its subject once overview.json settles.
+const heroRadiant = (art, firstPlan, deps, isLive) => {
+  const host = h('div', { class: 'radiant-hero' });
+  const cap = h('figcaption');
+  art.append(host, cap);
+  const keyboard = { label: heroRadiantLabel(null), sliceLabel: () => '' };
+  const rad = radiant.mount(host, {
+    cells: radiant.placeholderCells({ from: deps.manifest.month0, to: deps.manifest.last_month }),
+    placeholder: true, labels: 'abbr', keyboard,
+  });
+  let started = false;
+  const resolve = (plan) => {
+    if (started || plan.kind === 'pending') return;
+    started = true;
+    cap.textContent = heroCaption(plan, deps);
+    const subject = plan.kind === 'region'
+      ? Promise.resolve(deps.dataRegion?.()).then((bbox) => (bbox ? { id: 'data-region', label: DATA_REGION_NAME, name: DATA_REGION_NAME, bbox } : null))
+      : Promise.resolve(plan.preset);
+    // The Radiant is decoration until its data arrives: a failed load leaves the placeholder.
+    subject.then((preset) => {
+      if (!preset) return;
+      return deps.loadExample?.(preset).then((r) => {
+        if (!r || !isLive()) return;
+        rad.reveal({
+          cells: r.cells, aoiCells: r.aoiCells, placeholder: false,
+          keyboard: { label: heroRadiantLabel(preset), sliceLabel: (c) => cellLabel(c, r.aoiCells) },
+          onSelect: (cell) => deps.onPickMonth?.(preset, cell),
+        });
+      });
+    }).catch(() => {});
+  };
+  resolve(firstPlan);
+  return { resolve };
+};
+
+// Three examples at most: the ranked hotspots come after the fixture area in fixture mode. Null without any.
+const examplesSection = (deps, isLive) => {
   const cards = (deps.presets ?? []).slice(0, 3).map((p) => {
     const ribbon = h('div', { class: 'ribbon', 'aria-hidden': 'true' }, Array.from({ length: 12 }, () => h('i', { class: 'is-loading' })));
     const foot = h('p', { class: 'ex-foot' });
@@ -141,7 +200,33 @@ const emptyView = (m, deps) => {
       foot);
     return { p, card, ribbon, foot };
   });
-  const view = h('div', { class: 'first-run' },
+  if (!cards.length) return null;
+  // Example data is decoration: a failed load leaves the cards usable without their ribbons.
+  cards.forEach(({ p, ribbon, foot }) => {
+    deps.loadExample?.(p).then((r) => {
+      if (!r || !isLive()) return;
+      ribbon.replaceChildren(...ribbonModel(r.typical, r.aoiCells).map((x) => h('i', { class: `bin-${x.bin}` })));
+      const span = typicalSpan(r.typical);
+      foot.textContent = span ? `Typical year, median ${span} · Preview` : 'Not enough history for a typical year';
+    }).catch(() => {});
+  });
+  return h('section', { class: 'examples', 'aria-labelledby': 'examples-title' },
+    h('h2', { id: 'examples-title', class: 'eyebrow', text: 'Or open an example' }),
+    h('div', { class: 'ex-grid' }, cards.map((c) => c.card)));
+};
+
+/**
+ * The first screen. Returns {view, refresh()}: refresh() is for overview.json settling while the view
+ * is shown. The hero keeps its Radiant (no remount, so no replayed entrance and no shift) and only
+ * learns its subject; the examples join below it.
+ */
+const emptyView = (m, deps) => {
+  const art = h('figure', { class: 'hero-art' });
+  const plan = heroPlan(deps);
+  if (!plan) art.append(mark('mark hero-mark'));
+  let view = null;
+  const isLive = () => Boolean(view?.isConnected);
+  view = h('div', { class: 'first-run' },
     h('section', { class: 'hero' },
       h('div', { class: 'hero-copy' },
         h('p', { class: 'eyebrow', text: 'MODIS + VIIRS · one harmonized record' }),
@@ -152,40 +237,30 @@ const emptyView = (m, deps) => {
           h('button', { type: 'button', class: 'btn btn-lg', onclick: (ev) => deps.onCoords?.(ev.currentTarget) }, icon('crosshair'), 'Enter coordinates')),
         h('dl', { class: 'cover' }, recordDates(deps.manifest).map((d) => h('div', {}, h('dt', { text: d.k }), h('dd', { text: d.v }))))),
       art),
-    cards.length ? h('section', { class: 'examples', 'aria-labelledby': 'examples-title' },
-      h('h2', { id: 'examples-title', class: 'eyebrow', text: 'Or open an example' }),
-      h('div', { class: 'ex-grid' }, cards.map((c) => c.card))) : null);
-
-  // Example data is decoration: a failed load leaves the cards usable without their ribbons.
-  cards.forEach(({ p, ribbon, foot }) => {
-    deps.loadExample?.(p).then((r) => {
-      if (!r || !view.isConnected) return;
-      ribbon.replaceChildren(...ribbonModel(r.typical, r.aoiCells).map((x) => h('i', { class: `bin-${x.bin}` })));
-      const span = typicalSpan(r.typical);
-      foot.textContent = span ? `Typical year, median ${span} · Preview` : 'Not enough history for a typical year';
-    }).catch(() => {});
-  });
-  if (subject) {
-    deps.loadExample?.(subject.preset).then((r) => {
-      if (!r || !view.isConnected) return;
-      const hostRad = h('div', { class: 'radiant-hero' });
-      art.replaceChildren(hostRad, h('figcaption', { text: `${subject.caption(r)}${deps.synthetic ? ' Synthetic data.' : ''}` }));
-      radiant.mount(hostRad, { cells: r.cells, aoiCells: r.aoiCells, labels: 'abbr', onSelect: () => deps.onPick?.(subject.preset.id) });
-    }).catch(() => {});
-  }
-  return view;
+    examplesSection(deps, isLive));
+  const hero = plan ? heroRadiant(art, plan, deps, isLive) : null;
+  const refresh = () => {
+    hero?.resolve(heroPlan(deps));
+    if (!view.querySelector('.examples')) {
+      const ex = examplesSection(deps, isLive);
+      if (ex) view.append(ex);
+    }
+  };
+  return { view, refresh };
 };
 
 /**
- * mount(container, {presets, overview, manifest, synthetic, onPick(id), onRetry(), onDraw(btn),
- * onCoords(btn), loadExample(preset)}). presets and overview are read at each show(). Returns {show(state), clear(), destroy()}.
+ * mount(container, {presets, overview, overviewSettled, manifest, synthetic, onPick(id), onPickMonth(preset, cell),
+ * onRetry(), onDraw(btn), onCoords(btn), loadExample(preset), dataRegion()}). dataRegion() resolves to
+ * the bbox of the whole data region, for the hero Radiant when overview.json is missing. presets and overview are read at each show(). Returns {show(state), clear(), refresh(), update(next), destroy()}.
  * The loading skeleton sets aria-busy on the container; any other state clears it.
  */
 export const mount = (container, deps = {}) => {
+  let empty = null;
   const show = (state) => {
     const m = stateModel(state, { presets: deps.presets, region: deps.overview?.region?.name ?? null });
     container.setAttribute('aria-busy', String(m.busy));
-    if (m.kind === 'empty') { container.replaceChildren(emptyView(m, deps)); return; }
+    if (m.kind === 'empty') { empty = emptyView(m, deps); container.replaceChildren(empty.view); return; }
     const nodes = [];
     if (m.title) nodes.push(h('h2', { class: 'state-title', text: m.title }));
     m.lines.forEach((t, i) => nodes.push(h('p', { class: i === 0 ? `state-line state-${m.kind}` : 'hint', text: t })));
@@ -202,5 +277,11 @@ export const mount = (container, deps = {}) => {
     container.replaceChildren(h('div', { class: `state state-box-${m.kind}${card}`, role: m.role }, nodes));
   };
   const clear = () => { container.removeAttribute('aria-busy'); container.replaceChildren(); };
-  return { show, clear, destroy: clear, update: (next) => Object.assign(deps, next) };
+  /** Brings the first screen up to date in place (overview.json settled); false when it is not shown. */
+  const refresh = () => {
+    if (!empty?.view.isConnected) return false;
+    empty.refresh();
+    return true;
+  };
+  return { show, clear, refresh, destroy: clear, update: (next) => Object.assign(deps, next) };
 };

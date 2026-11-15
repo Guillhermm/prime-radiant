@@ -28,6 +28,9 @@ let synthBase;
 let downloadDir;
 let synthOverview;
 let synthPlaces;
+// Switches for the synthetic origin: serve overview.json or answer 404 (as production can), and hold
+// tile responses back to see the first-run placeholder.
+const synthOpts = { overview: true, tileDelay: 0 };
 
 before(async () => {
   if (skip) return;
@@ -45,9 +48,12 @@ before(async () => {
   const files = new Map([['/data/manifest.json', synth.manifest], ['/data/domain.json', synth.domain], ['/data/overview.json', synth.overview], ['/data/places.json', synth.places],
     ...Object.entries(synth.tiles).map(([id, t]) => [`/data/tiles/0.1/${id}.json`, t]),
     ...Object.entries(synth.coarse).map(([id, t]) => [`/data/tiles/1/${id}.json`, t])]);
-  synthServer = createServer((req, res) => {
-    const body = files.get(new URL(req.url, 'http://x').pathname);
+  synthServer = createServer(async (req, res) => {
+    const path = new URL(req.url, 'http://x').pathname;
+    if (path === '/data/overview.json' && !synthOpts.overview) { res.writeHead(404, site.headers); return res.end(); }
+    const body = files.get(path);
     if (!body) return serveFile(req, res);
+    if (path.includes('/tiles/') && synthOpts.tileDelay) await wait(synthOpts.tileDelay);
     res.writeHead(200, { ...site.headers, 'content-type': 'application/json' });
     return res.end(JSON.stringify(body));
   });
@@ -923,9 +929,9 @@ test('first run suggests hotspot 1 without writing the hash; Open calendar from 
   for (const width of [1280, 400]) {
     const page = await open(width, '', synthBase);
     try {
-      await page.until(`document.querySelector('.hero-art figcaption')`, 'the suggested Radiant');
+      await page.until(`document.querySelector('.hero-art figcaption')?.textContent.startsWith('Suggested')`, 'the suggested Radiant');
       const region = synthOverview.region?.name;
-      assert.equal(await page.evaluate(`document.querySelector('.hero-art figcaption').textContent`), `Suggested: the 1° area with most VIIRS fire-cell-days in ${region ?? 'the data'}, ${synthOverview.year}. Rings are years, slices are months. Synthetic data.`);
+      assert.equal(await page.evaluate(`document.querySelector('.hero-art figcaption').textContent`), `Suggested: the 1° area with most VIIRS fire-cell-days in ${region ?? 'the data'}, ${synthOverview.year}. Rings are years, slices are months. Pick a month to open it in the calendar. Synthetic data.`);
       assert.equal(await page.evaluate('location.hash'), '', 'a suggestion is not written to the hash');
       assert.equal(await page.evaluate(`document.querySelectorAll('${EXAMPLE}').length`), 3, 'the top three hotspots are the examples');
       assert.equal(await page.evaluate(`document.querySelector('${EXAMPLE} .ex-v').textContent`), `${first.value.toLocaleString('en-US')} VIIRS fire-cell-days in ${synthOverview.year}`);
@@ -1038,4 +1044,77 @@ test('area name: the form opens on the area\'s own title, selected on focus; onl
     assert.equal(await page.evaluate(`document.querySelector('.context h1').textContent`), label, 'an untouched Apply keeps the title');
     assert.deepEqual(page.problems, []);
   } finally { await page.close(); }
+});
+
+const HERO_READY = `document.querySelector('.hero-art .radiant.is-interactive:not([aria-busy])')`;
+const PANEL_MONTH = `document.querySelector('.panel-host.is-open .panel-title')?.textContent`;
+
+test('home Radiant: a placeholder at once, aria-busy, then the data on the same slices with no layout shift', { skip }, async () => {
+  synthOpts.tileDelay = 1500;
+  const page = await browser.newPage({ width: 1280, height: 900 });
+  try {
+    // Shifts of the figure or anything in it. The web fonts swapping in move the hero copy sideways,
+    // which is not the Radiant's doing.
+    await page.addInitScript(`window.__shift = 0; new PerformanceObserver((l) => { for (const e of l.getEntries()) if (e.sources.some((x) => x.node?.closest?.('.hero-art'))) window.__shift += e.value; }).observe({ type: 'layout-shift', buffered: true });`);
+    await page.goto(`${synthBase}/web/`);
+    await page.until(`document.querySelector('.hero-art .radiant[aria-busy="true"] path.rb-ph')`, 'placeholder Radiant');
+    const ph = await page.evaluate(`(() => { const s = document.querySelector('.hero-art .radiant'); return { n: s.querySelectorAll('path.rb').length, label: s.getAttribute('aria-label') }; })()`);
+    const m = await page.evaluate(`fetch('../data/manifest.json').then((r) => r.json()).then((x) => [x.month0, x.last_month])`);
+    const months = (Number(m[1].slice(0, 4)) - Number(m[0].slice(0, 4))) * 12 + Number(m[1].slice(5)) - Number(m[0].slice(5)) + 1;
+    assert.equal(ph.n, months, 'every month of the record is drawn');
+    assert.match(ph.label, /loading/);
+    await page.until(`document.querySelector('.hero-art figcaption').textContent.startsWith('Suggested')`, 'the caption, before the data');
+    const box = await page.evaluate(`JSON.stringify(document.querySelector('.hero-art').getBoundingClientRect())`);
+    assert.equal(await page.evaluate(`document.querySelectorAll('.hero-art .radiant .rb-ph').length`), months, 'still the placeholder while the tiles are held back');
+    await page.until(HERO_READY, 'data on the Radiant', 30000);
+    const after = await page.evaluate(`(() => { const s = document.querySelector('.hero-art .radiant'); return { n: s.querySelectorAll('path.rb').length, ph: s.querySelectorAll('.rb-ph').length, box: JSON.stringify(document.querySelector('.hero-art').getBoundingClientRect()) }; })()`);
+    assert.equal(after.ph, 0, 'no placeholder slice left');
+    assert.equal(after.n, ph.n, 'the same slices, recolored');
+    assert.equal(after.box, box, 'the figure did not move or resize');
+    assert.equal(await page.evaluate('window.__shift'), 0, 'no layout shift in the hero figure');
+    assert.deepEqual(page.problems, []);
+  } finally { synthOpts.tileDelay = 0; await page.close(); }
+});
+
+test('home Radiant: a click on a month opens the calendar there with the month selected; Enter does the same from the keyboard', { skip }, async () => {
+  for (const width of [1280, 400]) {
+    const page = await open(width, '', synthBase);
+    try {
+      await page.until(HERO_READY, 'home Radiant with data');
+      await settle(page);
+      await page.evaluate(`document.querySelector('.hero-art path[data-key="2019-9"]').dispatchEvent(new MouseEvent('click', { bubbles: true }))`);
+      await page.until(`${CALENDAR_READY} && ${PANEL_MONTH} === 'September 2019'`, `calendar with September 2019 selected at ${width}`);
+      assert.equal(await page.evaluate(`document.querySelector('.view-calendar .cal-cell.is-selected')?.getAttribute('aria-label').split(',')[0]`), 'September 2019');
+      assert.ok((await page.evaluate('location.hash')).includes('view=calendar'));
+
+      await page.evaluate(`document.getElementById('tab-home').click()`);
+      await page.until(HERO_READY, 'home again');
+      await settle(page);
+      await page.evaluate(`document.querySelector('.hero-art .radiant').focus()`);
+      // End goes to the last month of the synthetic record (December 2019), Left one back.
+      await page.press('End');
+      await page.press('ArrowLeft');
+      await page.until(`document.querySelector('.hero-art .radiant ~ .sr-only[aria-live]')?.textContent.startsWith('November 2019,')`, 'the move is announced');
+      assert.equal(await page.evaluate(`document.querySelector('.hero-art path[data-key="2019-11"]').getAttribute('aria-label').split(',')[0]`), 'November 2019', 'each slice has a name');
+      await page.press('Enter');
+      await page.until(`${CALENDAR_READY} && ${PANEL_MONTH} === 'November 2019'`, 'Enter opens the month');
+      assert.deepEqual(page.problems, []);
+    } finally { await page.close(); }
+  }
+});
+
+test('home Radiant without overview.json: the whole data region, captioned as such, never an empty hero', { skip }, async () => {
+  synthOpts.overview = false;
+  const page = await open(1280, '', synthBase);
+  try {
+    await page.until(HERO_READY, 'the data region Radiant');
+    assert.match(await page.evaluate(`document.querySelector('.hero-art figcaption').textContent`), /^The whole data region, 2000–2019\./);
+    assert.equal(await page.evaluate(`document.querySelector('.hero-art .radiant').getAttribute('aria-label').startsWith('Fire calendar of Whole data region')`), true);
+    await settle(page);
+    await page.evaluate(`document.querySelector('.hero-art path[data-key="2010-8"]').dispatchEvent(new MouseEvent('click', { bubbles: true }))`);
+    await page.until(`${CALENDAR_READY} && ${PANEL_MONTH} === 'August 2010'`, 'calendar of the region, August 2010');
+    assert.equal(await page.evaluate(`document.querySelector('.context h1').textContent`), 'Whole data region');
+    // The only error is the 404 for overview.json itself.
+    assert.deepEqual(page.problems.filter((p) => !p.includes('404')), []);
+  } finally { synthOpts.overview = true; await page.close(); }
 });

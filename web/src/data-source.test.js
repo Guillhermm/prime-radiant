@@ -195,3 +195,11 @@ test('fixture mode does not ask for places', async () => {
   assert.equal(await src(f, { withPlaces: false }).places(), null);
   assert.deepEqual(f.calls, []);
 });
+
+test('domain() hands out the validated domain file, null without one', async () => {
+  assert.deepEqual(await src(fakeFetch()).domain(), domain);
+  const noDomain = async (url) => (url.endsWith('manifest.json')
+    ? { ok: true, status: 200, json: async () => ({ ...manifest, domain: undefined }) }
+    : { ok: false, status: 404, json: async () => ({}) });
+  assert.equal(await src(noDomain).domain(), null);
+});
