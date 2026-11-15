@@ -64,11 +64,11 @@ test('formula injection: text prefixed, numbers (including negative) untouched',
   assert.ok(neg.includes('2023,1,-3,observed'));
 });
 
-test('user text in metadata is escaped: no new records, quotes doubled', () => {
+test('user text in metadata is escaped: no new records, quotes neutralized', () => {
   const out = toCsv('calendar', [], { aoi: 'a"b,c\r\n=cmd|x', citation: '=HYPERLINK("x")' });
   const lines = out.split('\r\n');
-  assert.ok(lines.includes('# aoi: a"b,c =cmd|x'));
-  assert.ok(lines.includes('# citation: =HYPERLINK("x")'));
+  assert.ok(lines.includes("# aoi: a'b;c =cmd|x"));
+  assert.ok(lines.includes("# citation: =HYPERLINK('x')"));
   assert.ok(lines.every((l) => l === '' || l.startsWith('# ') || l.startsWith('year,')));
 });
 
@@ -104,4 +104,12 @@ test('estimated values export to 1 decimal, observed stay integer, header has wi
   const s = toCsv('sensors', { modis: { start: '2023-01', values: [5] }, harmonized: { start: '2023-01', values: [3.14159, 2.96],
     flags: [{ month: '2023-01', flag: 'estimated' }] } });
   assert.ok(s.includes('2023,1,modis,5\r\n') && s.includes('2023,1,harmonized,3.1\r\n') && s.includes('2023,2,harmonized,2.96\r\n'));
+});
+
+test('metadata header: a value cannot open a new cell or a quoted field', () => {
+  const out = toCsv('calendar', [], { aoi: 'x, =HYPERLINK("http://e")', citation: 'a, +b "c"' });
+  for (const line of out.split('\r\n').filter((l) => l.startsWith('#'))) {
+    assert.ok(!line.includes(','), line);
+    assert.ok(!line.includes('"'), line);
+  }
 });
