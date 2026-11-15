@@ -1262,7 +1262,7 @@ test('first-screen map with a global overview: clicks zoom in levels until a squ
         await page.until(`document.querySelector('.hero-plate .hm-map.is-zoomable') && ${previewText('.pv-title')} === 'Kasaï-Oriental'`, 'a zoomable plate and hotspot 1 suggested');
         assert.equal(await page.evaluate(previewText('.pv-note')), `Hottest 1° area in the data, ${synthOverview.year}`);
         assert.equal(await page.evaluate(`document.querySelector('.hp-list-title').textContent`), `Hottest areas, ${synthOverview.year}`);
-        assert.equal(await page.evaluate(`document.querySelector('.hl-select')`), null, 'no countries in overview.json, no scope select');
+        assert.equal(await page.evaluate(`document.querySelector('.hl-combo')`), null, 'no countries in overview.json, no scope combobox');
         assert.equal(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`), true, `no horizontal scroll at ${width}`);
         // Hotspot 1 lies outside the synthetic tiles: every month is null, so no Radiant and no way in.
         await page.until(`!document.querySelector('.preview-card .pv-empty').hidden`, 'the no-record message');
@@ -1349,6 +1349,13 @@ const countriesOverview = () => {
   return { ...synthOverview, region: null, cells, hotspots: [longest, ...synthOverview.hotspots.slice(0, 9)], countries: countriesOf(cells, (w) => placeOf(w)) };
 };
 
+// Types into a scope combobox and presses Enter, as a user would.
+const scopeTo = async (page, root, text) => {
+  await page.evaluate(`(() => { const i = document.querySelector('${root} .hl-combo'); i.focus(); i.value = ${JSON.stringify(text)}; i.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+  await page.press('Enter');
+};
+const scopeValue = (root) => `document.querySelector('${root} .hl-combo').value`;
+
 const openAs = async (width, lang) => {
   const page = await browser.newPage({ width, height: width < 600 ? 860 : 900, downloadDir });
   await page.addInitScript(`Object.defineProperty(navigator, 'language', { value: ${JSON.stringify(lang)} })`);
@@ -1356,19 +1363,35 @@ const openAs = async (width, lang) => {
   return page;
 };
 
-test('hottest list by country: World lists countries, a row or the select zooms to one and lists its squares, pins follow; your region leads', { skip }, async () => {
+test('hottest list by country: World lists countries, a row or the combobox zooms to one and lists its squares, pins follow; your region leads', { skip }, async () => {
   const ov = countriesOverview();
   synthOpts.overviewBody = ov;
   try {
     for (const width of [1280, 400]) {
       const page = await openAs(width, 'pt-BR');
       try {
-        await page.until(`document.querySelector('.hero-plate .hl-select')`, 'the scope select');
-        assert.equal(await page.evaluate(`(() => { const s = document.querySelector('.hero-plate .hl-select'); return document.querySelector('label[for="' + s.id + '"]').textContent + '|' + s.value + '|' + s.selectedOptions[0].textContent; })()`), 'Hottest in||World');
+        await page.until(`document.querySelector('.hero-plate .hl-combo')`, 'the scope combobox');
+        assert.equal(await page.evaluate(`(() => { const s = document.querySelector('.hero-plate .hl-combo'); return document.querySelector('label[for="' + s.id + '"]').textContent + '|' + s.value + '|' + s.getAttribute('role'); })()`), 'Hottest in|World|combobox', 'World by default, the region never preselected');
         assert.equal(await page.evaluate(`document.querySelector('.hero-plate .hl-year').textContent`), `, ${ov.year}`);
         assert.equal(await page.evaluate(`(() => { const t = document.querySelector('.hero-plate .hl-title').getBoundingClientRect(); return document.querySelector('.hero-plate .hl-year').getBoundingClientRect().top < t.top + t.height / 2; })()`), true, 'one line: Hottest in [World], year');
-        assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.hero-plate .hl-select optgroup')].map((g) => g.label + ':' + [...g.children].map((o) => o.value).join('/'))`),
-          ['Your region:Brazil', `Countries by fire activity:${ov.countries.map((c) => c.country).join('/')}`]);
+        // ArrowDown opens every suggestion: World, the browser's region, then the countries by rank.
+        await page.evaluate(`document.querySelector('.hero-plate .hl-combo').focus()`);
+        await page.press('ArrowDown');
+        const brazilRank = ov.countries.findIndex((c) => c.country === 'Brazil') + 1;
+        const ord = (n) => `${n}${({ one: 'st', two: 'nd', few: 'rd', other: 'th' })[new Intl.PluralRules('en', { type: 'ordinal' }).select(n)]}`;
+        assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.hero-plate .hl-list [role=option] .combo-name')].map((o) => o.textContent)`),
+          ['World', `Brazil (${ord(brazilRank)})`, ...ov.countries.map((c, i) => `${c.country} (${ord(i + 1)})`).filter((t) => !t.startsWith('Brazil '))]);
+        assert.equal(await page.evaluate(`(() => { const i = document.querySelector('.hero-plate .hl-combo'); return i.getAttribute('aria-expanded') + '|' + document.getElementById(i.getAttribute('aria-activedescendant')).textContent; })()`), 'true|World');
+        assert.ok(await page.evaluate(`document.querySelector('.hero-plate .hl-list [role=option]').getBoundingClientRect().height`) >= 43.5, 'options at least 2.75rem');
+        assert.equal(await page.evaluate(`(() => { const r = document.querySelector('.hero-plate .hl-list').getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; })()`), true, `the list fits at ${width}`);
+        await page.press('Escape');
+        assert.equal(await page.evaluate(`document.querySelector('.hero-plate .hl-combo').getAttribute('aria-expanded') + '|' + ${scopeValue('.hero-plate')}`), 'false|World');
+        // Free text that names no country is never committed: Enter puts the last value back.
+        await scopeTo(page, '.hero-plate', 'Atlantis');
+        assert.equal(await page.evaluate(scopeValue('.hero-plate')), 'World');
+        assert.equal(await page.evaluate(`document.querySelector('.hero-plate .hs-row').title`), ov.countries[0].country, 'still the world list');
+        await page.evaluate(`(() => { const i = document.querySelector('.hero-plate .hl-combo'); i.focus(); i.value = 'braz'; i.dispatchEvent(new Event('input', { bubbles: true })); i.blur(); })()`);
+        assert.equal(await page.evaluate(scopeValue('.hero-plate')), 'World', 'leaving with partial text restores the value');
         assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.hero-plate .hs-row')].map((r) => r.getAttribute('aria-label'))`),
           ov.countries.slice(0, 3).map((c, i) => `Country ${i + 1}, ${c.country}, ${c.value.toLocaleString('en-US')} fire-cell-days in ${ov.year}`));
         assert.equal(await page.evaluate(`document.documentElement.scrollWidth <= innerWidth`), true, `no horizontal scroll at ${width}`);
@@ -1376,8 +1399,8 @@ test('hottest list by country: World lists countries, a row or the select zooms 
         // A country row scopes the list: its top squares, the map zoomed to it, pins on those squares.
         const brazil = ov.countries.find((c) => c.country === 'Brazil');
         await page.evaluate(`[...document.querySelectorAll('.hero-plate .hs-row')].find((r) => r.title === 'Brazil').click()`);
-        await page.until(`document.querySelector('.hero-plate .hl-select').value === 'Brazil'`, 'Brazil scoped');
-        assert.equal(await page.evaluate(`document.activeElement.classList.contains('hl-select')`), true, 'focus on the select');
+        await page.until(`${scopeValue('.hero-plate')} === 'Brazil'`, 'Brazil scoped');
+        assert.equal(await page.evaluate(`document.activeElement.classList.contains('hl-combo')`), true, 'focus on the combobox');
         assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.hero-plate .hs-row')].map((r) => r.getAttribute('aria-label').split(',')[0])`), brazil.top.slice(0, 3).map((_, i) => `Hotspot ${i + 1}`));
         assert.equal(await page.evaluate(`document.querySelectorAll('.hero-plate .hm-pin').length`), brazil.top.length);
         assert.equal(await page.evaluate(`!document.querySelector('.hero-plate .hm-world').hidden && getComputedStyle(document.querySelector('.hero-plate .hm-pins')).display !== 'none'`), true, 'zoomed to Brazil, pins shown');
@@ -1389,12 +1412,17 @@ test('hottest list by country: World lists countries, a row or the select zooms 
         assert.equal(await page.evaluate(`document.querySelectorAll('.hero-plate .hs-row')[1].getAttribute('aria-pressed')`), 'true');
 
         // Russia spans the antimeridian: the whole map, its pins visible there.
-        await page.evaluate(`(() => { const s = document.querySelector('.hero-plate .hl-select'); s.value = 'Russia'; s.dispatchEvent(new Event('change')); })()`);
+        await scopeTo(page, '.hero-plate', 'russia');
         await page.until(`document.querySelector('.hero-plate .hm-world').hidden`, 'the world view for a country too wide');
         assert.equal(await page.evaluate(`getComputedStyle(document.querySelector('.hero-plate .hm-pins')).display !== 'none' && document.querySelectorAll('.hero-plate .hm-pin').length`), ov.countries.find((c) => c.country === 'Russia').top.length);
 
         // World again: countries, the hotspots' pins hidden at world level.
-        await page.evaluate(`(() => { const s = document.querySelector('.hero-plate .hl-select'); s.value = ''; s.dispatchEvent(new Event('change')); })()`);
+        // Accent- and case-insensitive: "congo" lists the Congo; a click commits it, then World again.
+        await page.evaluate(`(() => { const i = document.querySelector('.hero-plate .hl-combo'); i.focus(); i.value = 'CONGO'; i.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+        assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.hero-plate .hl-list .combo-name')].map((o) => o.textContent.replace(/ \\(.*/, ''))`), ['Democratic Republic of the Congo']);
+        await page.evaluate(`document.querySelector('.hero-plate .hl-list [role=option]').click()`);
+        await page.until(`${scopeValue('.hero-plate')} === 'Democratic Republic of the Congo'`, 'the Congo scoped');
+        await scopeTo(page, '.hero-plate', 'world');
         await page.until(`document.querySelector('.hero-plate .hs-row').title === ${JSON.stringify(ov.countries[0].country)}`, 'countries again');
         assert.equal(await page.evaluate(`getComputedStyle(document.querySelector('.hero-plate .hm-pins')).display`), 'none');
         assert.deepEqual(page.problems, []);
@@ -1404,12 +1432,15 @@ test('hottest list by country: World lists countries, a row or the select zooms 
     // A region the data does not name the same way gets no group; the picker shares the list.
     const page = await openAs(1280, 'en-SS');
     try {
-      await page.until(`document.querySelector('.hero-plate .hl-select')`, 'the scope select');
-      assert.deepEqual(await page.evaluate(`[...document.querySelectorAll('.hero-plate .hl-select optgroup')].map((g) => g.label)`), ['Countries by fire activity']);
+      await page.until(`document.querySelector('.hero-plate .hl-combo')`, 'the scope combobox');
+      await page.evaluate(`document.querySelector('.hero-plate .hl-combo').focus()`);
+      await page.press('ArrowDown');
+      assert.equal(await page.evaluate(`document.querySelectorAll('.hero-plate .hl-list .combo-sub').length`), 0, 'no region suggestion');
+      await page.press('Escape');
       await settle(page);
       await page.click('.areas-button');
       await page.until(AREAS_OPEN, 'the picker');
-      await page.evaluate(`(() => { const s = document.querySelector('.area-drawer .hl-select'); s.value = 'Brazil'; s.dispatchEvent(new Event('change')); })()`);
+      await scopeTo(page, '.area-drawer', 'brazil');
       assert.equal(await page.evaluate(`document.querySelectorAll('.area-drawer .hs-row').length`), ov.countries.find((c) => c.country === 'Brazil').top.length);
       await page.evaluate(`document.querySelector('.area-drawer .hs-row').click()`);
       await page.until(`!document.querySelector('.ad-primary').disabled`, 'a square staged from the country list');

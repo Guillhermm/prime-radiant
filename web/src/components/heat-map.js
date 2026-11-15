@@ -1,5 +1,6 @@
-import { centerLabel, countryWindow, dotPins, formatCount, HEAT_LABELS, hotspotRowsLabels, inWindow, isZoomable, listRanks, nearestSquare, regionalWindow, REGIONAL_WIDTH, regionCountry, sameBbox, scopeList, squareFits, squareFor, squareText, stepSquare, valueLine, worldWindow, ZOOM_ASPECT, zoomWindow } from '../places.js';
+import { centerLabel, countryWindow, exactScope, matchScope, scopeOptions, dotPins, formatCount, HEAT_LABELS, hotspotRowsLabels, inWindow, isZoomable, listRanks, nearestSquare, regionalWindow, REGIONAL_WIDTH, regionCountry, sameBbox, scopeList, squareFits, squareFor, squareText, stepSquare, valueLine, worldWindow, ZOOM_ASPECT, zoomWindow } from '../places.js';
 import { bboxText } from './states.js';
+import { comboKey } from './name-field.js';
 import { h } from './h.js';
 import { icon, svgEl } from './icons.js';
 
@@ -286,11 +287,90 @@ export const legendEl = () => h('ul', { class: 'hm-legend', 'aria-label': 'Fire-
 let listIds = 0;
 
 /**
+ * The country scope as an editable combobox (WAI-ARIA APG, list autocomplete, the Name field's keys):
+ * focus shows every suggestion, typing filters them, Enter or a click commits one. Only a suggestion
+ * is ever committed: Escape, or leaving with text that names none, puts the last one back.
+ * Returns {el, input, set(value)}.
+ */
+const scopeCombo = ({ id, options, onPick }) => {
+  const listId = `${id}-list`;
+  const byValue = new Map(options.map((o) => [o.value, o]));
+  const input = h('input', {
+    id, type: 'text', class: 'hl-combo', autocomplete: 'off', spellcheck: 'false', value: options[0].name,
+    role: 'combobox', 'aria-autocomplete': 'list', 'aria-expanded': 'false', 'aria-controls': listId,
+  });
+  const list = h('ul', { id: listId, role: 'listbox', class: 'combo-list hl-list', 'aria-label': 'Countries by fire activity', hidden: true });
+  const status = h('span', { class: 'sr-only', role: 'status' });
+  let current = options[0];
+  let matches = [];
+  let open = false;
+  let active = -1;
+
+  const paint = () => {
+    list.hidden = !open;
+    input.setAttribute('aria-expanded', String(open));
+    const opts = [...list.children];
+    opts.forEach((li, i) => li.setAttribute('aria-selected', String(i === active)));
+    if (open && active >= 0) {
+      input.setAttribute('aria-activedescendant', opts[active].id);
+      opts[active].scrollIntoView?.({ block: 'nearest' });
+    } else input.removeAttribute('aria-activedescendant');
+  };
+  const restore = () => { input.value = current.name; open = false; active = -1; status.textContent = ''; paint(); };
+  const commit = (o) => {
+    const changed = o.value !== current.value;
+    current = o;
+    restore();
+    if (changed) onPick(o.value);
+  };
+  const fill = (query) => {
+    matches = matchScope(options, query);
+    list.replaceChildren(...matches.map((o, i) => h('li', {
+      id: `${listId}-${i}`, role: 'option', class: `combo-opt hl-opt${o.value === current.value ? ' is-current' : ''}`, 'aria-selected': 'false',
+      onpointerdown: (ev) => ev.preventDefault(), onclick: () => commit(o),
+    }, h('span', { class: 'combo-name', text: o.label }), o.region ? h('span', { class: 'combo-sub', text: 'Your region' }) : null)));
+    open = matches.length > 0;
+    active = -1;
+    status.textContent = matches.length ? '' : 'No country matches.';
+    paint();
+  };
+
+  // The current value lists everything; anything else typed filters.
+  const query = () => (input.value === current.name ? '' : input.value);
+  input.addEventListener('focus', () => input.select());
+  input.addEventListener('click', () => { if (!open) fill(query()); });
+  input.addEventListener('input', () => fill(input.value));
+  input.addEventListener('blur', restore);
+  input.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && (open || input.value !== current.name)) { ev.preventDefault(); ev.stopPropagation(); restore(); return; }
+    if (ev.key === 'Enter' && !(open && active >= 0)) {
+      ev.preventDefault();
+      const o = exactScope(options, input.value);
+      if (o) commit(o); else restore();
+      return;
+    }
+    if (!open && (ev.key === 'ArrowDown' || ev.key === 'ArrowUp')) fill(query());
+    const next = comboKey(ev.key, { open, active, count: matches.length }, { alt: ev.altKey });
+    if (!next) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    if ('pick' in next) { commit(matches[next.pick]); return; }
+    ({ open, active } = next);
+    paint();
+  });
+  const el = h('span', { class: 'hl-pick combo' }, input, icon('chevron', 'hl-chev'), list, status);
+  return {
+    el, input,
+    set(value) { current = byValue.get(value) ?? options[0]; restore(); },
+  };
+};
+
+/**
  * The hottest list beside a heat map, shared by the first screen and the place picker. Without
  * `countries` in overview.json it is the hotspot list under a plain title. With them the title holds
- * a native select, "Hottest in [World], {year}": the world lists countries by total (a row or the
- * select scopes to that country), a country zooms the map to it and lists its top squares, and the
- * pins follow. The browser's region leads the select in its own group when it has data.
+ * a country combobox, "Hottest in [World], {year}": the world lists countries by total (a row or the
+ * combobox scopes to that country), a country zooms the map to it and lists its top squares, and the
+ * pins follow. The browser's region is the first suggestion under World when it has data.
  * hottestList({overview, model, map, limit, title, titleClass, rowSub, onPick(q)}) returns
  * {head, list, live, press(bbox)}: head is the title element, list the rows' host.
  */
@@ -301,7 +381,7 @@ export const hottestList = ({ overview, model, map, limit, title, titleClass, ro
   let rows = [];
   let pressed = null;
   const countries = scopeList(overview).kind === 'countries' ? overview.countries : null;
-  let select = null;
+  let combo = null;
 
   const squareRows = (items) => {
     const labels = hotspotRowsLabels(items);
@@ -312,7 +392,7 @@ export const hottestList = ({ overview, model, map, limit, title, titleClass, ro
   };
   const countryRows = (items) => items.map((c, i) => hotspotRow({
     hs: { bbox: c.bbox, value: c.value }, rank: i + 1, q: { bin: null }, labels: { title: c.country, sub: 'Whole country', full: c.country },
-    overview, prefix: 'Country', onClick: () => { setScope(c.country); select.focus(); },
+    overview, prefix: 'Country', onClick: () => { setScope(c.country); combo.input.focus(); },
   }));
 
   const render = (l) => {
@@ -326,7 +406,7 @@ export const hottestList = ({ overview, model, map, limit, title, titleClass, ro
 
   const setScope = (name) => {
     const l = scopeList(overview, name);
-    if (select) select.value = l.scope;
+    combo?.set(l.scope);
     render(l);
     map.setPins(listRanks(l));
     map.showBox(l.country ? countryWindow(l.country.bbox) : null);
@@ -335,14 +415,9 @@ export const hottestList = ({ overview, model, map, limit, title, titleClass, ro
 
   let head;
   if (countries) {
-    const mine = regionCountry(lang, countries);
-    const opt = (c) => h('option', { value: c.country, text: c.country });
-    select = h('select', { id, class: 'hl-select', onchange: (ev) => setScope(ev.currentTarget.value) },
-      h('option', { value: '', text: overview.region?.name ?? 'World' }),
-      mine ? h('optgroup', { label: 'Your region' }, opt({ country: mine })) : null,
-      h('optgroup', { label: 'Countries by fire activity' }, countries.map(opt)));
+    combo = scopeCombo({ id, options: scopeOptions(overview, regionCountry(lang, countries)), onPick: setScope });
     head = h('h3', { class: `${titleClass} hl-title` },
-      h('label', { for: id, text: 'Hottest in' }), h('span', { class: 'hl-pick' }, select, icon('chevron', 'hl-chev')), h('span', { class: 'hl-year', text: `, ${overview.year}` }));
+      h('label', { for: id, text: 'Hottest in' }), combo.el, h('span', { class: 'hl-year', text: `, ${overview.year}` }));
     render(scopeList(overview, ''));
   } else {
     head = h('h3', { class: titleClass, text: title });

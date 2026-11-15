@@ -1,7 +1,7 @@
 // Pure parts of the service worker: what to precache, what to name the caches, how to route a request.
 // Paths are relative to the worker's scope (/), so the same list works on localhost and in production.
 // Bump CACHE_VERSION whenever a precached file changes so installed apps refetch the shell atomically.
-export const CACHE_VERSION = 'v29';
+export const CACHE_VERSION = 'v30';
 export const SHELL_CACHE = `pr-shell-${CACHE_VERSION}`;
 export const DATA_CACHE = `pr-data-${CACHE_VERSION}`;
 

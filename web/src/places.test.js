@@ -241,3 +241,25 @@ test('squareFits: a mouse picks from 10 px squares, touch from 24 px (WCAG 2.2 t
   assert.equal(squareFits(27, 'coarse'), true);
   assert.equal(squareFits(20, undefined), false, 'an unknown pointer is treated as touch');
 });
+
+test('country scope options: World first, the browser region next without preselection, every country with its rank', async () => {
+  const { exactScope, matchScope, ordinal, scopeOptions } = await import('./places.js');
+  assert.deepEqual([1, 2, 3, 4, 11, 12, 13, 21, 22, 23, 101, 111].map(ordinal), ['1st', '2nd', '3rd', '4th', '11th', '12th', '13th', '21st', '22nd', '23rd', '101st', '111th']);
+  const ov = { countries: ['Democratic Republic of the Congo', 'Angola', 'Brazil', 'Republic of the Congo', 'Côte d\'Ivoire', 'Mongolia'].map((country) => ({ country })) };
+  const opts = scopeOptions(ov, 'Brazil');
+  assert.deepEqual(opts.map((o) => o.label), ['World', 'Brazil (3rd)', 'Democratic Republic of the Congo (1st)', 'Angola (2nd)', 'Republic of the Congo (4th)', 'Côte d\'Ivoire (5th)', 'Mongolia (6th)']);
+  assert.deepEqual(opts.map((o) => o.region), [false, true, false, false, false, false, false]);
+  assert.equal(opts[0].value, '', 'World is the default value');
+  assert.deepEqual(scopeOptions(ov).map((o) => o.value).slice(0, 4), ['', 'Democratic Republic of the Congo', 'Angola', 'Brazil'], 'no region: rank order');
+  // Case and accents fold; a word start matches, the middle of a word does not ("Mongolia").
+  assert.deepEqual(matchScope(opts, 'congo').map((o) => o.name), ['Democratic Republic of the Congo', 'Republic of the Congo']);
+  assert.deepEqual(matchScope(opts, 'COTE').map((o) => o.name), ['Côte d\'Ivoire']);
+  assert.deepEqual(matchScope(opts, 'wor').map((o) => o.name), ['World']);
+  assert.equal(matchScope(opts, '').length, opts.length);
+  assert.deepEqual(matchScope(opts, 'xyz'), []);
+  // Only a suggestion is committed: the exact name or label, folded; anything else is null.
+  assert.equal(exactScope(opts, 'brazil').value, 'Brazil');
+  assert.equal(exactScope(opts, 'Brazil (3rd)').value, 'Brazil');
+  assert.equal(exactScope(opts, 'world').value, '');
+  assert.equal(exactScope(opts, 'braz'), null);
+});

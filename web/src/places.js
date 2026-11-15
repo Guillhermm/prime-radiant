@@ -1,4 +1,5 @@
 import { parseTileId } from '../../core/grid.js';
+import { fold, matchKind } from './place-search.js';
 
 // Pure model of the place picker: the overview heat map, the hotspot list, the drawer copy and which
 // area a tab opens. overview.json is described in docs/data.md ("Overview for the place picker").
@@ -74,6 +75,39 @@ export const scopeList = (overview, scope = '') => {
   if (!Array.isArray(countries) || countries.length < 2) return { kind: 'hotspots', scope: '', items: overview?.hotspots ?? [] };
   const c = scope ? countries.find((x) => x.country === scope) : null;
   return c ? { kind: 'squares', scope: c.country, country: c, items: c.top ?? [] } : { kind: 'countries', scope: '', items: countries };
+};
+
+const ORDINAL = new Intl.PluralRules('en', { type: 'ordinal' });
+const ORDINAL_SUFFIX = { one: 'st', two: 'nd', few: 'rd', other: 'th' };
+/** "1st", "2nd", "3rd", "11th", "22nd". */
+export const ordinal = (n) => `${n}${ORDINAL_SUFFIX[ORDINAL.select(n)]}`;
+
+/**
+ * The country scope's suggestions: the whole map first ("World", value ""), then the browser's
+ * region when the data names it (never preselected), then every country by fire-cell-days, each
+ * labeled with its rank, "Brazil (3rd)".
+ */
+export const scopeOptions = (overview, mine = null) => {
+  const countries = overview?.countries ?? [];
+  const opts = countries.map((c, i) => ({ value: c.country, name: c.country, label: `${c.country} (${ordinal(i + 1)})`, region: c.country === mine }));
+  const own = opts.find((o) => o.region);
+  return [{ value: '', name: overview?.region?.name ?? 'World', label: overview?.region?.name ?? 'World', region: false },
+    ...(own ? [own] : []), ...opts.filter((o) => !o.region)];
+};
+
+/**
+ * Suggestions for what was typed, in their own order: all of them for an empty query, else those
+ * whose name matches at its start or at a word start, folding case and accents ("congo", "cote").
+ */
+export const matchScope = (options, query) => {
+  const q = fold(query).trim();
+  return q ? options.filter((o) => matchKind(fold(o.name), q)) : options;
+};
+
+/** The option a typed text names exactly (folded), or null: free text is never committed. */
+export const exactScope = (options, query) => {
+  const q = fold(query).trim();
+  return options.find((o) => fold(o.name) === q || fold(o.label) === q) ?? null;
 };
 
 /** Pin ranks for the squares a list shows, keyed "west,south"; null for a list of countries. */
