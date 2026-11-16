@@ -111,3 +111,27 @@ export function chooseRounds(train, valid, opts = {}, maxRounds = 300) {
   }
   return { rounds: best, loss: bestLoss };
 }
+
+/**
+ * Platt scaling: p = sigmoid(a * z + b) on raw log-odds z, fit by Newton steps (zero-to-identity start,
+ * fixed 25 iterations, tiny ridge on the Hessian): deterministic.
+ * @returns {{a: number, b: number}}
+ */
+export function fitPlatt(z, y) {
+  let a = 1, b = 0;
+  for (let it = 0; it < 25; it++) {
+    let ga = 0, gb = 0, haa = 1e-9, hab = 0, hbb = 1e-9;
+    for (let i = 0; i < z.length; i++) {
+      const p = sigmoid(a * z[i] + b), e = p - y[i], w = Math.max(p * (1 - p), 1e-9);
+      ga += e * z[i]; gb += e; haa += w * z[i] * z[i]; hab += w * z[i]; hbb += w;
+    }
+    const det = haa * hbb - hab * hab;
+    if (!(Math.abs(det) > 1e-12)) break;
+    a -= (hbb * ga - hab * gb) / det;
+    b -= (haa * gb - hab * ga) / det;
+  }
+  return { a, b };
+}
+
+/** Calibrated probability from raw log-odds. */
+export const applyPlatt = (cal, z) => sigmoid(cal.a * z + cal.b);

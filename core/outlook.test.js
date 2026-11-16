@@ -85,3 +85,59 @@ test('bootstrapBss (crossed) is seeded and collapses on identical blocks', () =>
   assert.deepEqual(a.constant, [0.5, 0.5]);
   assert.deepEqual(a.persistence, [0.75, 0.75]);
 });
+
+import { bootstrapPairedDiff, cellLat, FEATURES_ENSO, ninoAt } from './outlook.js';
+import { applyPlatt, fitPlatt } from './outlook-gbt.js';
+
+test('ninoAt reads month t and t-3 only; a later month never changes it', () => {
+  const s = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7];
+  const a = ninoAt(s, 4);
+  assert.deepEqual([a.nino, a.lag3, a.fallback], [0.5, 0.2, false]);
+  const later = s.slice(); later[5] = 9; later[6] = -9;
+  assert.deepEqual(ninoAt(later, 4), a); // t+1 and t+2 are ignored
+  assert.equal(ninoAt(s, 2), null); // t-3 before the series
+});
+
+test('ninoAt falls back to the latest available month and says so', () => {
+  const s = [0.1, 0.2, 0.3, 0.4, null, null];
+  const a = ninoAt(s, 5);
+  assert.equal(a.nino, 0.4); assert.equal(a.usedT, 3); assert.equal(a.fallback, true);
+  assert.equal(a.lag3, 0.3); assert.equal(a.usedLag, 2); // t-3 = 2 is present
+  assert.equal(ninoAt([null, null, null, null], 3), null);
+});
+
+test('cellLat is the center of the 1 deg cell', () => {
+  assert.equal(cellLat('x10y8', 0), -10 + 0.5 - 0); // ty 8 -> 80-90 = -10, row 0
+  assert.equal(cellLat('x10y8', 37), -10 + 3 + 0.5);
+  assert.equal(FEATURES_ENSO.length, 10);
+});
+
+test('fitPlatt recovers a known miscalibration and is the identity on calibrated scores', () => {
+  const build = (a, b) => {
+    const z = [], y = [];
+    for (let k = -8; k <= 8; k++) {
+      const zz = k / 2, p = 1 / (1 + Math.exp(-(a * zz + b)));
+      const ones = Math.round(p * 1000);
+      for (let i = 0; i < 1000; i++) { z.push(zz); y.push(i < ones ? 1 : 0); }
+    }
+    return { z, y };
+  };
+  const m = build(0.5, 0.8);
+  const f = fitPlatt(m.z, m.y);
+  assert.ok(Math.abs(f.a - 0.5) < 0.02 && Math.abs(f.b - 0.8) < 0.02, JSON.stringify(f));
+  const id = build(1, 0), g = fitPlatt(id.z, id.y);
+  assert.ok(Math.abs(g.a - 1) < 0.02 && Math.abs(g.b) < 0.02);
+  assert.ok(Math.abs(applyPlatt({ a: 1, b: 0 }, 0) - 0.5) < 1e-12);
+  assert.deepEqual(fitPlatt(m.z, m.y), f); // deterministic
+});
+
+test('bootstrapPairedDiff: a consistent improvement has an interval below 0, a null one straddles it, seeded', () => {
+  const blocks = [];
+  for (const tile of ['a', 'b', 'c', 'd']) for (const year of ['2022', '2023', '2024']) blocks.push({ tile, year, d: -0.01 * 10 + ((tile + year).length % 2) * 0.001, n: 10 });
+  const r = bootstrapPairedDiff(blocks);
+  assert.ok(r.diff < 0 && r.ci[1] < 0);
+  assert.deepEqual(bootstrapPairedDiff(blocks), r);
+  const nul = blocks.map((b, i) => ({ ...b, d: i % 2 ? 0.2 : -0.2 }));
+  const z = bootstrapPairedDiff(nul);
+  assert.ok(z.ci[0] < 0 && z.ci[1] > 0);
+});

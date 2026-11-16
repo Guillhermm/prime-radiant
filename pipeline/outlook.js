@@ -14,15 +14,17 @@ import { parseArgs } from 'node:util';
 import { baseline, KNOWN_PARTIAL_MONTHS } from '../core/baseline.js';
 import { addMonths, monthIndex } from '../core/months.js';
 import { coverageLookup } from '../core/tiles.js';
-import { fitGbt, chooseRounds, predictGbt } from '../core/outlook-gbt.js';
+import { fitGbt, chooseRounds, predictGbt, logit, fitPlatt, applyPlatt, logLoss } from '../core/outlook-gbt.js';
 import { parseTileId } from '../core/grid.js';
-import { FEATURES_GBT, neighborAnomaly, FEATURES, OUTLOOK_METHOD, featuresAt, fitLogistic, outcome, predict, scoreSet } from '../core/outlook.js';
+import { FEATURES_GBT, FEATURES_ENSO, ninoAt, cellLat, bootstrapPairedDiff, brier, neighborAnomaly, FEATURES, OUTLOOK_METHOD, featuresAt, fitLogistic, outcome, predict, scoreSet } from '../core/outlook.js';
 
 const FOLDS = 5;
 /** Cells whose target median is at most this carry `no-skill` (gate V4 O2). */
 export const NO_SKILL_MEDIAN = 1;
 /** A live month with more than this share of its days missing is not usable (as core/live.js). */
 const MAX_MISSING = 1 / 3;
+/** The committed Nino 3.4 table (pipeline/nino34.js), or null when absent. */
+export const loadNino = () => { try { return JSON.parse(fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'core', 'data', 'nino34.json'), 'utf8')); } catch { return null; } };
 const readJson = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
 const dayNum = (d) => Date.parse(`${d}T00:00:00Z`) / 864e5;
 const dayStr = (n) => new Date(n * 864e5).toISOString().slice(0, 10);
@@ -147,12 +149,14 @@ const yearOf = (month0, T) => addMonths(month0, T).slice(0, 4);
  * `above` flag of persistence. `zeroT` lists the months where a cell had a value but a median of 0
  * (no outcome: no-skill cells).
  */
-export function buildSamples(cells, month0) {
+export function buildSamples(cells, month0, nino = null) {
   const samples = [];
   const forecast = [];
   const zeroT = [];
+  let ninoUsed = null;
   let last = -1;
   for (const c of cells) c.values.forEach((v, i) => { if (v !== null && i > last) last = i; });
+  const ninoSeries = nino ? Array.from({ length: last + 2 }, (_, i) => nino.values[addMonths(month0, i)] ?? null) : null;
   const gxy = (c) => { const { tx, ty } = parseTileId(c.tile); return [tx * 10 + (c.cell % 10), ty * 10 + Math.floor(c.cell / 10)]; };
   const at = new Map();
   for (const c of cells) {
@@ -174,13 +178,15 @@ export function buildSamples(cells, month0) {
       const x = featuresAt(c.values, medians, T - 1, mo);
       if (x) {
         const xg = [...x, neighborAnomaly(nbrs, T - 1)];
-        if (y !== null) samples.push({ tile: c.tile, cell: c.cell, T, x, xg, y, med: medians[T], above: x[0] > 0 ? 1 : 0 });
-        if (T === last + 1) forecast.push({ tile: c.tile, cell: c.cell, x, xg, med: medians[T] });
+        const nn = ninoSeries && ninoAt(ninoSeries, T - 1);
+        const xe = nn ? [...xg, nn.nino, nn.lag3, cellLat(c.tile, c.cell)] : null;
+        if (y !== null) samples.push({ tile: c.tile, cell: c.cell, T, x, xg, xe, y, med: medians[T], above: x[0] > 0 ? 1 : 0 });
+        if (T === last + 1) { forecast.push({ tile: c.tile, cell: c.cell, x, xg, xe, med: medians[T] }); if (nn) ninoUsed = { requested: addMonths(month0, T - 1), month: addMonths(month0, nn.usedT), lag3_month: addMonths(month0, nn.usedLag), fallback: nn.fallback }; }
       }
       if (x && c.values[T] !== null && medians[T] === 0) zeroT.push(T);
     }
   }
-  return { samples, forecast, zeroT, lastMonth: addMonths(month0, last) };
+  return { samples, forecast, zeroT, lastMonth: addMonths(month0, last), ninoUsed };
 }
 
 const col = (rows, k) => rows.map((r) => r[k]);
@@ -206,6 +212,7 @@ export function fitKind(kind, train, month0, fixedRounds = null) {
     const m = fitLogistic(col(train, 'x'), col(train, 'y'), {});
     return { model: m, score: (s) => predict(m, s.x) };
   }
+  if (kind === 'gbt-enso') return fitEnso(train, month0, fixedRounds);
   let rounds = fixedRounds, valLoss = null;
   if (rounds === null) {
     const lastYear = Math.max(...train.map((s) => +yearOf(month0, s.T)));
@@ -214,6 +221,39 @@ export function fitKind(kind, train, month0, fixedRounds = null) {
   }
   const m = { ...fitGbt(col(train, 'xg'), col(train, 'y'), { ...GBT_OPTS, rounds }), rounds, validation_log_loss: valLoss };
   return { model: m, score: (s) => predictGbt(m, s.xg) };
+}
+
+/** Hyperparameter grid of gbt-enso, searched on the training period only (validation year = the last). */
+export const ENSO_GRID = { depth: [2, 3, 4], lr: [0.05, 0.1] };
+
+/**
+ * gbt-enso: GBT on the ten features with depth and lr searched over ENSO_GRID, rounds by early stopping
+ * on the last training year, then Platt scaling fit on that year's predictions of the model trained on the
+ * earlier years and kept only when it lowers the validation Brier. The model is then refit on all training
+ * samples. `fixed` = a previous result's `tuned` (depth, lr, rounds, platt): no search, used by the tile folds.
+ */
+export function fitEnso(train, month0, fixed = null) {
+  let tuned = fixed, grid = null, platt = null;
+  if (!tuned) {
+    const lastYear = Math.max(...train.map((s) => +yearOf(month0, s.T)));
+    const tr = train.filter((s) => +yearOf(month0, s.T) < lastYear), va = train.filter((s) => +yearOf(month0, s.T) === lastYear);
+    const T = { X: col(tr, 'xe'), y: col(tr, 'y') }, V = { X: col(va, 'xe'), y: col(va, 'y') };
+    grid = [];
+    for (const depth of ENSO_GRID.depth) for (const lr of ENSO_GRID.lr) {
+      const r = chooseRounds(T, V, { ...GBT_OPTS, depth, lr }, lr < 0.1 ? 600 : 300);
+      grid.push({ depth, lr, rounds: r.rounds, validation_log_loss: r.loss });
+    }
+    const best = grid.reduce((a, b) => (b.validation_log_loss < a.validation_log_loss - 1e-9 ? b : a));
+    const m = fitGbt(T.X, T.y, { ...GBT_OPTS, depth: best.depth, lr: best.lr, rounds: best.rounds });
+    const z = V.X.map((x) => logit(m, x));
+    const cal = fitPlatt(z, V.y);
+    const rawB = brier(z.map((v) => 1 / (1 + Math.exp(-v))), V.y), calB = brier(z.map((v) => applyPlatt(cal, v)), V.y);
+    platt = { ...cal, validation_brier_raw: rawB, validation_brier_calibrated: calB, kept: calB < rawB };
+    tuned = { depth: best.depth, lr: best.lr, rounds: best.rounds, platt: platt.kept ? { a: cal.a, b: cal.b } : null };
+  }
+  const m = { ...fitGbt(col(train, 'xe'), col(train, 'y'), { ...GBT_OPTS, depth: tuned.depth, lr: tuned.lr, rounds: tuned.rounds }), rounds: tuned.rounds, tuned, grid, platt,
+    validation_log_loss: grid ? Math.min(...grid.map((g) => g.validation_log_loss)) : null };
+  return { model: m, score: (s) => (tuned.platt ? applyPlatt(tuned.platt, logit(m, s.xe)) : predictGbt(m, s.xe)) };
 }
 
 function evaluate(fit, ref, test, month0) {
@@ -229,7 +269,8 @@ function evaluate(fit, ref, test, month0) {
  * The headline skill counts test samples whose target median is above NO_SKILL_MEDIAN; the share left out is reported.
  * `kind` is `logistic` or `gbt`.
  */
-export function trainAndValidate(samples, zeroT, month0, { trainTo = '2020-12', testFrom = '2022-01', testTo = '2025-12', kind = 'logistic' } = {}) {
+export function trainAndValidate(allSamples, zeroT, month0, { trainTo = '2020-12', testFrom = '2022-01', testTo = '2025-12', kind = 'logistic' } = {}) {
+  const samples = kind === 'gbt-enso' ? allSamples.filter((s) => s.xe) : allSamples;
   const [a, b, c] = [trainTo, testFrom, testTo].map(monthIndex).map((m) => m - monthIndex(month0));
   const train = samples.filter((s) => s.T <= a);
   const test = samples.filter((s) => s.T >= b && s.T <= c);
@@ -247,29 +288,78 @@ export function trainAndValidate(samples, zeroT, month0, { trainTo = '2020-12', 
       const tr = train.filter((s) => !held.has(s.tile));
       const te = set.filter((s) => held.has(s.tile));
       if (!tr.length || !te.length) continue;
-      const ft = fitKind(kind, tr, month0, kind === 'gbt' ? model.rounds : null);
+      const ft = fitKind(kind, tr, month0, kind === 'gbt' ? model.rounds : kind === 'gbt-enso' ? model.tuned : null);
       const r = calibrate(tr);
       for (const s of te) folded.push({ s, p: ft.score(s), r });
     }
-    return folded.length ? { folds: FOLDS, ...scoreSet({
+    if (!folded.length) return null;
+    const out = { folds: FOLDS, ...scoreSet({
       p: folded.map((f) => f.p), constant: folded.map((f) => f.r.constant),
       persist: folded.map((f) => f.r.persistence[f.s.above]), y: folded.map((f) => f.s.y),
       block: folded.map((f) => `${f.s.tile}|${yearOf(month0, f.s.T)}`),
-    }) } : null;
+    }) };
+    Object.defineProperty(out, 'raw', { value: { s: folded.map((f) => f.s), p: folded.map((f) => f.p) } }); // not serialized
+    return out;
   };
   const zero = zeroT.filter((T) => T >= b && T <= c).length;
+  const raws = (set) => ({ s: set, p: set.map(fit.score) });
+  const spatial = blocked(head), spatialAll = blocked(test);
   return {
-    kind, model, score: fit.score, ref, counts: { train: train.length, test: head.length, test_all: test.length, test_median_le_1: low.length, train_from: addMonths(month0, Math.min(...col(train, 'T'))), train_to: trainTo },
+    kind, model, score: fit.score, ref,
+    raw: { head: raws(head), all: raws(test), low: raws(low), spatial: spatial?.raw ?? null, spatial_all: spatialAll?.raw ?? null }, counts: { train: train.length, test: head.length, test_all: test.length, test_median_le_1: low.length, train_from: addMonths(month0, Math.min(...col(train, 'T'))), train_to: trainTo },
     no_skill_share_of_test: (zero + low.length) / (zero + test.length),
     no_skill_test: { median_0: zero, median_le_1: low.length, skill_cells_months: head.length },
     temporal: evaluate(fit, ref, head, month0),
-    spatial: blocked(head),
-    temporal_all: evaluate(fit, ref, test, month0), spatial_all: blocked(test),
+    spatial,
+    temporal_all: evaluate(fit, ref, test, month0), spatial_all: spatialAll,
     temporal_median_le_1: low.length ? evaluate(fit, ref, low, month0) : null,
   };
 }
 
+const key = (s) => `${s.tile}:${s.cell}:${s.T}`;
+
+/**
+ * Paired Brier difference A minus B (negative = A better) on the samples both scored, with the crossed
+ * tile x year bootstrap 95% interval. `a` and `b` are `{s, p}` parallel arrays (trainAndValidate().raw.*).
+ */
+export function pairedBrier(a, b, month0) {
+  const pb = new Map(b.s.map((s, i) => [key(s), b.p[i]]));
+  const blocks = new Map();
+  a.s.forEach((s, i) => {
+    const q = pb.get(key(s));
+    if (q === undefined) return;
+    const k = `${s.tile}|${yearOf(month0, s.T)}`;
+    const e = blocks.get(k) ?? blocks.set(k, { tile: s.tile, year: yearOf(month0, s.T), d: 0, n: 0 }).get(k);
+    e.d += (a.p[i] - s.y) ** 2 - (q - s.y) ** 2; e.n++;
+  });
+  const r = bootstrapPairedDiff([...blocks.values()]);
+  return { n: [...blocks.values()].reduce((t, e) => t + e.n, 0), diff: r.diff, ci: r.ci };
+}
+
+/** Paired differences of one model against another on the four sets V4 reports. */
+export function pairedAgainst(a, b, month0) {
+  const out = {};
+  for (const k of ['head', 'all', 'low', 'spatial', 'spatial_all']) out[k] = a.raw[k] && b.raw[k] && a.raw[k].s.length ? pairedBrier(a.raw[k], b.raw[k], month0) : null;
+  return out;
+}
+
+/**
+ * Ship rule of gbt-enso against the current GBT: default only when the paired Brier difference (new minus
+ * current) is negative on all samples with its 95% upper bound below 0, and not worse (point difference
+ * at most 0) on median above 1 and on the tile-blocked sets. Otherwise the current GBT stays the default.
+ */
+export function shipRule(paired) {
+  const all = paired.all, head = paired.head, sp = paired.spatial, spa = paired.spatial_all;
+  const checks = {
+    all_samples_negative_ci_below_0: !!all && all.diff < 0 && all.ci[1] < 0,
+    median_gt_1_not_worse: !!head && head.diff <= 0,
+    tile_blocked_not_worse: !!sp && !!spa && sp.diff <= 0 && spa.diff <= 0,
+  };
+  return { passes: Object.values(checks).every(Boolean), checks, rule: 'new minus current GBT Brier: all samples diff < 0 with 95% CI upper < 0; median > 1 diff <= 0; tile-blocked (median > 1 and all) diff <= 0' };
+}
+
 export const GBT_METHOD = { id: 'outlook-gbt', version: 1 };
+export const ENSO_METHOD = { id: 'outlook-gbt-enso', version: 1 };
 
 /**
  * Decision rule for the default model (O-GBT). `choice` is `auto`, `logistic` or `gbt` (forced by --model).
@@ -299,13 +389,19 @@ const skill = (s) => s && { n: s.n, brier: s.brier, brier_constant: s.brier_cons
  * `now` (default: the live fetch time, else the current time) decides forecast vs hindcast: the
  * output is a forecast only when the last observed month is the month before `now`'s month.
  */
-export function runOutlook({ dataDir, liveDir = null, outDir, modelOut, now = null, issuedAt = null, command = 'node pipeline/outlook.js', model: choice = 'gbt', ...split }) {
+export function runOutlook({ dataDir, liveDir = null, outDir, modelOut, now = null, issuedAt = null, command = 'node pipeline/outlook.js', model: choice = 'default', nino = loadNino(), ...split }) {
   const { manifest, K, cells, live } = loadCells(dataDir, { liveDir });
-  const { samples, forecast, zeroT, lastMonth } = buildSamples(cells, manifest.month0);
+  const { samples, forecast, zeroT, lastMonth, ninoUsed } = buildSamples(cells, manifest.month0, nino);
   const lg = trainAndValidate(samples, zeroT, manifest.month0, { ...split, kind: 'logistic' });
   const gb = trainAndValidate(samples, zeroT, manifest.month0, { ...split, kind: 'gbt' });
-  const decision = chooseModel(lg, gb, choice);
-  const v = decision.model === 'gbt' ? gb : lg;
+  const wantEnso = choice === 'default' || choice === 'gbt-enso';
+  const en = wantEnso ? trainAndValidate(samples, zeroT, manifest.month0, { ...split, kind: 'gbt-enso' }) : null;
+  const paired = en && { vs_gbt: pairedAgainst(en, gb, manifest.month0), vs_logistic: pairedAgainst(en, lg, manifest.month0) };
+  const ship = paired && shipRule(paired.vs_gbt);
+  const base = chooseModel(lg, gb, choice === 'default' || choice === 'gbt-enso' ? 'gbt' : choice);
+  const decision = choice === 'gbt-enso' ? { ...base, model: 'gbt-enso', requested: 'gbt-enso' } : choice === 'default' && ship.passes ? { ...base, model: 'gbt-enso', requested: 'default' } : base;
+  if (en) decision.ship_rule = { ...ship, paired_brier_diff: roundDeep(paired) };
+  const v = decision.model === 'gbt-enso' ? en : decision.model === 'gbt' ? gb : lg;
   const target = addMonths(lastMonth, 1);
   const ref = new Date(now ?? live?.fetchedAt ?? Date.now());
   const complete = addMonths(ref.toISOString().slice(0, 7), -1);
@@ -314,15 +410,20 @@ export function runOutlook({ dataDir, liveDir = null, outDir, modelOut, now = nu
   const refs = { constant: round(v.ref.constant, 4), persistence_given_above: round(v.ref.persistence[1], 4), persistence_given_not_above: round(v.ref.persistence[0], 4) };
   const side = (r) => ({ temporal: skill(roundDeep(r.temporal)), spatial: skill(roundDeep(r.spatial)) });
   const common = { status: 'experimental', model: decision.model, trained: { from: v.counts.train_from, to: v.counts.train_to, samples: v.counts.train }, command, dataVersion: manifest.dataVersion,
-    references: refs, metrics: side(v), decision, compared: { logistic: side(lg), gbt: side(gb) } };
-  const model = decision.model === 'gbt'
+    references: refs, metrics: side(v), decision, compared: { logistic: side(lg), gbt: side(gb), ...(en ? { 'gbt-enso': side(en) } : {}) } };
+  const model = decision.model === 'gbt-enso'
+    ? { method: ENSO_METHOD, ...common, features: FEATURES_ENSO, nino34: ninoUsed, bias: round(v.model.bias, 6), lr: v.model.lr, depth: v.model.depth, rounds: v.model.rounds,
+      tuning: roundDeep({ grid: v.model.grid, platt: v.model.platt }), platt: roundDeep(v.model.tuned.platt), validation_log_loss: round(v.model.validation_log_loss, 6),
+      trees: JSON.parse(JSON.stringify(v.model.trees, (k, x) => (typeof x === 'number' ? round(x, 6) : x))) }
+    : decision.model === 'gbt'
     ? { method: GBT_METHOD, ...common, features: FEATURES_GBT, bias: round(v.model.bias, 6), lr: v.model.lr, depth: v.model.depth, rounds: v.model.rounds, validation_log_loss: round(v.model.validation_log_loss, 6),
       trees: JSON.parse(JSON.stringify(v.model.trees, (k, x) => (typeof x === 'number' ? round(x, 6) : x))) }
     : { method: OUTLOOK_METHOD, ...common, features: FEATURES, mean: rounded(v.model.mean), std: rounded(v.model.std), weights: rounded(v.model.weights), bias: round(v.model.bias, 6) };
   const report = { method: model.method, status: 'experimental', dataVersion: manifest.dataVersion, K: round(K, 4),
     test: { from: split.testFrom ?? '2022-01', to: split.testTo ?? '2025-12' }, counts: v.counts,
     no_skill_share_of_test: round(v.no_skill_share_of_test), no_skill_test: v.no_skill_test, references: model.references, model: decision.model, decision, compared: model.compared,
-    gbt_full: decision.model === 'gbt' ? undefined : roundDeep({ temporal: gb.temporal, spatial: gb.spatial, temporal_all: gb.temporal_all, spatial_all: gb.spatial_all, temporal_median_le_1: gb.temporal_median_le_1, rounds: gb.model.rounds }),
+    gbt_full: decision.model !== 'logistic' ? undefined : roundDeep({ temporal: gb.temporal, spatial: gb.spatial, temporal_all: gb.temporal_all, spatial_all: gb.spatial_all, temporal_median_le_1: gb.temporal_median_le_1, rounds: gb.model.rounds }),
+    nino34: ninoUsed, enso: en && roundDeep({ tuned: en.model.tuned, grid: en.model.grid, platt: en.model.platt, rounds: en.model.rounds, temporal: en.temporal, spatial: en.spatial, temporal_all: en.temporal_all, spatial_all: en.spatial_all, temporal_median_le_1: en.temporal_median_le_1 }),
     live_months: live?.list ?? null, temporal: roundDeep(v.temporal), spatial: roundDeep(v.spatial),
     temporal_all: roundDeep(v.temporal_all), spatial_all: roundDeep(v.spatial_all), temporal_median_le_1: roundDeep(v.temporal_median_le_1) };
   const issued = issuedAt ?? ref.toISOString();
@@ -342,7 +443,7 @@ export function runOutlook({ dataDir, liveDir = null, outDir, modelOut, now = nu
     ...(mode === 'hindcast' ? { hindcast_note: `latest complete month is ${complete}; the newest data this output has is ${lastMonth}` } : {}),
     dataVersion: manifest.dataVersion, grid: { res: 1, tile_deg: 10 },
     tiles: [...byTile.keys()].sort(), cells: forecast.length, no_skill_cells: noSkill, no_skill_share: round(forecast.length ? noSkill / forecast.length : 0),
-    model: decision.model, mean_p: round(forecast.length ? sumP / forecast.length : null), skill: model.metrics, no_skill_share_of_test: round(v.no_skill_share_of_test), method: model.method };
+    nino34: ninoUsed, model: decision.model, mean_p: round(forecast.length ? sumP / forecast.length : null), skill: model.metrics, no_skill_share_of_test: round(v.no_skill_share_of_test), method: model.method };
   if (outDir) {
     fs.mkdirSync(path.join(outDir, 'tiles'), { recursive: true });
     for (const [id, t] of byTile) fs.writeFileSync(path.join(outDir, 'tiles', `${id}.json`), `${JSON.stringify(t)}\n`);
@@ -360,7 +461,7 @@ async function main() {
     process.exit(2);
   }
   const command = `node pipeline/outlook.js --data ${values.data}${values.live ? ` --live ${values.live}` : ''} --out ${values.out}${values['model-out'] ? ` --model-out ${values['model-out']}` : ''}${values.model ? ` --model ${values.model}` : ''}`;
-  const { report, manifest } = runOutlook({ dataDir: values.data, liveDir: values.live, issuedAt: new Date().toISOString(), outDir: values.out, modelOut: values['model-out'], command, model: values.model ?? 'gbt' });
+  const { report, manifest } = runOutlook({ dataDir: values.data, liveDir: values.live, issuedAt: new Date().toISOString(), outDir: values.out, modelOut: values['model-out'], command, model: values.model ?? 'default' });
   const strip = (s) => s && { ...s, reliability: undefined };
   console.log(JSON.stringify({ model: report.model, decision: report.decision, compared: report.compared, mode: manifest.mode, target_month: manifest.target_month, last_observed_month: manifest.last_observed_month,
     cells: manifest.cells, mean_p: manifest.mean_p, no_skill_share: manifest.no_skill_share, no_skill_share_of_test: report.no_skill_share_of_test,

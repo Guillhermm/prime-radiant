@@ -360,3 +360,12 @@ One day in detail, 2020-09-15 (from `awk -F, '$6=="2020-09-15" && $2>=-57.1 && $
 For a human to eyeball on the FIRMS map (pan to the Pantanal, set the date to 2020-09-15 and turn on the MODIS C6.1 and VIIRS S-NPP and NOAA-20 layers): https://firms.modaps.eosdis.nasa.gov/map/#d:2020-09-15..2020-09-15;@-57.05,-17.55,12z
 
 **Not done.** The comparison of this cell and day against the FIRMS map was not done by the author; a human has to open the link and confirm that the same hot spots show there. The recount above proves only that the tile is consistent with the raw FIRMS rows we downloaded, not that the download equals what the map shows. The type filter (keep type 0) and the domain clip are decisions of the method, not checked here against any outside source. `npm audit` does not apply: no dependencies.
+
+## Nino 3.4 index (outlook ENSO candidate)
+
+`core/data/nino34.json` is a small table of monthly Nino 3.4 anomalies for the experimental outlook (`docs/method.md` section 7). Fetched once by hand, no network in code or tests:
+
+- URL: `https://www.cpc.ncep.noaa.gov/data/indices/detrend.nino34.ascii.txt` (NOAA CPC, detrended Nino 3.4, public).
+- Retrieved: 2026-11-15. Rows 1949-12 to 2026-10.
+- File header: `YR   MON  TOTAL ClimAdjust ANOM`; the table keeps the `ANOM` column (deg C) as `{"YYYY-MM": anomaly}`. The URL, retrieval date and header are stored in the JSON.
+- Rebuild: `node pipeline/nino34.js --in <downloaded file> --url <url> --retrieved YYYY-MM-DD` (default `--out core/data/nino34.json`).

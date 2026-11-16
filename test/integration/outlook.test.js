@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { chooseModel, runOutlook } from '../../pipeline/outlook.js';
+import { chooseModel, runOutlook, shipRule, buildSamples, loadCells, ENSO_GRID } from '../../pipeline/outlook.js';
+import { addMonths } from '../../core/months.js';
 
 // Synthetic 1 deg tile: seasonal fires with a persistent yearly level per cell, S-NPP 2012-01..2024-12,
 // NOAA-20 2018-04..2024-12. Seeded, so the run is reproducible.
@@ -125,4 +126,48 @@ test('chooseModel: non-overlapping CI or clearly better wins, overlap keeps logi
   assert.equal(chooseModel(lg, mk(0.06, [0.04, 0.08])).model, 'logistic'); // overlap, lower below point
   assert.equal(chooseModel(lg, mk(0.09, [0.08, 0.10], 0.0)).model, 'logistic'); // tile-blocked worse
   assert.equal(chooseModel(lg, mk(0.0, [-0.1, 0.1]), 'gbt').model, 'gbt');
+});
+
+test('shipRule: needs all-samples CI below 0 and no worse median > 1 or tile-blocked', () => {
+  const d = (diff, lo, hi) => ({ diff, ci: [lo, hi] });
+  const good = { all: d(-0.003, -0.006, -0.001), head: d(-0.002, -0.005, 0.001), spatial: d(-0.002, -0.006, 0.001), spatial_all: d(-0.003, -0.006, 0) };
+  assert.equal(shipRule(good).passes, true);
+  assert.equal(shipRule({ ...good, all: d(-0.003, -0.006, 0.001) }).passes, false); // upper bound above 0
+  assert.equal(shipRule({ ...good, head: d(0.001, -0.002, 0.004) }).passes, false);
+  assert.equal(shipRule({ ...good, spatial_all: d(0.0005, -0.002, 0.003) }).passes, false);
+});
+
+test('gbt-enso: deterministic, search on training years only, features at t (no later Nino), keeps the current default unless shipped', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'outlook-'));
+  makeBuild(dir);
+  const split = { trainTo: '2020-12', testFrom: '2022-01', testTo: '2024-12', now: '2025-03-05T00:00:00Z' };
+  const a = runOutlook({ dataDir: dir, model: 'gbt-enso', ...split });
+  const b = runOutlook({ dataDir: dir, model: 'gbt-enso', ...split });
+  assert.deepEqual(a.model.trees, b.model.trees);
+  assert.deepEqual(a.model.tuning, b.model.tuning);
+  assert.equal(a.model.model, 'gbt-enso');
+  assert.equal(a.model.features.length, 10);
+  assert.equal(a.model.tuning.grid.length, ENSO_GRID.depth.length * ENSO_GRID.lr.length);
+  assert.deepEqual([a.model.nino34.month, a.model.nino34.fallback], ['2024-12', false]); // forecast issued after 2024-12
+  assert.ok(a.model.decision.ship_rule.paired_brier_diff.vs_gbt.all.ci.length === 2);
+  const d = runOutlook({ dataDir: dir, ...split });
+  assert.equal(d.model.model, d.model.decision.ship_rule.passes ? 'gbt-enso' : 'gbt');
+  fs.rmSync(dir, { recursive: true });
+});
+
+test('Nino features of a sample come from month t and t-3 only', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'outlook-'));
+  makeBuild(dir);
+  const table = (bump) => {
+    const values = {};
+    for (let i = 0; i < 400; i++) values[addMonths('2000-01', i)] = i / 100;
+    return { values: { ...values, ...bump } };
+  };
+  // the tables differ only after month t = 2020-06 (index 245): samples with target 246 must be identical
+  const { cells } = loadCells(dir);
+  const s1 = buildSamples(cells, '2000-01', table({})).samples.find((s) => s.T === 246 && s.xe);
+  const s2 = buildSamples(cells, '2000-01', table({ '2020-07': 99, '2020-08': -99 })).samples.find((s) => s.T === 246 && s.xe);
+  assert.deepEqual(s1.xe.slice(7, 9), [2.45, 2.42]); // t = 2020-06, t-3 = 2020-03
+  assert.deepEqual(s1.xe, s2.xe);
+  fs.rmSync(dir, { recursive: true });
 });

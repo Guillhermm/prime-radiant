@@ -10,7 +10,7 @@
     "to": "2020-12",
     "samples": 22393
   },
-  "command": "node pipeline/outlook.js --data /home/aukauemelo/prime-radiants/prime-radiant/data/brazil --live /home/aukauemelo/prime-radiants/prime-radiant/data/live --out /tmp/claude-1000/-home-aukauemelo-prime-radiants-prime-radiant/4a84159d-5282-4fc2-8898-92c87bd7a14d/scratchpad/out --model-out core/data/outlook-model.json",
+  "command": "node pipeline/outlook.js --data /home/aukauemelo/prime-radiants/prime-radiant/data/brazil --live /home/aukauemelo/prime-radiants/prime-radiant/data/live --out ../out2 --model-out core/data/outlook-model.json",
   "dataVersion": "20261114",
   "references": {
     "constant": 0.4512,
@@ -69,7 +69,102 @@
       0.0455,
       0.0772
     ],
-    "gbt_beats_logistic": false
+    "gbt_beats_logistic": false,
+    "ship_rule": {
+      "passes": false,
+      "checks": {
+        "all_samples_negative_ci_below_0": false,
+        "median_gt_1_not_worse": false,
+        "tile_blocked_not_worse": false
+      },
+      "rule": "new minus current GBT Brier: all samples diff < 0 with 95% CI upper < 0; median > 1 diff <= 0; tile-blocked (median > 1 and all) diff <= 0",
+      "paired_brier_diff": {
+        "vs_gbt": {
+          "head": {
+            "n": 25458,
+            "diff": 0.0084,
+            "ci": [
+              -0.0042,
+              0.0199
+            ]
+          },
+          "all": {
+            "n": 27832,
+            "diff": 0.0095,
+            "ci": [
+              -0.0006,
+              0.0213
+            ]
+          },
+          "low": {
+            "n": 2374,
+            "diff": 0.0216,
+            "ci": [
+              0.0095,
+              0.0358
+            ]
+          },
+          "spatial": {
+            "n": 25458,
+            "diff": 0.0079,
+            "ci": [
+              -0.0028,
+              0.0201
+            ]
+          },
+          "spatial_all": {
+            "n": 27832,
+            "diff": 0.0091,
+            "ci": [
+              -0.0007,
+              0.0203
+            ]
+          }
+        },
+        "vs_logistic": {
+          "head": {
+            "n": 25458,
+            "diff": 0.0058,
+            "ci": [
+              -0.0088,
+              0.0184
+            ]
+          },
+          "all": {
+            "n": 27832,
+            "diff": 0.0058,
+            "ci": [
+              -0.0061,
+              0.018
+            ]
+          },
+          "low": {
+            "n": 2374,
+            "diff": 0.0053,
+            "ci": [
+              -0.0024,
+              0.0121
+            ]
+          },
+          "spatial": {
+            "n": 25458,
+            "diff": 0.0046,
+            "ci": [
+              -0.0082,
+              0.017
+            ]
+          },
+          "spatial_all": {
+            "n": 27832,
+            "diff": 0.0043,
+            "ci": [
+              -0.0078,
+              0.0153
+            ]
+          }
+        }
+      }
+    }
   },
   "compared": {
     "logistic": {
@@ -145,6 +240,44 @@
           0.0799
         ],
         "auc": 0.7234,
+        "auc_persistence": 0.654
+      }
+    },
+    "gbt-enso": {
+      "temporal": {
+        "n": 25458,
+        "brier": 0.2206,
+        "brier_constant": 0.2492,
+        "brier_persistence_calibrated": 0.2258,
+        "bss_constant": 0.115,
+        "bss_constant_ci": [
+          0.0761,
+          0.1611
+        ],
+        "bss_persistence": 0.0232,
+        "bss_persistence_ci": [
+          -0.0284,
+          0.0755
+        ],
+        "auc": 0.7238,
+        "auc_persistence": 0.6589
+      },
+      "spatial": {
+        "n": 25458,
+        "brier": 0.2202,
+        "brier_constant": 0.2495,
+        "brier_persistence_calibrated": 0.226,
+        "bss_constant": 0.1173,
+        "bss_constant_ci": [
+          0.0797,
+          0.1638
+        ],
+        "bss_persistence": 0.0256,
+        "bss_persistence_ci": [
+          -0.021,
+          0.0766
+        ],
+        "auc": 0.7212,
         "auc_persistence": 0.654
       }
     }

@@ -3,11 +3,35 @@
  * logistic regression, scores. Inputs are series of harmonized-equivalent fire-cell-days per 1 deg
  * cell (null = not available, never 0) and their baseline medians (core/baseline.js).
  */
+import { parseTileId } from './grid.js';
+
 export const OUTLOOK_METHOD = { id: 'outlook-logistic', version: 1 };
 export const FEATURES = ['anomaly', 'anomaly-3m-mean', 'month-sin', 'month-cos', 'log1p-median-next', 'anomaly-prev-year'];
 
 /** GBT features: the six above plus the mean anomaly of the 8 neighbouring 1 deg cells this month. */
 export const FEATURES_GBT = [...FEATURES, 'neighbor-anomaly'];
+
+/** gbt-enso features: the GBT seven plus Nino 3.4 at month t and t-3, and the cell's center latitude. */
+export const FEATURES_ENSO = [...FEATURES_GBT, 'nino34', 'nino34-lag3', 'lat'];
+
+/**
+ * Nino 3.4 anomaly at month index t and t-3 from `series` (anomaly or null per month index). Both are
+ * known when the forecast for t+1 is issued after month t ends; nothing after t is read. A missing value
+ * falls back to the latest available one at or before that month (`fallback` says so); null when none.
+ * @returns {{nino: number, lag3: number, usedT: number, usedLag: number, fallback: boolean} | null}
+ */
+export function ninoAt(series, t) {
+  const latest = (k) => { for (let i = Math.min(k, series.length - 1); i >= 0; i--) if (ok(series[i])) return i; return -1; };
+  const a = latest(t), b = latest(t - 3);
+  if (a < 0 || b < 0) return null;
+  return { nino: series[a], lag3: series[b], usedT: a, usedLag: b, fallback: a !== t || b !== t - 3 };
+}
+
+/** Latitude of the center of a 1 deg cell (tile id `x{tx}y{ty}`, cell = row * 10 + col). */
+export function cellLat(tile, cell) {
+  const { ty } = parseTileId(tile);
+  return ty * 10 - 90 + Math.floor(cell / 10) + 0.5;
+}
 
 /** log1p ratio to the baseline median: log1p(v) - log1p(median). */
 export const anomaly1p = (v, med) => Math.log1p(v) - Math.log1p(med);
@@ -179,6 +203,30 @@ export function bootstrapBss(blocks, { draws = 1000, seed = 20261115 } = {}) {
   }
   const q = (xs, f) => { const v = xs.slice().sort((a, b) => a - b); const pos = f * (v.length - 1); const lo = Math.floor(pos); return v[lo] + (v[Math.ceil(pos)] - v[lo]) * (pos - lo); };
   return { constant: [q(c, 0.025), q(c, 0.975)], persistence: [q(p, 0.025), q(p, 0.975)] };
+}
+
+/**
+ * Paired crossed bootstrap of the Brier difference A minus B on the same samples: tiles and years are
+ * resampled independently, a (tile, year) block enters with the product of its draw counts, and the
+ * statistic is the weighted mean of the squared-error difference. Blocks are `{tile, year, d, n}` with
+ * d = sum over the block of (errA^2 - errB^2). Negative = A better.
+ * @returns {{diff: number, ci: [number, number]}}
+ */
+export function bootstrapPairedDiff(blocks, { draws = 2000, seed = 20261116 } = {}) {
+  const next = rng(seed);
+  const tiles = [...new Set(blocks.map((b) => b.tile))], years = [...new Set(blocks.map((b) => b.year))];
+  const sd = blocks.reduce((s, b) => s + b.d, 0), sn = blocks.reduce((s, b) => s + b.n, 0);
+  const out = [];
+  for (let d = 0; d < draws; d++) {
+    const wt = new Map(), wy = new Map();
+    for (let k = 0; k < tiles.length; k++) { const t = tiles[Math.floor(next() * tiles.length)]; wt.set(t, (wt.get(t) ?? 0) + 1); }
+    for (let k = 0; k < years.length; k++) { const y = years[Math.floor(next() * years.length)]; wy.set(y, (wy.get(y) ?? 0) + 1); }
+    let a = 0, n = 0;
+    for (const b of blocks) { const w = (wt.get(b.tile) ?? 0) * (wy.get(b.year) ?? 0); a += w * b.d; n += w * b.n; }
+    out.push(a / n);
+  }
+  const q = (f) => { const v = out.slice().sort((a, b) => a - b); const pos = f * (v.length - 1); const lo = Math.floor(pos); return v[lo] + (v[Math.ceil(pos)] - v[lo]) * (pos - lo); };
+  return { diff: sd / sn, ci: [q(0.025), q(0.975)] };
 }
 
 /**
